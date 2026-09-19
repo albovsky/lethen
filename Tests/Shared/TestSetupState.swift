@@ -9,6 +9,8 @@ final class TestSetupState {
     }
 
     func check() throws {
-        if let error { throw error }
+        if let error {
+            throw error
+        }
     }
 }
