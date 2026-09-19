@@ -53,17 +53,17 @@ Raw local logs and canonical JSON are under `.validation/`, outside SwiftPM scra
 
 ## Verified combinations
 
-The stable matrix passed on `fd7d268`. These are specific build/scan checks, not a guarantee for every Swift 6.x release or deployment OS.
+The stable matrix passed on release commit `04c6965`. These are specific build/scan checks, not a guarantee for every Swift 6.x release or deployment OS.
 
 | Build toolchain | Scanned projects / engine | Host | Result / evidence |
 | --- | --- | --- | --- |
-| Apple Swift 6.4, Xcode 27.0 (27A266a) | SwiftPM default swiftbuild and native; Xcode fixtures | arm64 macOS 27.0, local 26A428 and CI 26A5406e | 321 tests, equal clean/warm/native scans, strict self-scan; [CI](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571722) |
-| Apple Swift 6.1.2, Xcode 16.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 15.7.9 (24G830) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571789) |
-| Apple Swift 6.2.4, Xcode 26.3.0 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 (25G83) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571743) |
-| Apple Swift 6.3.1, Xcode 26.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 (25G83) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571806) |
-| Swift 6.1.3 / 6.2.4 / 6.3.3 | SwiftPM default/native | Linux x86_64, official Swift containers on Ubuntu 24.04.5 runners | Build, applicable tests, baseline-aware strict self-scan passed: [6.1](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571758), [6.2](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571599), [6.3](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571747) |
+| Apple Swift 6.4, Xcode 27.0 (27A266a) | SwiftPM default swiftbuild and native; Xcode fixtures | arm64 macOS 27.0, local 26A428 and CI 26A5406e | 322 tests, equal clean/warm/native scans, strict self-scan; [CI](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543766) |
+| Apple Swift 6.1.2, Xcode 16.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 15.7.9 (24G830) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543997) |
+| Apple Swift 6.2.4, Xcode 26.3.0 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 (25G83) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543962) |
+| Apple Swift 6.3.1, Xcode 26.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 (25G83) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543959) |
+| Swift 6.1.3 / 6.2.4 / 6.3.3 | SwiftPM default/native | Linux x86_64, official Swift containers on Ubuntu 24.04.5 runners | Build, applicable tests, baseline-aware strict self-scan passed: [6.1](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543982), [6.2](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543905), [6.3](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543939) |
 
-All four Bazel 8.x/9.x macOS/Linux build-and-scan jobs also passed in the [same run](https://github.com/albovsky/lethen/actions/runs/35463547167). This does not establish a standalone Bazel distribution. Intel macOS, signed/universal binaries, and running a Swift 6.4-built binary on macOS 15 are not verified. The macOS 15 package minimum alone is not runtime evidence. Snapshot jobs remain allowed to fail and are not compatibility promises.
+All four Bazel 8.x/9.x macOS/Linux build-and-scan jobs also passed in the [same run](https://github.com/albovsky/lethen/actions/runs/35466081905). This does not establish a standalone Bazel distribution. Intel macOS, signed/universal binaries, and running a Swift 6.4-built binary on macOS 15 are not verified. The macOS 15 package minimum alone is not runtime evidence. Snapshot jobs remain allowed to fail and are not compatibility promises.
 
 ## Hosted CI
 
@@ -76,3 +76,11 @@ The repository API confirms `Swift 6.4 / Xcode 27` is a required status check on
 Final review added a real package regression that builds without indexing after a source change, then verifies a managed build indexes the new declaration. It failed against the previous missing-store-only safeguard and passes with managed product rebuilding. The equality fixture now also covers a default witness on `Equatable where Self: Protocol`, with conformances declared both directly and in an extension; both unused-field assertions failed before the fix and pass afterward.
 
 The final local suite passes 322 tests: XcodeTests 22, SPMTests 13, PeripheryTests 246, and AccessibilityTests 41. Clean default, warm reused-index (`--skip-build`), and clean native scans agree on 423 findings. The four added findings are exactly the new regression's two types, conformance extension, and unused comparison function; the previous 419 findings are unchanged. Strict clean self-scan passes. The final analysis also preserves all 154 restored Pett findings. Exact versioned CI and source-install evidence are linked from the GitHub release.
+
+## Unreleased review fixes
+
+The review follow-up fixes a false negative in the original equality model: constructing a value and reading one field could suppress diagnostics for every other field. Syntax metadata now connects whole-value operands to indexed types, including local bindings, typed closure parameters, and dictionary keys. The graph models omitted reads when these values reach an external API or a source-visible generic API that actually forwards generic values into a potential comparison. A generic constraint alone, or an unrelated comparison in that helper, does not qualify.
+
+Regression controls cover construction without comparison, a source-visible identity helper with an unrelated comparison, direct and generic comparisons, library collection operations, nested values, typed closures, and dictionary subscripts. Existing custom-witness and unreachable-caller controls remain in place. Passing whole values to unindexed APIs remains conservative; this is not a general interprocedural type-inference engine.
+
+Directory-change failures now use an accurate generic diagnostic instead of incorrectly classifying every failure as a missing file. The release discovery fixture copies only its manifest and source inputs. Managed SwiftPM rebuilds remain unchanged because removing them would restore the demonstrated stale-index defect. These changes are not included in the immutable `3.8.1-dev.1` tag.
