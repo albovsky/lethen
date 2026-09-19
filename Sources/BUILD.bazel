@@ -30,6 +30,7 @@ swift_library(
         "SyntaxAnalysis/SourceLOCCounter.swift",
         "SyntaxAnalysis/SourceLocationBuilder.swift",
         "SyntaxAnalysis/TypeSyntaxInspector.swift",
+        "SyntaxAnalysis/ValueUseSyntaxVisitor.swift",
         "SyntaxAnalysis/UnusedParameterAnalyzer.swift",
         "SyntaxAnalysis/UnusedParameterParser.swift",
     ],

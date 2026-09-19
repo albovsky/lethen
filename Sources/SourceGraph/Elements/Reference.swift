@@ -38,6 +38,8 @@ public final class Reference {
     public var references: Set<Reference> = []
     public let usr: String
     public var role: Role = .unknown
+    public var hasGenericValueArguments = false
+    public var valueArgumentReferences: Set<Reference> = []
 
     private let hashValueCache: Int
 
