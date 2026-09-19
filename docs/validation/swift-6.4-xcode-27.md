@@ -1,6 +1,6 @@
 # Swift 6.4 / Xcode 27 validation
 
-This report records local evidence for the reliable-scanning milestone. The Pett audit, hosted CI, and release installation remain separate gates.
+This report records local and hosted evidence for the reliable-scanning milestone. Release installation is a separate gate; the completed private-project audit is summarized in [pett-audit.md](pett-audit.md).
 
 ## Environment
 
@@ -16,9 +16,9 @@ This report records local evidence for the reliable-scanning milestone. The Pett
 
 Lethen therefore enables indexing explicitly and resolves only `<swift build --show-bin-path>/index/store`, with the same effective build arguments for compilation and discovery. This also separates Debug and Release stores. The path is forwarded with `-Xswiftc -index-store-path`: a clean Release probe showed that the Swift compiler otherwise omitted indexing flags despite SwiftPM enabling the build setting. If products already exist without their matching store, lethen cleans that selected scratch root before rebuilding, because a warm swiftbuild can reuse objects after index-only flag changes. There is no fallback to an automatic store or another engine. `--skip-build` expects that same explicitly indexed location. For externally built automatic swiftbuild indexes, pass `--index-store-path /path/to/.build/out`; multiple explicit stores and an external JSON package manifest remain supported without discovery subprocesses.
 
-The cold release control uses the existing AccessibilityProject fixture with `-Xswiftc -enable-testing`, because its tests use `@testable import`. Macro and cross-module retention remain covered separately by SPMProjectTest. This control does not claim that every package's release test build is supported.
+The release discovery control now uses a dependency-free three-target package with normal release optimization. Its source coverage assertions exercise a main target, cross-module type, and external protocol under default and native engines. The initial AccessibilityProject control required `-enable-testing`; Linux Swift 6.1.3 then exposed an unrelated optimizer crash while deserializing its Foundation FileManager subclass. The dedicated fixture avoids that dependency, while the complete existing accessibility suite remains unchanged. Macro retention remains covered separately by SPMProjectTest.
 
-## Evidence recorded so far
+## Regression evidence
 
 - Working-directory regression: both new tests failed before the fix; all four FilePathTest tests passed afterward.
 - Setup-state regression: missing helper failed compilation; original-error propagation and recovery passed after implementation.
@@ -32,6 +32,8 @@ The unmodified `swift test` command passed all four targets, with zero failures 
 `swift test --filter XcodeTests` also passed all 22 cases after the cleanup. The four changed iOS settings belong to SwiftUIProject and NotificationServiceExtension; other inherited targets were preserved. This validates indexing and scanner assertions, not runtime behavior on every deployment target.
 
 Clean default, warm default, and clean native scans of `Tests/Fixtures` each returned 404 findings. Their canonical sets are identical, using `.github/scripts/canonicalize-scan-json.py`: relative file, line, column, kind, name, sorted hints and sorted IDs. Native flags were passed after the scanner's `--`, into the fixture build. No categories were discarded.
+
+After the Pett-driven analysis fixes in `414cd82`, the complete local baseline script passed **321 tests**: XcodeTests 22, SPMTests 12, PeripheryTests 246, AccessibilityTests 41. Clean, warm, and native fixture scans agree on **419 findings**, including the added regression fixtures. Strict clean self-scan passed. The later dedicated discovery fixture passed locally and across the stable hosted matrix, including Linux Swift 6.1.3 with normal release optimization.
 
 Coverage includes AppIntent/AppEntity/AppEnum/AppShortcutsProvider; SwiftUI App and UIApplicationDelegateAdaptor entry points and library providers; ObjC accessibility/annotations; Codable/Encodable retention; XCTest and Swift Testing declarations; macro imports; cross-module references; XIB/storyboard/Info.plist retention; and redundant-public analysis. Tests retain both used and unused controls. The default CLI SPMProject scan reports `PublicCrossModuleNotReferenced` and retains `PublicCrossModuleReferenced`.
 
@@ -49,16 +51,23 @@ lethen_bin_dir="$(swift build --show-bin-path)"
 
 Raw local logs and canonical JSON are under `.validation/`, outside SwiftPM scratch directories. The dedicated CI script recreates this evidence and uploads it even on failure. Raw Pett reports remain outside the public repository.
 
-## Compatibility boundaries
+## Verified combinations
 
-| Toolchain / host | Scanned project | Result |
-| --- | --- | --- |
-| Swift 6.4, Xcode 27.0, arm64 macOS 27.0 | SwiftPM default swiftbuild and native; Xcode fixtures | Local tests and comparisons passed |
-| Same | SwiftPM Release with testable imports enabled | Explicit-index discovery and source coverage passed under both engines |
-| Older Swift/Xcode, Linux, Bazel, Intel | Any | Not locally verified; existing CI jobs preserved |
-| macOS 15 runtime | Any | Not tested; package minimum alone is not runtime evidence |
+The stable matrix passed on `fd7d268`. These are specific build/scan checks, not a guarantee for every Swift 6.x release or deployment OS.
+
+| Build toolchain | Scanned projects / engine | Host | Result / evidence |
+| --- | --- | --- | --- |
+| Apple Swift 6.4, Xcode 27.0 (27A266a) | SwiftPM default swiftbuild and native; Xcode fixtures | arm64 macOS 27.0, local 26A428 and CI 26A5406e | 321 tests, equal clean/warm/native scans, strict self-scan; [CI](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571722) |
+| Apple Swift 6.1.2, Xcode 16.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 15.7.9 (24G830) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571789) |
+| Apple Swift 6.2.4, Xcode 26.3.0 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 (25G83) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571743) |
+| Apple Swift 6.3.1, Xcode 26.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 (25G83) | Build, tests, strict self-scan [passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571806) |
+| Swift 6.1.3 / 6.2.4 / 6.3.3 | SwiftPM default/native | Linux x86_64, official Swift containers on Ubuntu 24.04.5 runners | Build, applicable tests, baseline-aware strict self-scan passed: [6.1](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571758), [6.2](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571599), [6.3](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571747) |
+
+All four Bazel 8.x/9.x macOS/Linux build-and-scan jobs also passed in the [same run](https://github.com/albovsky/lethen/actions/runs/35463547167). This does not establish a standalone Bazel distribution. Intel macOS, signed/universal binaries, and running a Swift 6.4-built binary on macOS 15 are not verified. The macOS 15 package minimum alone is not runtime evidence. Snapshot jobs remain allowed to fail and are not compatibility promises.
 
 ## Hosted CI
 
-The [runner inventory](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md) was rechecked on 2026-09-19: `xcode-27` image 20260912.0186.1 lists Xcode 27.0 (27A266a), including the `/Applications/Xcode_27.0.app` symlink. Hosted runs and required-check configuration are pending. A workflow definition alone does not establish branch protection or compatibility.
+The [runner inventory](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md) was rechecked on 2026-09-19: `xcode-27` image 20260912.0186.1 lists Xcode 27.0 (27A266a), including the `/Applications/Xcode_27.0.app` symlink. The [failure probe](https://github.com/albovsky/lethen/actions/runs/35462247145/job/105948067914) used the real audit regression fixtures on `88b99c5`: the dedicated job failed exactly their four assertions and uploaded evidence. The [corrected baseline](https://github.com/albovsky/lethen/actions/runs/35462915861/job/105949919088) passed after `414cd82`; lint and all four Bazel jobs also passed. Linux Swift 6.1 exposed the fixture optimizer issue described above. All 12 non-optional matrix jobs subsequently passed on `fd7d268`, including the corrected Linux 6.1 release fixture. Final versioned installation evidence belongs to the release notes.
+
+The repository API confirms `Swift 6.4 / Xcode 27` is a required status check on `master`, with an up-to-date-branch requirement. The dedicated job now checks out the PR head SHA explicitly, so final release evidence records the candidate itself rather than GitHub's synthetic merge commit. It uses no restored build/index cache and does not allow failure. The CI script records toolchain, commit and binary identity, all tests, canonical fixture comparisons, and strict self-scan; evidence uploads include hidden `.validation` files even after a failed gate.
 
