@@ -9,7 +9,7 @@ env:
   swift_package_resolve: swift package resolve
   swift_build: swift build
   swift_test: swift test
-  periphery_scan: ./.build/debug/lethen scan --quiet --clean-build --strict
+  periphery_scan: ./.build/debug/lethen scan --quiet --clean-build --strict --disable-update-check
   cache_version: 1
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -73,7 +73,7 @@ jobs:
             disk-cache: bazel-${{ matrix.os }}-${{ matrix.bazel }}
             repository-cache: true
         - name: Scan
-          run: bazel run //:periphery -- scan --bazel --quiet --strict --baseline baselines/${{ matrix.baseline }}
+          run: bazel run //:periphery -- scan --bazel --quiet --strict --disable-update-check --baseline baselines/${{ matrix.baseline }}
   macOS:
     name: macOS
     strategy:
