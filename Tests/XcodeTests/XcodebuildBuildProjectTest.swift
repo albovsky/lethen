@@ -9,14 +9,14 @@ final class XcodebuildBuildProjectTest: XCTestCase {
     private var xcodebuild: Xcodebuild!
     private var project: XcodeProject!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
 
         let logger = Logger(quiet: true, verbose: false, colorMode: .never)
         let shell = ShellImpl(logger: logger)
         var loadedProjectPaths: Set<FilePath> = []
         xcodebuild = Xcodebuild(shell: shell, logger: logger)
-        project = try! XcodeProject(path: UIKitProjectPath, loadedProjectPaths: &loadedProjectPaths, xcodebuild: xcodebuild, shell: shell, logger: logger)
+        project = try XcodeProject(path: UIKitProjectPath, loadedProjectPaths: &loadedProjectPaths, xcodebuild: xcodebuild, shell: shell, logger: logger)
     }
 
     override func tearDown() {

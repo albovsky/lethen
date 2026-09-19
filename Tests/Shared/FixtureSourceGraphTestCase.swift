@@ -1,5 +1,6 @@
 import Configuration
 @testable import PeripheryKit
+import Shared
 import SystemPackage
 import XCTest
 
@@ -7,7 +8,9 @@ class FixtureSourceGraphTestCase: SPMSourceGraphTestCase {
     override static func setUp() {
         super.setUp()
 
-        build(projectPath: FixturesProjectPath)
+        setupState.capture {
+            try build(projectPath: FixturesProjectPath)
+        }
     }
 
     @discardableResult
@@ -30,7 +33,7 @@ class FixtureSourceGraphTestCase: SPMSourceGraphTestCase {
         externalTestCaseClasses: [String] = [],
         retainFiles: [String] = [],
         testBlock: () throws -> Void
-    ) rethrows -> [ScanResult] {
+    ) throws -> [ScanResult] {
         let configuration = Configuration()
         configuration.retainPublic = retainPublic
         configuration.noRetainSPI = noRetainSPI
@@ -52,10 +55,10 @@ class FixtureSourceGraphTestCase: SPMSourceGraphTestCase {
         configuration.buildFilenameMatchers()
 
         if !testFixturePath.exists {
-            fatalError("\(testFixturePath.string) does not exist")
+            throw PeripheryError.packageError(message: "Test fixture \(testFixturePath.string) does not exist")
         }
 
-        Self.index(sourceFiles: [testFixturePath] + additionalFilesToIndex, configuration: configuration)
+        try Self.index(sourceFiles: [testFixturePath] + additionalFilesToIndex, configuration: configuration)
         try testBlock()
         return Self.results
     }

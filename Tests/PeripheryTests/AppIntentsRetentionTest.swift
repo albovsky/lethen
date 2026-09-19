@@ -3,27 +3,27 @@
     import XCTest
 
     final class AppIntentsRetentionTest: FixtureSourceGraphTestCase {
-        func testRetainsAppIntent() {
-            analyze {
+        func testRetainsAppIntent() throws {
+            try analyze {
                 assertReferenced(.struct("SimpleIntent"))
             }
         }
 
-        func testRetainsAppEntity() {
-            analyze {
+        func testRetainsAppEntity() throws {
+            try analyze {
                 assertReferenced(.struct("SimpleEntity"))
                 assertReferenced(.struct("SimpleEntityQuery"))
             }
         }
 
-        func testRetainsAppEnum() {
-            analyze {
+        func testRetainsAppEnum() throws {
+            try analyze {
                 assertReferenced(.enum("SimpleAppEnum"))
             }
         }
 
-        func testRetainsAppShortcutsProvider() {
-            analyze {
+        func testRetainsAppShortcutsProvider() throws {
+            try analyze {
                 assertReferenced(.struct("SimpleShortcutsProvider"))
             }
         }

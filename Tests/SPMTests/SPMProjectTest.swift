@@ -6,8 +6,10 @@ final class SPMProjectTest: SPMSourceGraphTestCase {
     override static func setUp() {
         super.setUp()
 
-        build(projectPath: SPMProjectPath)
-        index(configuration: Configuration())
+        setupState.capture {
+            try build(projectPath: SPMProjectPath)
+            try index(configuration: Configuration())
+        }
     }
 
     func testMainEntryFile() {

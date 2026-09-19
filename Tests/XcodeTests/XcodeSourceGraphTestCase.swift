@@ -5,16 +5,16 @@ import SystemPackage
 @testable import TestShared
 
 class XcodeSourceGraphTestCase: SourceGraphTestCase {
-    static func build(projectPath: FilePath, configuration: Configuration) {
-        try! projectPath.chdir {
-            let driver = try! XcodeProjectDriver(
+    static func build(projectPath: FilePath, configuration: Configuration) throws {
+        try projectPath.chdir {
+            let driver = try XcodeProjectDriver(
                 projectPath: projectPath,
                 configuration: configuration,
                 shell: shell,
                 logger: logger
             )
-            try! driver.build()
-            plan = try! driver.plan(logger: logger.contextualized(with: "index"))
+            try driver.build()
+            plan = try driver.plan(logger: logger.contextualized(with: "index"))
         }
     }
 }
