@@ -239,6 +239,7 @@ final class SwiftIndexer: Indexer {
 
             graph.withLock { graph in
                 graph.add(references)
+                indexedReferences = references
                 graph.add(newDeclarations)
 
                 if retainAllDeclarations {
@@ -283,6 +284,18 @@ final class SwiftIndexer: Indexer {
             associateLatentReferences()
             associateDanglingReferences()
             visitDeclarations(using: declarationSyntaxVisitor)
+            let valueUses = ValueUseSyntaxVisitor(locations: SourceLocationBuilder(
+                file: sourceFile, locationConverter: multiplexingSyntaxVisitor.locationConverter
+            ))
+            valueUses.walk(multiplexingSyntaxVisitor.syntax)
+            let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
+            for (call, arguments) in valueUses.arguments {
+                let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })
+                for reference in referencesByLocation[call, default: []] {
+                    reference.hasGenericValueArguments = !arguments.isDisjoint(with: valueUses.genericTypeLocations)
+                    reference.valueArgumentReferences = values
+                }
+            }
             identifyUnusedParameters(using: multiplexingSyntaxVisitor)
             applyCommentCommands(using: multiplexingSyntaxVisitor)
         }
@@ -290,6 +303,7 @@ final class SwiftIndexer: Indexer {
         // MARK: - Private
 
         private var declarations: [Declaration] = []
+        private var indexedReferences: Set<Reference> = []
         private var childDeclsByParentUsr: [String: Set<Declaration>] = [:]
         private var referencesByUsr: [String: Set<Reference>] = [:]
         private var danglingReferences: [Reference] = []
