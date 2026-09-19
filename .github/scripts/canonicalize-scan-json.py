@@ -11,11 +11,11 @@ with open(sys.argv[2], encoding="utf-8") as source:
 rows = set()
 for finding in findings:
     path, line, column = finding["location"].rsplit(":", 2)
-    if Path(path).is_absolute():
-        try:
-            path = str(Path(path).relative_to(root))
-        except ValueError:
-            pass  # An external path is evidence, not something to discard.
+    absolute = Path(path) if Path(path).is_absolute() else root / path
+    try:
+        path = str(absolute.resolve().relative_to(root))
+    except ValueError:
+        pass  # An external path is evidence, not something to discard.
     rows.add((path, int(line), int(column), finding["kind"], finding.get("name"),
               tuple(sorted(finding["hints"])), tuple(sorted(finding["ids"]))))
 
