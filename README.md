@@ -1,4 +1,4 @@
-# lethen
+# Lethen
 
 A community-maintained tool to identify unused code in Swift projects.
 
