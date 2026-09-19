@@ -880,6 +880,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("ManualEqualityValue")) {
                 self.assertAssignOnlyProperty(.varInstance("ignored"))
             }
+            assertReferenced(.struct("ExtensionEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("DefaultEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("GlobalEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertNotReferenced(.struct("UnreachableEqualityValue"))
         }
     }
 
