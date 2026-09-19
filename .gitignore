@@ -29,3 +29,6 @@ Tests/Fixtures/.build/
 
 # Bazel
 bazel-*
+
+# Validation evidence survives clean SwiftPM builds.
+/.validation
