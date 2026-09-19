@@ -60,6 +60,7 @@ open class SourceGraphTestCase: XCTestCase {
         guard let plan else {
             throw PeripheryError.packageError(message: "Test index plan is unavailable; fixture setup did not complete.")
         }
+
         var newPlan = plan
 
         if let sourceFiles {

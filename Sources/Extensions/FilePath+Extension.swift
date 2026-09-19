@@ -40,6 +40,7 @@ public extension FilePath {
             throw NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoSuchFileError,
                           userInfo: [NSFilePathErrorKey: string])
         }
+
         defer { _ = fileManager.changeCurrentDirectoryPath(previous.string) }
         try closure()
     }

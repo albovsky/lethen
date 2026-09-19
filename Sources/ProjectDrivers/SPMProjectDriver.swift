@@ -31,7 +31,7 @@ extension SPMProjectDriver: ProjectDriver {
     public func build() throws {
         if !configuration.skipBuild {
             if configuration.cleanBuild {
-                try pkg.clean()
+                try pkg.clean(additionalArguments: configuration.buildArguments)
             }
 
             if configuration.outputFormat.supportsAuxiliaryOutput {
@@ -47,7 +47,7 @@ extension SPMProjectDriver: ProjectDriver {
         let indexStorePaths: Set<FilePath> = if !configuration.indexStorePath.isEmpty {
             Set(configuration.indexStorePath)
         } else {
-            [pkg.path.appending(".build/debug/index/store")]
+            try [pkg.indexStorePath(additionalArguments: configuration.buildArguments)]
         }
 
         // Load package description once and reuse it
