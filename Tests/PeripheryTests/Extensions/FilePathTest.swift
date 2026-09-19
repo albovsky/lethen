@@ -3,6 +3,28 @@ import SystemPackage
 import XCTest
 
 final class FilePathTest: XCTestCase {
+    func testChdirRestoresDirectoryAfterError() throws {
+        enum Expected: Error { case failure }
+        let original = FilePath.current
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            _ = FileManager.default.changeCurrentDirectoryPath(original.string)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        XCTAssertThrowsError(try FilePath(directory.path).chdir { throw Expected.failure }) {
+            XCTAssertTrue($0 is Expected)
+        }
+        XCTAssertEqual(FilePath.current, original)
+    }
+
+    func testChdirRejectsMissingDirectory() {
+        var executed = false
+        let missing = FilePath("/tmp/lethen-missing-\(UUID().uuidString)")
+        XCTAssertThrowsError(try missing.chdir { executed = true })
+        XCTAssertFalse(executed)
+    }
+
     func testMakeAbsolute() {
         let current = FilePath("/current")
         XCTAssertEqual(FilePath.makeAbsolute("/a", relativeTo: current).string, "/a")
