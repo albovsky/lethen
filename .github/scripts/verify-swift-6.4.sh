@@ -24,7 +24,7 @@ lethen_bin="$lethen_bin_dir/lethen"
 
 for mode in clean warm native; do
   scan_arguments=(scan --project-root Tests/Fixtures --quiet --disable-update-check --format json --relative-results)
-  if [ "$mode" != warm ]; then scan_arguments+=(--clean-build); fi
+  if [ "$mode" = warm ]; then scan_arguments+=(--skip-build); else scan_arguments+=(--clean-build); fi
   if [ "$mode" = native ]; then scan_arguments+=(-- --build-system native); fi
   "$lethen_bin" "${scan_arguments[@]}" \
     > ".validation/fixtures-$mode.json" 2> ".validation/fixtures-$mode.log"

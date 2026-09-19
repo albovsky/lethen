@@ -50,9 +50,11 @@ public enum SPM {
             if configuration.indexStorePath.isEmpty {
                 let binary = try binaryDirectory(additionalArguments: additionalArguments)
                 let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)
-                // Swiftbuild can reuse objects from an auto-indexed build without
-                // regenerating indexes when only index flags change.
-                if binary.exists, !store.exists {
+                // Indexing flags do not invalidate all Swiftbuild compilation tasks.
+                // Even an existing store can be stale after an unindexed build.
+                // Rebuild managed products; callers that verify an external index
+                // can opt into reuse with --skip-build.
+                if binary.exists {
                     try clean(additionalArguments: additionalArguments)
                 }
                 // In swiftbuild Release builds, --enable-index-store alone does

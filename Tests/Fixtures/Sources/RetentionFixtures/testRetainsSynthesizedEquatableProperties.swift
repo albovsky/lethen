@@ -66,3 +66,24 @@ public func ==(lhs: GlobalEqualityValue, rhs: GlobalEqualityValue) -> Bool {
 public func compareGlobalEqualityFixtures() -> Bool {
     GlobalEqualityValue(compared: 1, ignored: 2) == GlobalEqualityValue(compared: 1, ignored: 3)
 }
+
+public protocol ExternalDefaultEquality: Equatable {}
+
+extension Equatable where Self: ExternalDefaultEquality {
+    public static func ==(lhs: Self, rhs: Self) -> Bool { true }
+}
+
+public struct ExternalDefaultEqualityValue: ExternalDefaultEquality {
+    let ignored: Int
+}
+
+public struct ExtendedDefaultEqualityValue {
+    let ignored: Int
+}
+
+extension ExtendedDefaultEqualityValue: ExternalDefaultEquality {}
+
+public func compareExternalDefaultEqualityFixtures() -> Bool {
+    ExternalDefaultEqualityValue(ignored: 1) == ExternalDefaultEqualityValue(ignored: 2)
+        && ExtendedDefaultEqualityValue(ignored: 1) == ExtendedDefaultEqualityValue(ignored: 2)
+}

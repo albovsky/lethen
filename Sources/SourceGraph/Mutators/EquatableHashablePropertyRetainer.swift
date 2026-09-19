@@ -29,8 +29,14 @@ final class EquatableHashablePropertyRetainer: SourceGraphMutator {
     /// synthesized equality can compare it through generic/external APIs, so model reads
     /// of its stored properties from those callers without making the type a new root.
     private func buildSynthesizedEqualityReads() {
+        // Explicit witnesses can live on Equatable itself with a constrained Self.
+        // Their related references identify the concrete conformance locations.
+        let customWitnessLocations = Set(graph.declarations(ofKind: .functionOperatorInfix)
+            .filter { $0.name == "==(_:_:)" && !$0.isImplicit }
+            .flatMap { $0.related.filter { $0.usr == "s:SQ2eeoiySbx_xtFZ" }.map(\.location) })
         for type in graph.declarations(ofKind: .struct) {
-            guard graph.isEquatable(type) else { continue }
+            guard graph.isEquatable(type), !customWitnessLocations.contains(type.location),
+                  !(graph.extensions[type] ?? []).contains(where: { customWitnessLocations.contains($0.location) }) else { continue }
 
             let members = type.declarations.union(graph.inheritedDeclarations(of: type).flatMap { inherited in
                 let extensions = inherited.references
