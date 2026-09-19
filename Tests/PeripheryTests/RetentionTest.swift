@@ -869,6 +869,36 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testRetainsSynthesizedEquatableProperties() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("SynthesizedEqualityValue")) {
+                self.assertReferenced(.varInstance("number"))
+                self.assertNotAssignOnlyProperty(.varInstance("number"))
+                self.assertReferenced(.varInstance("label"))
+                self.assertNotAssignOnlyProperty(.varInstance("label"))
+            }
+            assertReferenced(.struct("ManualEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+        }
+    }
+
+    #if os(macOS)
+        func testRetainsNestedSwiftUIProjectedState() throws {
+            try analyze(retainPublic: true) {
+                assertReferenced(.struct("NestedProjectionPreviews")) {
+                    self.assertReferenced(.struct("FirstPreview")) {
+                        self.assertReferenced(.varInstance("firstSelection"))
+                    }
+                    self.assertReferenced(.struct("SecondPreview")) {
+                        self.assertReferenced(.varInstance("secondSelection"))
+                        self.assertNotReferenced(.varInstance("unusedSelection"))
+                    }
+                }
+            }
+        }
+    #endif
+
     func testRetainsPropertyWrappers() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.class("Fixture111")) {
