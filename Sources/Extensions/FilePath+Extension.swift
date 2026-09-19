@@ -31,12 +31,17 @@ public extension FilePath {
         URL(fileURLWithPath: lexicallyNormalized().string)
     }
 
+    /// Changes the process-global directory; callers must serialize access and keep
+    /// the original directory present for the duration of the closure.
     @inlinable
-    func chdir(closure: () throws -> Void) rethrows {
+    func chdir(closure: () throws -> Void) throws {
         let previous = Self.current
-        _ = fileManager.changeCurrentDirectoryPath(string)
+        guard fileManager.changeCurrentDirectoryPath(string) else {
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoSuchFileError,
+                          userInfo: [NSFilePathErrorKey: string])
+        }
+        defer { _ = fileManager.changeCurrentDirectoryPath(previous.string) }
         try closure()
-        _ = fileManager.changeCurrentDirectoryPath(previous.string)
     }
 
     @inlinable

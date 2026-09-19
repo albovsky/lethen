@@ -6,7 +6,7 @@ import SystemPackage
 
 class XcodeSourceGraphTestCase: SourceGraphTestCase {
     static func build(projectPath: FilePath, configuration: Configuration) {
-        projectPath.chdir {
+        try! projectPath.chdir {
             let driver = try! XcodeProjectDriver(
                 projectPath: projectPath,
                 configuration: configuration,

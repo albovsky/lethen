@@ -89,8 +89,8 @@ final class FilePathGlobTest: XCTestCase {
         ])
     }
 
-    func testRelative() {
-        FilePath(baseDir).chdir {
+    func testRelative() throws {
+        try FilePath(baseDir).chdir {
             let pattern = "**/*.ext"
             let paths = FilePath.glob(pattern).sorted()
             XCTAssertPathsEqual(paths, [
@@ -100,8 +100,8 @@ final class FilePathGlobTest: XCTestCase {
         }
     }
 
-    func testRelativeParent() {
-        FilePath("\(baseDir)/dir1").chdir {
+    func testRelativeParent() throws {
+        try FilePath("\(baseDir)/dir1").chdir {
             let pattern = "../bar"
             let paths = FilePath.glob(pattern).sorted()
             XCTAssertPathsEqual(paths, [
@@ -109,7 +109,7 @@ final class FilePathGlobTest: XCTestCase {
             ])
         }
 
-        FilePath("\(baseDir)/dir1/dir2").chdir {
+        try FilePath("\(baseDir)/dir1/dir2").chdir {
             let pattern = "../../**/*.ext"
             let paths = FilePath.glob(pattern).sorted()
             XCTAssertPathsEqual(paths, [
