@@ -10,7 +10,9 @@ Intended website: **lethen.sh**. This repository is the project home while the w
 
 [3.8.1-dev.1](https://github.com/albovsky/lethen/releases/tag/3.8.1-dev.1) is the first lethen development prerelease, distributed from source. It fixes default SwiftPM index discovery and fixture setup on Swift 6.4 / Xcode 27, plus two analysis defects reproduced during a private-project audit.
 
-The [validation report](docs/validation/swift-6.4-xcode-27.md) records 321 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. Signed binaries, Homebrew, and a hosted installer are separate work.
+Managed SwiftPM scans rebuild existing products to guarantee fresh indexes. Use `--skip-build` only with an index you know is current.
+
+The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. Signed binaries, Homebrew, and a hosted installer are separate work.
 
 ## Install from source
 
@@ -36,7 +38,7 @@ Install prerelease tags manually: the optional update checker uses GitHub's stab
 
 | Build toolchain | Scanned projects / engine | Host | Evidence |
 | --- | --- | --- | --- |
-| Swift 6.4 / Xcode 27.0 | SwiftPM default swiftbuild and native; Xcode fixtures | arm64 macOS 27.0 | [321 tests and scan comparisons](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571722) |
+| Swift 6.4 / Xcode 27.0 | SwiftPM default swiftbuild and native; Xcode fixtures | arm64 macOS 27.0 | [baseline tests and scan comparisons](docs/validation/swift-6.4-xcode-27.md) |
 | Swift 6.1.2 / Xcode 16.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 15.7.9 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571789) |
 | Swift 6.2.4 / Xcode 26.3.0 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571743) |
 | Swift 6.3.1 / Xcode 26.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35463547167/job/105951571806) |
