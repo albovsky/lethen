@@ -13,7 +13,7 @@ if (info.st_mode & S_IFMT) == S_IFIFO {
 
 struct PeripheryCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "periphery",
+        commandName: "lethen",
         subcommands: [
             ScanCommand.self,
             CheckUpdateCommand.self,

@@ -7,7 +7,7 @@ import Shared
 struct ClearCacheCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "clear-cache",
-        abstract: "Clear Periphery's build cache"
+        abstract: "Clear lethen's build cache"
     )
 
     func run() throws {

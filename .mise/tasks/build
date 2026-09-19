@@ -3,9 +3,9 @@
 
 set -eo pipefail
 
-SWIFT_BUILD_FLAGS="--product periphery --configuration release -Xswiftc -cross-module-optimization --disable-sandbox --scratch-path .build"
-EXECUTABLE_X86_64="$(swift build ${SWIFT_BUILD_FLAGS} --arch x86_64 --show-bin-path)/periphery"
-EXECUTABLE_ARM64="$(swift build ${SWIFT_BUILD_FLAGS} --arch arm64 --show-bin-path)/periphery"
+SWIFT_BUILD_FLAGS="--product lethen --configuration release -Xswiftc -cross-module-optimization --disable-sandbox --scratch-path .build"
+EXECUTABLE_X86_64="$(swift build ${SWIFT_BUILD_FLAGS} --arch x86_64 --show-bin-path)/lethen"
+EXECUTABLE_ARM64="$(swift build ${SWIFT_BUILD_FLAGS} --arch arm64 --show-bin-path)/lethen"
 
 build_x86_64() {
     swift build ${SWIFT_BUILD_FLAGS} --arch x86_64
@@ -28,9 +28,9 @@ elif [ "$usage_arch" = "release" ]; then
     build_x86_64
     build_arm64
     mkdir -p .release
-	lipo -create -output .release/periphery ${EXECUTABLE_X86_64} ${EXECUTABLE_ARM64}
-	strip -rSTX .release/periphery
-    echo "$(realpath .release/periphery)"
+	lipo -create -output .release/lethen ${EXECUTABLE_X86_64} ${EXECUTABLE_ARM64}
+	strip -rSTX .release/lethen
+    echo "$(realpath .release/lethen)"
 else
     echo "Invalid architecture. Use --arch <arch> where <arch> is x86_64, arm64 or release"
     exit 1

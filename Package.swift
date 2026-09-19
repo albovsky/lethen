@@ -176,10 +176,10 @@ var targets: [PackageDescription.Target] = [
 #endif
 
 let package = Package(
-    name: "Periphery",
+    name: "Lethen",
     platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "periphery", targets: ["Frontend"]),
+        .executable(name: "lethen", targets: ["Frontend"]),
         .library(name: "PeripheryKit", targets: ["PeripheryKit"]),
     ],
     dependencies: dependencies,

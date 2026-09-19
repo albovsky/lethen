@@ -230,7 +230,6 @@ swift_binary(
         "Frontend/CommonSetupGuide.swift",
         "Frontend/GuidedSetup.swift",
         "Frontend/Logger+Extension.swift",
-        "Frontend/PlanSuggester.swift",
         "Frontend/Project.swift",
         "Frontend/SPMProjectSetupGuide.swift",
         "Frontend/Scan.swift",

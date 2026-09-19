@@ -9,7 +9,7 @@ env:
   swift_package_resolve: swift package resolve
   swift_build: swift build
   swift_test: swift test
-  periphery_scan: ./.build/debug/periphery scan --quiet --clean-build --strict
+  periphery_scan: ./.build/debug/lethen scan --quiet --clean-build --strict
   cache_version: 1
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

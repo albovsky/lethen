@@ -21,7 +21,7 @@ struct ScanCommand: ParsableCommand {
     @Option(help: "Path to the root directory of your project")
     var projectRoot: FilePath = projectRootDefault
 
-    @Option(help: "Path to configuration file. By default Periphery will look for .periphery.yml in the current directory")
+    @Option(help: "Path to configuration file. By default lethen will look for .periphery.yml in the current directory")
     var config: FilePath?
 
     @Option(help: "Path to your project's .xcodeproj or .xcworkspace")
@@ -265,12 +265,6 @@ struct ScanCommand: ParsableCommand {
             swiftVersion: swiftVersion
         ).perform(project: project)
 
-        let planSuggester = PlanSuggester(
-            logger: logger,
-            loc: scanOutput.loc
-        )
-        planSuggester.run()
-
         let results = scanOutput.results
         let interval = logger.beginInterval("result:output")
         var baseline: Baseline?
@@ -320,7 +314,6 @@ struct ScanCommand: ParsableCommand {
         logger.endInterval(interval)
 
         updateChecker.notifyIfAvailable()
-        planSuggester.notifyIfSuggested()
 
         if !filteredResults.isEmpty, configuration.strict {
             throw PeripheryError.foundIssues(count: filteredResults.count)
