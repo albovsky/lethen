@@ -59,7 +59,10 @@ final class SPMIndexStoreIntegrationTest: XCTestCase {
         let logger = Logger(quiet: true, verbose: false, colorMode: .never)
         let shell = ShellImpl(logger: logger)
         let root = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen stale index \(UUID().uuidString)").path)
-        try FileManager.default.copyItem(at: fixturePath.url, to: root.url)
+        try FileManager.default.createDirectory(at: root.url, withIntermediateDirectories: true)
+        for input in ["Package.swift", "Sources"] {
+            try FileManager.default.copyItem(at: fixturePath.appending(input).url, to: root.appending(input).url)
+        }
         defer { try? FileManager.default.removeItem(at: root.url) }
 
         try root.chdir {
