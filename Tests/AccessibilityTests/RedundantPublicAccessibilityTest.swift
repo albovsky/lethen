@@ -6,34 +6,36 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
     override static func setUp() {
         super.setUp()
 
-        build(projectPath: AccessibilityProjectPath)
+        setupState.capture {
+            try build(projectPath: AccessibilityProjectPath)
+        }
     }
 
-    func testRedundantPublicType() {
-        index()
+    func testRedundantPublicType() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.class("RedundantPublicType")) {
             self.assertRedundantPublicAccessibility(.functionMethodInstance("redundantPublicFunction()"))
         }
     }
 
-    func testPublicDeclarationInInternalParent() {
-        index()
+    func testPublicDeclarationInInternalParent() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicDeclarationInInternalParent")) {
             self.assertRedundantPublicAccessibility(.functionMethodInstance("somePublicFunc()"))
         }
     }
 
-    func testPublicExtensionOnRedundantPublicKind() {
-        index()
+    func testPublicExtensionOnRedundantPublicKind() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.class("PublicExtensionOnRedundantPublicKind"))
         assertRedundantPublicAccessibility(.extensionClass("PublicExtensionOnRedundantPublicKind"))
     }
 
-    func testPublicTypeUsedAsPublicPropertyType() {
-        index()
+    func testPublicTypeUsedAsPublicPropertyType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicPropertyType1"))
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicPropertyType2"))
@@ -44,8 +46,8 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicPropertyArrayType"))
     }
 
-    func testPublicTypeUsedAsPublicPropertyInitializer() {
-        index()
+    func testPublicTypeUsedAsPublicPropertyInitializer() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.struct("PublicTypeUsedAsPublicPropertyInitializer_Simple"))
         assertNotRedundantPublicAccessibility(.struct("PublicTypeUsedAsPublicPropertyInitializer_GenericParameter"))
@@ -57,87 +59,87 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         assertNotRedundantPublicAccessibility(.enum("PublicTypeUsedAsPublicPropertyInitializer_TernaryEnum"))
     }
 
-    func testPublicTypeUsedAsPublicInitializerParameterType() {
-        index()
+    func testPublicTypeUsedAsPublicInitializerParameterType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicInitializerParameterType"))
     }
 
-    func testPublicTypeUsedAsPublicFunctionParameterType() {
-        index()
+    func testPublicTypeUsedAsPublicFunctionParameterType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicFunctionParameterType"))
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicFunctionParameterTypeClosureArgument"))
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicFunctionParameterTypeClosureReturnType"))
     }
 
-    func testPublicTypeUsedAsPublicFunctionParameterDefaultValue() {
-        index()
+    func testPublicTypeUsedAsPublicFunctionParameterDefaultValue() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.struct("PublicTypeUsedAsPublicFunctionParameterDefaultValue")) {
             self.assertNotRedundantPublicAccessibility(.varStatic("somePublicValue"))
         }
     }
 
-    func testPublicTypeUsedAsPublicFunctionReturnType() {
-        index()
+    func testPublicTypeUsedAsPublicFunctionReturnType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicFunctionReturnType"))
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicFunctionReturnTypeClosureArgument"))
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicFunctionReturnTypeClosureReturnType"))
     }
 
-    func testPublicTypeUsedAsPublicSubscriptParameterType() {
-        index()
+    func testPublicTypeUsedAsPublicSubscriptParameterType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicSubscriptParameterType"))
     }
 
-    func testPublicTypeUsedAsPublicSubscriptReturnType() {
-        index()
+    func testPublicTypeUsedAsPublicSubscriptReturnType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedAsPublicSubscriptReturnType"))
     }
 
-    func testPublicTypeUsedInPublicFunctionBody() {
-        index()
+    func testPublicTypeUsedInPublicFunctionBody() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.class("PublicTypeUsedInPublicFunctionBody"))
     }
 
-    func testPublicClassInheritingPublicClass() {
-        index()
+    func testPublicClassInheritingPublicClass() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicClassInheritingPublicClass_Superclass"))
         assertNotRedundantPublicAccessibility(.class("PublicClassInheritingPublicClass"))
     }
 
-    func testPublicClassInheritingPublicExternalClass() {
-        index()
+    func testPublicClassInheritingPublicExternalClass() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.class("PublicClassInheritingPublicExternalClass"))
     }
 
-    func testPublicClassInheritingPublicClassWithGenericRequirement() {
-        index()
+    func testPublicClassInheritingPublicClassWithGenericRequirement() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.struct("PublicClassInheritingPublicClassWithGenericParameter_GenericType"))
         assertNotRedundantPublicAccessibility(.class("PublicClassInheritingPublicClassWithGenericParameter_Superclass"))
         assertNotRedundantPublicAccessibility(.class("PublicClassInheritingPublicClassWithGenericParameter"))
     }
 
-    func testPublicClassAdoptingPublicProtocol() {
-        index()
+    func testPublicClassAdoptingPublicProtocol() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.protocol("PublicClassAdoptingPublicProtocol_Protocol"))
         assertNotRedundantPublicAccessibility(.class("PublicClassAdoptingPublicProtocol"))
     }
 
     #if os(macOS)
-        func testPublicClassAdoptingExternalProtocolObjcAccessible() {
+        func testPublicClassAdoptingExternalProtocolObjcAccessible() throws {
             let configuration = Configuration()
             configuration.retainObjcAccessible = true
-            Self.index(configuration: configuration)
+            try Self.index(configuration: configuration)
 
             assertNotRedundantPublicAccessibility(.class("PublicClassAdoptingExternalProtocolObjcAccessible")) {
                 self.assertNotRedundantPublicAccessibility(.functionMethodInstance("someExternalProtocolMethod()"))
@@ -145,40 +147,40 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         }
     #endif
 
-    func testPublicClassAdoptingInternalProtocol() {
-        index()
+    func testPublicClassAdoptingInternalProtocol() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicClassAdoptingInternalProtocol"))
     }
 
-    func testInternalClassAdoptingPublicProtocol() {
-        index()
+    func testInternalClassAdoptingPublicProtocol() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.protocol("InternalClassAdoptingPublicProtocol_Protocol"))
     }
 
-    func testPublicProtocolRefiningPublicProtocol() {
-        index()
+    func testPublicProtocolRefiningPublicProtocol() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicProtocolRefiningPublicProtocol_Refined"))
         assertNotRedundantPublicAccessibility(.protocol("PublicProtocolRefiningPublicProtocol"))
     }
 
-    func testInternalProtocolRefiningPublicProtocol() {
-        index()
+    func testInternalProtocolRefiningPublicProtocol() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.protocol("InternalProtocolRefiningPublicProtocol_Refined"))
     }
 
-    func testIgnoreCommentCommands() {
-        index()
+    func testIgnoreCommentCommands() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("IgnoreCommentCommand"))
         assertNotRedundantPublicAccessibility(.class("IgnoreAllCommentCommand"))
     }
 
-    func testTestableImport() {
-        index()
+    func testTestableImport() throws {
+        try index()
 
         assertRedundantPublicAccessibility(.class("RedundantPublicTestableImportClass")) {
             self.assertRedundantPublicAccessibility(.varInstance("testableProperty"))
@@ -186,34 +188,34 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         assertNotRedundantPublicAccessibility(.class("NotRedundantPublicTestableImportClass"))
     }
 
-    func testFunctionGenericParameter() {
-        index()
+    func testFunctionGenericParameter() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicFunctionGenericParameter_ProtocolA"))
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicFunctionGenericParameter_ProtocolB"))
     }
 
-    func testFunctionGenericRequirement() {
-        index()
+    func testFunctionGenericRequirement() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicFunctionGenericRequirement_Protocol"))
     }
 
-    func testGenericClassParameter() {
-        index()
+    func testGenericClassParameter() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicClassGenericParameter_ProtocolA"))
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicClassGenericParameter_ProtocolB"))
     }
 
-    func testClassGenericRequirement() {
-        index()
+    func testClassGenericRequirement() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicClassGenericRequirement_Protocol"))
     }
 
-    func testEnumAssociatedValue() {
-        index()
+    func testEnumAssociatedValue() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.enum("PublicEnumWithAssociatedValue"))
         assertNotRedundantPublicAccessibility(.struct("PublicAssociatedValueA")) {
@@ -224,8 +226,8 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         }
     }
 
-    func testEnumCaseWithParameter() {
-        index()
+    func testEnumCaseWithParameter() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicEnumCaseWithParameter_ParameterType"))
         assertNotRedundantPublicAccessibility(.class("PublicEnumCaseWithParameter_ParameterType_Outer")) {
@@ -234,22 +236,22 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         assertNotRedundantPublicAccessibility(.enum("PublicEnumCaseWithParameter"))
     }
 
-    func testTypealiasWithClosureType() {
-        index()
+    func testTypealiasWithClosureType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.typealias("PublicTypealiasWithClosureType"))
         assertNotRedundantPublicAccessibility(.struct("PublicTypealiasStruct"))
     }
 
-    func testPublicTypeUsedInPublicClosure() {
-        index()
+    func testPublicTypeUsedInPublicClosure() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedInPublicClosureReturnType"))
         assertNotRedundantPublicAccessibility(.class("PublicTypeUsedInPublicClosureInputType"))
     }
 
-    func testFunctionMetatypeParameterUsedAsGenericReturnType() {
-        index()
+    func testFunctionMetatypeParameterUsedAsGenericReturnType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicFunctionMetatypeParameterWithGenericReturnType1"))
         assertNotRedundantPublicAccessibility(.protocol("PublicTypeUsedAsPublicFunctionMetatypeParameterWithGenericReturnType2"))
@@ -282,8 +284,8 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
     ///     let cls = MyClass()
     ///     cls.someExtensionFunc()
     ///
-    func testPublicProtocolIndirectlyReferencedByExtensionMember() {
-        index()
+    func testPublicProtocolIndirectlyReferencedByExtensionMember() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("ProtocolIndirectlyReferencedCrossModuleByExtensionMember"))
         assertNotRedundantPublicAccessibility(.extensionProtocol("ProtocolIndirectlyReferencedCrossModuleByExtensionMember")) {
@@ -291,16 +293,16 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         }
     }
 
-    func testPublicActor() {
-        index()
+    func testPublicActor() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("PublicActor")) {
             self.assertNotRedundantPublicAccessibility(.functionMethodInstance("someFunc()"))
         }
     }
 
-    func testPublicWrappedProperty() {
-        index()
+    func testPublicWrappedProperty() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.struct("PublicWrapper")) {
             self.assertNotRedundantPublicAccessibility(.varInstance("wrappedValue"))
@@ -312,40 +314,40 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
         }
     }
 
-    func testPublicInlinableFunction() {
-        index()
+    func testPublicInlinableFunction() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.class("ClassReferencedFromPublicInlinableFunction"))
         assertNotRedundantPublicAccessibility(.class("ClassReferencedFromPublicInlinableFunction_UsableFromInline"))
     }
 
-    func testPublicInheritedAssociatedType() {
-        index()
+    func testPublicInheritedAssociatedType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicInheritedAssociatedType"))
     }
 
-    func testPublicAssociatedTypeDefaultType() {
-        index()
+    func testPublicAssociatedTypeDefaultType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.protocol("PublicInheritedAssociatedTypeDefaultType"))
     }
 
-    func testPublicTypeUsedAsExtensionSameTypeGenericRequirement() {
-        index()
+    func testPublicTypeUsedAsExtensionSameTypeGenericRequirement() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.struct("PublicTypeUsedAsExtensionSameTypeGenericRequirement"))
     }
 
-    func testPublicComparableOperatorFunction() {
-        index()
+    func testPublicComparableOperatorFunction() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.functionOperatorInfix("<(_:_:)"))
         assertNotRedundantPublicAccessibility(.functionOperatorInfix("==(_:_:)"))
     }
 
-    func testPublicTypeUsedAsPublicFunctionThrowType() {
-        index()
+    func testPublicTypeUsedAsPublicFunctionThrowType() throws {
+        try index()
 
         assertNotRedundantPublicAccessibility(.enum("PublicTypeUsedAsPublicFunctionThrowType"))
     }

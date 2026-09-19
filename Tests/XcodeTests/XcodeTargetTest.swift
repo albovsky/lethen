@@ -9,13 +9,13 @@ import XCTest
 final class XcodeTargetTest: XCTestCase {
     private var project: XcodeProject!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         let logger = Logger(quiet: true, verbose: false, colorMode: .never)
         let shell = ShellImpl(logger: logger)
         let xcodebuild = Xcodebuild(shell: shell, logger: logger)
         var loadedProjectPaths: Set<FilePath> = []
-        project = try! XcodeProject(
+        project = try XcodeProject(
             path: UIKitProjectPath,
             loadedProjectPaths: &loadedProjectPaths,
             xcodebuild: xcodebuild,
@@ -30,7 +30,7 @@ final class XcodeTargetTest: XCTestCase {
     }
 
     func testSourceFileInGroupWithoutFolder() throws {
-        let target = project.targets.first { $0.name == "UIKitProject" }!
+        let target = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
         try target.identifyFiles()
 
         XCTAssertTrue(target.files(kind: .interfaceBuilder).contains {
@@ -38,9 +38,9 @@ final class XcodeTargetTest: XCTestCase {
         })
     }
 
-    func testIsTestTarget() {
-        let projectTarget = project.targets.first { $0.name == "UIKitProject" }!
-        let testTarget = project.targets.first { $0.name == "UIKitProjectTests" }!
+    func testIsTestTarget() throws {
+        let projectTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        let testTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProjectTests" })
 
         XCTAssertFalse(projectTarget.isTestTarget)
         XCTAssertTrue(testTarget.isTestTarget)
