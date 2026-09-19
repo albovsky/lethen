@@ -9,7 +9,7 @@ import XCTest
 
 final class SPMIndexStoreIntegrationTest: XCTestCase {
     private var fixturePath: FilePath {
-        ProjectRootPath.appending("Tests/AccessibilityTests/AccessibilityProject")
+        ProjectRootPath.appending("Tests/IndexStoreDiscoveryProject")
     }
 
     func testDefaultAndNativeStoresRemainIndependentWithCustomScratchPaths() throws {
@@ -25,7 +25,7 @@ final class SPMIndexStoreIntegrationTest: XCTestCase {
             var stores: [FilePath] = []
             for (offset, mode) in modes.enumerated() {
                 let configuration = Configuration()
-                configuration.buildArguments = mode + ["--scratch-path", "'\(root.appending("mode-\(offset)").string)'", "-c", "release", "-Xswiftc", "-enable-testing"]
+                configuration.buildArguments = mode + ["--scratch-path", "'\(root.appending("mode-\(offset)").string)'", "-c", "release"]
                 let driver = try SPMProjectDriver(configuration: configuration, shell: shell, logger: logger)
                 if offset == 0 {
                     // Reproduce a warm, automatically indexed build. Release auto
