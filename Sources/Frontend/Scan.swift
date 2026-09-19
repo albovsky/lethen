@@ -22,7 +22,6 @@ final class Scan {
 
     struct Output {
         let results: [ScanResult]
-        let loc: Int
     }
 
     func perform(project: Project) throws -> Output {
@@ -44,9 +43,9 @@ final class Scan {
         }
 
         try build(driver)
-        let loc = try index(driver)
+        try index(driver)
         try analyze()
-        return Output(results: buildResults(), loc: loc)
+        return Output(results: buildResults())
     }
 
     // MARK: - Private
@@ -64,7 +63,7 @@ final class Scan {
         logger.endInterval(driverBuildInterval)
     }
 
-    private func index(_ driver: ProjectDriver) throws -> Int {
+    private func index(_ driver: ProjectDriver) throws {
         let indexInterval = logger.beginInterval("index")
 
         if configuration.outputFormat.supportsAuxiliaryOutput {
@@ -76,9 +75,8 @@ final class Scan {
         let plan = try driver.plan(logger: indexLogger)
         let graphMutex = SourceGraphMutex(graph: graph)
         let pipeline = IndexPipeline(plan: plan, graph: graphMutex, logger: indexLogger, configuration: configuration, swiftVersion: swiftVersion)
-        let loc = try pipeline.perform()
+        _ = try pipeline.perform()
         logger.endInterval(indexInterval)
-        return loc
     }
 
     private func analyze() throws {
