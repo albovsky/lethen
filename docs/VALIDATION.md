@@ -12,7 +12,7 @@ Environment: Apple Silicon, macOS 27, Xcode 27.0 (27A266a), Apple Swift 6.4.
 - Fixture scan with `--disable-update-check --format json -- --build-system native`: completed and returned valid JSON (404 findings). This verifies execution, not every finding's correctness.
 - Full `swift test`: compiled, but test fixture setup crashed. This is not a passing test suite.
 
-## Compatibility blockers
+## Initial compatibility blockers
 
 The Swift package fixture tests expect `.build/debug/index/store`, which was absent after the default Swift 6.4 build. The setup code force-unwraps this error and terminates the test process with signal 5.
 
@@ -25,3 +25,7 @@ These paths were not changed during the fork setup. They need reproducible compa
 No lethen release has been published. The inherited publisher and original maintainer's signing/notarization script are disabled. SwiftPM and Docker executable paths use lethen; legacy configuration, library, cache, and Bazel names remain for compatibility. The commercial plan suggestion client is removed. Optional update checking points to `albovsky/lethen`; until a release exists, explicit `check-update` cannot find a latest release.
 
 The intended domain is lethen.sh; repository setup does not register the domain or deploy a website.
+
+## Reliable scanning follow-up
+
+The local Swift 6.4/Xcode 27 implementation now passes 319 tests across all four targets with no failures or skips. Clean/warm/default/native fixture findings match, and the strict clean self-scan passes after removal of an orphaned frontend line-count field. See [the detailed baseline](validation/swift-6.4-xcode-27.md) for the actual index-layout discovery, commands, coverage and compatibility limits. Pett auditing, hosted CI and release installation remain gated separately; this is not a published-release claim.
