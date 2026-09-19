@@ -15,6 +15,21 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 jobs:
+  swift-6-4:
+    name: Swift 6.4 / Xcode 27
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify baseline
+        run: bash .github/scripts/verify-swift-6.4.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swift-6.4-evidence
+          path: .validation/
+          include-hidden-files: true
   lint:
     runs-on: macos-26
     name: Lint
