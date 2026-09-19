@@ -37,8 +37,9 @@ public extension FilePath {
     func chdir(closure: () throws -> Void) throws {
         let previous = Self.current
         guard fileManager.changeCurrentDirectoryPath(string) else {
-            throw NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoSuchFileError,
-                          userInfo: [NSFilePathErrorKey: string])
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileReadUnknownError,
+                          userInfo: [NSFilePathErrorKey: string,
+                                     NSLocalizedDescriptionKey: "Failed to change working directory to \(string)."])
         }
 
         defer { _ = fileManager.changeCurrentDirectoryPath(previous.string) }

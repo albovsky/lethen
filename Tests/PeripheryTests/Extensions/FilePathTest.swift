@@ -25,6 +25,16 @@ final class FilePathTest: XCTestCase {
         XCTAssertFalse(executed)
     }
 
+    func testChdirDoesNotMisreportExistingFileAsMissing() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data().write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        XCTAssertThrowsError(try FilePath(file.path).chdir {}) {
+            XCTAssertNotEqual(($0 as NSError).code, NSFileReadNoSuchFileError)
+            XCTAssertTrue(String(describing: $0).contains(file.path))
+        }
+    }
+
     func testMakeAbsolute() {
         let current = FilePath("/current")
         XCTAssertEqual(FilePath.makeAbsolute("/a", relativeTo: current).string, "/a")
