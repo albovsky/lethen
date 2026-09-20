@@ -22,6 +22,7 @@ DerivedData
 *.gcda
 *.gcno
 .swiftpm
+/.build/
 Tests/Fixtures/.build/
 
 # VSCode
@@ -29,3 +30,11 @@ Tests/Fixtures/.build/
 
 # Bazel
 bazel-*
+
+# Validation evidence survives clean SwiftPM builds.
+/.validation
+
+/Tests/IndexStoreDiscoveryProject/.build
+
+# Local agent planning artifacts
+/docs/superpowers/

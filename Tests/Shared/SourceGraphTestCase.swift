@@ -8,7 +8,8 @@ import SystemPackage
 import XCTest
 
 open class SourceGraphTestCase: XCTestCase {
-    static var plan: IndexPlan!
+    static var plan: IndexPlan?
+    static var setupState = TestSetupState()
     static var shell: Shell!
     static var logger: Logger!
     static var swiftVersion: SwiftVersion!
@@ -21,12 +22,21 @@ open class SourceGraphTestCase: XCTestCase {
 
     override open class func setUp() {
         super.setUp()
+        plan = nil
+        results = []
+        allIndexedDeclarations = []
+        setupState = TestSetupState()
         logger = Logger(quiet: true, verbose: false, colorMode: .never)
         shell = ShellImpl(logger: logger)
         swiftVersion = SwiftVersion(shell: shell)
         let configuration = Configuration()
         configuration.quiet = true
         graph = SourceGraph(configuration: configuration, logger: logger)
+    }
+
+    override open func setUpWithError() throws {
+        try super.setUpWithError()
+        try Self.setupState.check()
     }
 
     override open func tearDown() {
@@ -39,12 +49,19 @@ open class SourceGraphTestCase: XCTestCase {
         }
     }
 
-    func index(sourceFiles: [FilePath]? = nil, configuration: Configuration = .init()) {
-        Self.index(sourceFiles: sourceFiles, configuration: configuration)
+    func index(sourceFiles: [FilePath]? = nil, configuration: Configuration = .init()) throws {
+        try Self.index(sourceFiles: sourceFiles, configuration: configuration)
     }
 
-    static func index(sourceFiles: [FilePath]? = nil, configuration: Configuration) {
-        var newPlan = plan!
+    static func index(sourceFiles: [FilePath]? = nil, configuration: Configuration) throws {
+        results = []
+        allIndexedDeclarations = []
+        graph = SourceGraph(configuration: configuration, logger: logger)
+        guard let plan else {
+            throw PeripheryError.packageError(message: "Test index plan is unavailable; fixture setup did not complete.")
+        }
+
+        var newPlan = plan
 
         if let sourceFiles {
             newPlan = IndexPlan(
@@ -64,10 +81,10 @@ open class SourceGraphTestCase: XCTestCase {
             configuration: configuration,
             swiftVersion: swiftVersion
         )
-        _ = try! pipeline.perform()
+        _ = try pipeline.perform()
 
         allIndexedDeclarations = graph.allDeclarations
-        try! SourceGraphMutatorRunner(
+        try SourceGraphMutatorRunner(
             graph: graph,
             logger: logger,
             configuration: configuration,

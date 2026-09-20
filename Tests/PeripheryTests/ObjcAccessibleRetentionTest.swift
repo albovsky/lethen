@@ -6,7 +6,7 @@ import XCTest
     final class ObjcAccessibleRetentionTest: FixtureSourceGraphTestCase {
         func testRetainsOptionalProtocolMethodImplementedInSubclass() throws {
             try XCTSkipIf(Self.swiftVersion.version.isVersion(lessThan: "6.3"), "Requires Swift >= 6.3")
-            analyze(retainPublic: true) {
+            try analyze(retainPublic: true) {
                 assertReferenced(.class("FixtureClass125Base"))
                 assertReferenced(.class("FixtureClass125")) {
                     self.assertReferenced(.functionMethodInstance("fileManager(_:shouldRemoveItemAtPath:)"))
@@ -14,8 +14,8 @@ import XCTest
             }
         }
 
-        func testRetainsOptionalProtocolMethod() {
-            analyze(retainPublic: true) {
+        func testRetainsOptionalProtocolMethod() throws {
+            try analyze(retainPublic: true) {
                 assertReferenced(.class("FixtureClass127")) {
                     self.assertReferenced(.functionMethodInstance("someFunc()"))
                 }
@@ -25,20 +25,20 @@ import XCTest
             }
         }
 
-        func testRetainsObjcAnnotatedClass() {
-            analyze(retainObjcAccessible: true) {
+        func testRetainsObjcAnnotatedClass() throws {
+            try analyze(retainObjcAccessible: true) {
                 assertReferenced(.class("FixtureClass21"))
             }
         }
 
-        func testRetainsImplicitlyObjcAccessibleClass() {
-            analyze(retainObjcAccessible: true) {
+        func testRetainsImplicitlyObjcAccessibleClass() throws {
+            try analyze(retainObjcAccessible: true) {
                 assertReferenced(.class("FixtureClass126"))
             }
         }
 
-        func testRetainsObjcAnnotatedMembers() {
-            analyze(retainObjcAccessible: true) {
+        func testRetainsObjcAnnotatedMembers() throws {
+            try analyze(retainObjcAccessible: true) {
                 assertReferenced(.class("FixtureClass22")) {
                     self.assertReferenced(.varInstance("someVar"))
                     self.assertReferenced(.functionMethodInstance("someMethod()"))
@@ -47,14 +47,14 @@ import XCTest
             }
         }
 
-        func testDoesNotRetainObjcAnnotatedWithoutOption() {
-            analyze {
+        func testDoesNotRetainObjcAnnotatedWithoutOption() throws {
+            try analyze {
                 assertNotReferenced(.class("FixtureClass23"))
             }
         }
 
-        func testDoesNotRetainMembersOfObjcAnnotatedClass() {
-            analyze(retainObjcAccessible: true) {
+        func testDoesNotRetainMembersOfObjcAnnotatedClass() throws {
+            try analyze(retainObjcAccessible: true) {
                 assertReferenced(.class("FixtureClass24")) {
                     self.assertNotReferenced(.functionMethodInstance("someMethod()"))
                     self.assertNotReferenced(.varInstance("someVar"))
@@ -62,8 +62,8 @@ import XCTest
             }
         }
 
-        func testObjcMembersAnnotationRetainsMembers() {
-            analyze(retainObjcAccessible: true) {
+        func testObjcMembersAnnotationRetainsMembers() throws {
+            try analyze(retainObjcAccessible: true) {
                 assertReferenced(.class("FixtureClass25")) {
                     self.assertReferenced(.varInstance("someVar"))
                     self.assertReferenced(.functionMethodInstance("someMethod()"))

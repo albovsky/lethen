@@ -9,12 +9,29 @@ env:
   swift_package_resolve: swift package resolve
   swift_build: swift build
   swift_test: swift test
-  periphery_scan: ./.build/debug/lethen scan --quiet --clean-build --strict
+  periphery_scan: ./.build/debug/lethen scan --quiet --clean-build --strict --disable-update-check
   cache_version: 1
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 jobs:
+  swift-6-4:
+    name: Swift 6.4 / Xcode 27
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify baseline
+        run: bash .github/scripts/verify-swift-6.4.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: swift-6.4-evidence
+          path: .validation/
+          include-hidden-files: true
   lint:
     runs-on: macos-26
     name: Lint
@@ -56,7 +73,7 @@ jobs:
             disk-cache: bazel-${{ matrix.os }}-${{ matrix.bazel }}
             repository-cache: true
         - name: Scan
-          run: bazel run //:periphery -- scan --bazel --quiet --strict --baseline baselines/${{ matrix.baseline }}
+          run: bazel run //:periphery -- scan --bazel --quiet --strict --disable-update-check --baseline baselines/${{ matrix.baseline }}
   macOS:
     name: macOS
     strategy:
@@ -169,5 +186,7 @@ jobs:
       run: ${{ env.swift_build }}
     - name: Scan
       run: ${{ env.periphery_scan }} --baseline baselines/linux.json
+    - name: Verify update check teardown
+      run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 5
     - name: Test
       run: ${{ env.swift_test }}

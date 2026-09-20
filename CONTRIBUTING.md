@@ -8,4 +8,8 @@ Analysis changes should include a regression test demonstrating both declaration
 
 Initial scope is compatibility and correctness maintenance. Support is best-effort. Existing Periphery configuration and comment syntax remain compatible. Do not mass-rename internal modules or fixtures as part of branding changes.
 
-The inherited release automation is disabled until independent signing, packaging, and distribution are configured. Do not use upstream credentials or publish into upstream registries. No lethen release is implied by the inherited Git tags.
+Run `bash .github/scripts/verify-swift-6.4.sh` for the required Xcode 27 baseline. It verifies the toolchain, runs the full suite, compares clean/warm/native fixture findings, and performs a strict self-scan. Evidence is written to `.validation/`. The matching GitHub check is required on `master`; test setup errors must fail tests, and new analysis behavior needs both reported and retained controls. Use `swift build --show-bin-path` to locate executables rather than assuming a build-engine layout.
+
+Development releases are source-only and manually gated. Set the version, validate a clean candidate checkout and its exact CI commit, create an immutable tag and draft prerelease, then verify a fresh installation from that public tag before publishing the ready draft. Record installation and CI evidence in the release notes. Use the [3.8.1-dev.1 notes](docs/releases/3.8.1-dev.1.md) as the initial checklist. Prereleases are installed manually; the stable update endpoint does not discover them.
+
+The inherited binary signing/publishing script remains disabled. Do not use upstream credentials or publish into upstream registries. Tags through 3.8.0 are upstream history, not lethen releases.

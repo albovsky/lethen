@@ -32,6 +32,7 @@ swift_library(
         "SyntaxAnalysis/TypeSyntaxInspector.swift",
         "SyntaxAnalysis/UnusedParameterAnalyzer.swift",
         "SyntaxAnalysis/UnusedParameterParser.swift",
+        "SyntaxAnalysis/ValueUseSyntaxVisitor.swift",
     ],
     module_name = "SyntaxAnalysis",
     deps = [
@@ -136,6 +137,7 @@ swift_library(
         "ProjectDrivers/GenericProjectDriver.swift",
         "ProjectDrivers/ProjectDriver.swift",
         "ProjectDrivers/SPM.swift",
+        "ProjectDrivers/SPMIndexStoreLocator.swift",
         "ProjectDrivers/SPMProjectDriver.swift",
         "ProjectDrivers/XcodeProjectDriver.swift",
     ],

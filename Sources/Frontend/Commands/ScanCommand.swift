@@ -313,6 +313,7 @@ struct ScanCommand: ParsableCommand {
 
         logger.endInterval(interval)
 
+        updateChecker.waitForCompletion()
         updateChecker.notifyIfAvailable()
 
         if !filteredResults.isEmpty, configuration.strict {

@@ -7,8 +7,10 @@
         override static func setUp() {
             super.setUp()
 
-            build(projectPath: SPMProjectMacOSPath)
-            index(configuration: Configuration())
+            setupState.capture {
+                try build(projectPath: SPMProjectMacOSPath)
+                try index(configuration: Configuration())
+            }
         }
 
         func testRetainsInterfaceBuilderDeclarations() {

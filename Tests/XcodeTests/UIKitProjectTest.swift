@@ -8,8 +8,10 @@ final class UIKitProjectTest: XcodeSourceGraphTestCase {
         let configuration = Configuration()
         configuration.schemes = ["UIKitProject"]
 
-        build(projectPath: UIKitProjectPath, configuration: configuration)
-        index(configuration: configuration)
+        setupState.capture {
+            try build(projectPath: UIKitProjectPath, configuration: configuration)
+            try index(configuration: configuration)
+        }
     }
 
     func testRetainsMainAppEntryPoint() {

@@ -3,28 +3,28 @@ import SystemPackage
 import XCTest
 
 final class RetentionTest: FixtureSourceGraphTestCase {
-    func testNonReferencedClass() {
-        analyze {
+    func testNonReferencedClass() throws {
+        try analyze {
             assertNotReferenced(.class("FixtureClass1"))
         }
     }
 
-    func testNonReferencedFreeFunction() {
-        analyze {
+    func testNonReferencedFreeFunction() throws {
+        try analyze {
             assertNotReferenced(.functionFree("someFunction()"))
         }
     }
 
-    func testNonReferencedMethod() {
-        analyze(retainPublic: true) {
+    func testNonReferencedMethod() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass2")) {
                 self.assertNotReferenced(.functionMethodInstance("someMethod()"))
             }
         }
     }
 
-    func testNonReferencedProperty() {
-        analyze(retainPublic: true) {
+    func testNonReferencedProperty() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass3")) {
                 self.assertNotReferenced(.varStatic("someStaticVar"))
                 self.assertNotReferenced(.varInstance("someVar"))
@@ -32,59 +32,59 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testNonReferencedMethodInClassExtension() {
-        analyze(retainPublic: true) {
+    func testNonReferencedMethodInClassExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass4")) {
                 self.assertNotReferenced(.functionMethodInstance("someMethod()"))
             }
         }
     }
 
-    func testConformingProtocolReferencedByNonReferencedClass() {
-        analyze {
+    func testConformingProtocolReferencedByNonReferencedClass() throws {
+        try analyze {
             assertNotReferenced(.class("FixtureClass6"))
             assertNotReferenced(.protocol("FixtureProtocol1"))
         }
     }
 
-    func testSelfReferencedClass() {
-        analyze {
+    func testSelfReferencedClass() throws {
+        try analyze {
             assertNotReferenced(.class("FixtureClass8"))
         }
     }
 
-    func testSelfReferencedRecursiveMethod() {
-        analyze(retainPublic: true) {
+    func testSelfReferencedRecursiveMethod() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass9")) {
                 self.assertNotReferenced(.functionMethodInstance("recursive()"))
             }
         }
     }
 
-    func testRetainsSelfReferencedMethodViaReceiver() {
-        analyze(retainPublic: true) {
+    func testRetainsSelfReferencedMethodViaReceiver() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass92")) {
                 self.assertReferenced(.functionMethodInstance("someFunc()"))
             }
         }
     }
 
-    func testRetainsReferencedMethodViaReceiver() {
-        analyze(retainPublic: true) {
+    func testRetainsReferencedMethodViaReceiver() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass113")) {
                 self.assertReferenced(.functionMethodStatic("make()"))
             }
         }
     }
 
-    func testSelfReferencedProperty() {
-        analyze {
+    func testSelfReferencedProperty() throws {
+        try analyze {
             assertNotReferenced(.class("FixtureClass39"))
         }
     }
 
-    func testRetainsInheritedClass() {
-        analyze(retainPublic: true) {
+    func testRetainsInheritedClass() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass13")) {
                 self.assertReferenced(.varInstance("cls"))
             }
@@ -94,22 +94,22 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testCrossReferencedClasses() {
-        analyze {
+    func testCrossReferencedClasses() throws {
+        try analyze {
             assertNotReferenced(.class("FixtureClass14"))
             assertNotReferenced(.class("FixtureClass15"))
             assertNotReferenced(.class("FixtureClass16"))
         }
     }
 
-    func testDeeplyNestedClassReferences() {
-        analyze {
+    func testDeeplyNestedClassReferences() throws {
+        try analyze {
             assertNotReferenced(.class("FixtureClass17"))
         }
     }
 
-    func testRetainPublicMembers() {
-        analyze(retainPublic: true) {
+    func testRetainPublicMembers() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass26")) {
                 self.assertReferenced(.functionMethodInstance("funcPublic()"))
                 self.assertNotReferenced(.functionMethodInstance("funcPrivate()"))
@@ -119,8 +119,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testConformanceToExternalProtocolIsRetained() {
-        analyze(retainPublic: true) {
+    func testConformanceToExternalProtocolIsRetained() throws {
+        try analyze(retainPublic: true) {
             // Retained because it's a method from an external declaration (in this case, Equatable)
             assertReferenced(.class("FixtureClass55")) {
                 self.assertReferenced(.functionOperatorInfix("==(_:_:)"))
@@ -128,8 +128,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testSimpleRedundantProtocol() {
-        analyze(retainPublic: true) {
+    func testSimpleRedundantProtocol() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass114"))
             assertReferenced(.protocol("FixtureProtocol114"))
             assertRedundantProtocol("FixtureProtocol114",
@@ -140,8 +140,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRedundantProtocolThatInheritsAnyObject() {
-        analyze(retainPublic: true) {
+    func testRedundantProtocolThatInheritsAnyObject() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass121"))
             assertReferenced(.protocol("FixtureProtocol121"))
             assertRedundantProtocol("FixtureProtocol121", implementedBy: .class("FixtureClass121"))
@@ -152,8 +152,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRedundantProtocolThatInheritsForeignProtocol() {
-        analyze(retainPublic: true) {
+    func testRedundantProtocolThatInheritsForeignProtocol() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass118"))
             assertReferenced(.protocol("FixtureProtocol118"))
             // Protocols that inherit external protocols cannot be guaranteed to be redundant.
@@ -161,8 +161,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRedundantProtocolThatInheritsOtherProtocols() {
-        analyze(retainPublic: true) {
+    func testRedundantProtocolThatInheritsOtherProtocols() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass134"))
 
             assertReferenced(.protocol("FixtureProtocol128"))
@@ -174,8 +174,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testProtocolUsedAsExistentialType() {
-        analyze(retainPublic: true) {
+    func testProtocolUsedAsExistentialType() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass119"))
             assertReferenced(.protocol("FixtureProtocol119")) {
                 self.assertNotReferenced(.functionMethodInstance("protocolFunc()"))
@@ -185,11 +185,11 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testProtocolVarReferencedByProtocolMethodInSameClassIsRedundant() {
+    func testProtocolVarReferencedByProtocolMethodInSameClassIsRedundant() throws {
         // Despite the conforming class depending internally upon the protocol methods, the protocol
         // itself is unused. In a real situation the protocol could be removed and the conforming
         // class refactored.
-        analyze(retainPublic: true) {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass51")) {
                 self.assertReferenced(.functionMethodInstance("publicMethod()"))
                 self.assertReferenced(.functionMethodInstance("protocolMethod()"))
@@ -200,8 +200,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testProtocolMethodCalledIndirectlyByProtocolIsRetained() {
-        analyze(retainPublic: true) {
+    func testProtocolMethodCalledIndirectlyByProtocolIsRetained() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass52")) {
                 self.assertReferenced(.functionMethodInstance("protocolMethod()"))
             }
@@ -209,11 +209,11 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testDoesNotRetainProtocolMethodInSubclassWithDefaultImplementation() {
+    func testDoesNotRetainProtocolMethodInSubclassWithDefaultImplementation() throws {
         // Protocol witness tables are only associated with the conforming class, and do not
         // descent to subclasses. Therefore, a protocol method that's only implemented in a subclass
         // and not the parent conforming class is actually unused.
-        analyze(retainPublic: true) {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol83")) {
                 self.assertReferenced(.functionMethodInstance("protocolMethod()"))
             }
@@ -228,21 +228,21 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsProtocolExtension() {
-        analyze(retainPublic: true) {
+    func testRetainsProtocolExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.extensionProtocol("FixtureProtocol81"))
         }
     }
 
-    func testUnusedProtocolWithExtension() {
-        analyze(retainPublic: true) {
+    func testUnusedProtocolWithExtension() throws {
+        try analyze(retainPublic: true) {
             assertNotReferenced(.protocol("FixtureProtocol82"))
             assertNotReferenced(.extensionProtocol("FixtureProtocol82"))
         }
     }
 
-    func testRetainsProtocolMethodImplementedInExtension() {
-        analyze(retainPublic: true) {
+    func testRetainsProtocolMethodImplementedInExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass80")) {
                 self.assertReferenced(.functionMethodInstance("someMethod()"))
                 self.assertReferenced(.functionMethodInstance("protocolMethodWithUnusedDefault()"))
@@ -259,8 +259,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsNonProtocolMethodDefinedInProtocolExtension() {
-        analyze(retainPublic: true) {
+    func testRetainsNonProtocolMethodDefinedInProtocolExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass66")) {
                 self.assertReferenced(.functionMethodInstance("someMethod()"))
             }
@@ -275,8 +275,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testDoesNotRetainUnusedProtocolMethodWithDefaultImplementation() {
-        analyze(retainPublic: true) {
+    func testDoesNotRetainUnusedProtocolMethodWithDefaultImplementation() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol84")) {
                 self.assertReferenced(.functionMethodInstance("usedMethod()"))
                 self.assertNotReferenced(.functionMethodInstance("unusedMethod()"))
@@ -288,15 +288,15 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainedProtocolDoesNotRetainUnusedClass() {
-        analyze(retainPublic: true) {
+    func testRetainedProtocolDoesNotRetainUnusedClass() throws {
+        try analyze(retainPublic: true) {
             assertNotReferenced(.class("FixtureClass57"))
             assertReferenced(.protocol("FixtureProtocol57"))
         }
     }
 
-    func testRetainedProtocolDoesNotRetainImplementationInUnusedClass() {
-        analyze(retainPublic: true) {
+    func testRetainedProtocolDoesNotRetainImplementationInUnusedClass() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol200")) {
                 self.assertReferenced(.functionMethodInstance("protocolFunc()"))
             }
@@ -305,8 +305,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainOverridingMethod() {
-        analyze(retainPublic: true) {
+    func testRetainOverridingMethod() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass67")) {
                 self.assertReferenced(.functionMethodInstance("someMethod()"))
             }
@@ -316,8 +316,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testUnusedOverriddenMethod() {
-        analyze(retainPublic: true) {
+    func testUnusedOverriddenMethod() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass81Base")) {
                 self.assertNotReferenced(.functionMethodInstance("someMethod()"))
             }
@@ -327,8 +327,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testOverriddenMethodRetainedBySuper() {
-        analyze(retainPublic: true) {
+    func testOverriddenMethodRetainedBySuper() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass82Base")) {
                 self.assertReferenced(.functionMethodInstance("someMethod()"))
             }
@@ -338,9 +338,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testEnumCases() {
+    func testEnumCases() throws {
         let enumTypes = ["String", "Character", "Int", "Float", "Double", "RawRepresentable"]
-        analyze(retainPublic: true) {
+        try analyze(retainPublic: true) {
             assertReferenced(.enum("Fixture28Enum_Bare")) {
                 self.assertReferenced(.enumelement("used"))
                 self.assertNotReferenced(.enumelement("unused"))
@@ -357,32 +357,32 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsPublicEnumCases() {
-        analyze(retainPublic: true) {
+    func testRetainsPublicEnumCases() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.enum("FixtureEnum179")) {
                 self.assertReferenced(.enumelement("someCase"))
             }
         }
     }
 
-    func testRetainsDestructor() {
-        analyze(retainPublic: true) {
+    func testRetainsDestructor() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass40")) {
                 self.assertReferenced(.functionDestructor("deinit"))
             }
         }
     }
 
-    func testRetainsDefaultConstructor() {
-        analyze(retainPublic: true) {
+    func testRetainsDefaultConstructor() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass41")) {
                 self.assertReferenced(.functionConstructor("init()"))
             }
         }
     }
 
-    func testAccessibility() {
-        analyze {
+    func testAccessibility() throws {
+        try analyze {
             assertAccessibility(.class("FixtureClass31"), .public) {
                 self.assertAccessibility(.functionConstructor("init(arg:)"), .public)
                 self.assertAccessibility(.functionMethodInstance("openFunc()"), .open)
@@ -425,8 +425,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testXCTestCaseClassesAndMethodsAreRetained() {
-        analyze {
+    func testXCTestCaseClassesAndMethodsAreRetained() throws {
+        try analyze {
             assertReferenced(.class("FixtureClass34")) {
                 self.assertReferenced(.functionMethodInstance("testSomething()"))
                 self.assertNotReferenced(.functionMethodInstance("testNotATest(param:)"))
@@ -439,16 +439,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testExternalXCTestCaseClass() {
-        analyze(externalTestCaseClasses: ["ExternalTestCase"]) {
+    func testExternalXCTestCaseClass() throws {
+        try analyze(externalTestCaseClasses: ["ExternalTestCase"]) {
             assertReferenced(.class("FixtureClass217")) {
                 self.assertReferenced(.functionMethodInstance("testSomeTestCase()"))
             }
         }
     }
 
-    func testRetainsMethodDefinedInExtensionOnStandardType() {
-        analyze(retainPublic: true) {
+    func testRetainsMethodDefinedInExtensionOnStandardType() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass35")) {
                 self.assertReferenced(.functionMethodInstance("testSomething()"))
             }
@@ -458,15 +458,15 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsGenericType() {
-        analyze(retainPublic: true) {
+    func testRetainsGenericType() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass37"))
             assertReferenced(.protocol("FixtureProtocol37"))
         }
     }
 
-    func testRetainsGenericProtocolExtensionMembers() {
-        analyze(retainPublic: true) {
+    func testRetainsGenericProtocolExtensionMembers() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol38"))
             assertReferenced(.extensionProtocol("FixtureProtocol38")) {
                 self.assertReferenced(.functionMethodInstance("someFunc()"))
@@ -484,14 +484,14 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testUnusedTypealias() {
-        analyze {
+    func testUnusedTypealias() throws {
+        try analyze {
             assertNotReferenced(.typealias("UnusedAlias"))
         }
     }
 
-    func testRetainsConstructorOfGenericClassAndStruct() {
-        analyze(retainPublic: true) {
+    func testRetainsConstructorOfGenericClassAndStruct() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass61")) {
                 self.assertReferenced(.functionConstructor("init(someVar:)"))
             }
@@ -501,8 +501,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testFunctionAccessorsRetainReferences() {
-        analyze(retainPublic: true, retainAssignOnlyProperties: true) {
+    func testFunctionAccessorsRetainReferences() throws {
+        try analyze(retainPublic: true, retainAssignOnlyProperties: true) {
             assertReferenced(.class("FixtureClass63")) {
                 self.assertReferenced(.varInstance("referencedByGetter"))
                 self.assertReferenced(.varInstance("referencedBySetter"))
@@ -511,8 +511,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testAssignOnlyPropertyAnalysisDoesNotApplyToProtocolProperties() {
-        analyze(retainPublic: true) {
+    func testAssignOnlyPropertyAnalysisDoesNotApplyToProtocolProperties() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol124")) {
                 self.assertReferenced(.varInstance("someProperty"))
             }
@@ -522,8 +522,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testPropertyReferencedByComputedValue() {
-        analyze(retainPublic: true) {
+    func testPropertyReferencedByComputedValue() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass78")) {
                 self.assertReferenced(.varInstance("someVar"))
                 self.assertReferenced(.varInstance("someOtherVar"))
@@ -532,16 +532,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testInstanceVarReferencedInClosure() {
-        analyze(retainPublic: true, retainAssignOnlyProperties: true) {
+    func testInstanceVarReferencedInClosure() throws {
+        try analyze(retainPublic: true, retainAssignOnlyProperties: true) {
             assertReferenced(.class("FixtureClass69")) {
                 self.assertReferenced(.varInstance("someVar"))
             }
         }
     }
 
-    func testCodingKeyEnum() {
-        analyze(
+    func testCodingKeyEnum() throws {
+        try analyze(
             retainPublic: true,
             // CustomStringConvertible doesn't actually inherit Codable, we're just using it because we don't have an
             // external module in which to declare our own type.
@@ -572,8 +572,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRequiredInitInSubclass() {
-        analyze(retainPublic: true) {
+    func testRequiredInitInSubclass() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass77Base")) {
                 self.assertReferenced(.functionConstructor("init(a:)"))
                 self.assertReferenced(.functionConstructor("init(b:)"))
@@ -586,16 +586,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsExternalTypeExtension() {
-        analyze {
+    func testRetainsExternalTypeExtension() throws {
+        try analyze {
             assertReferenced(.extensionProtocol("Sequence"))
             assertReferenced(.extensionStruct("Array"))
             assertReferenced(.extensionClass("NumberFormatter"))
         }
     }
 
-    func testRetainsExtendedTypeAlias() {
-        analyze(retainPublic: true) {
+    func testRetainsExtendedTypeAlias() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.typealias("Fixture214TypeAlias"))
             assertReferenced(.class("FixtureClass214")) {
                 self.assertReferenced(.varInstance("someExtensionProperty"))
@@ -603,8 +603,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsExtendedExternalTypeAlias() {
-        analyze(retainPublic: true) {
+    func testRetainsExtendedExternalTypeAlias() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.typealias("Fixture215TypeAlias"))
             assertReferenced(.extensionStruct("Int")) {
                 self.assertReferenced(.varInstance("someExtensionProperty"))
@@ -612,8 +612,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsExtendedProtocolTypeAlias() {
-        analyze(retainPublic: true) {
+    func testRetainsExtendedProtocolTypeAlias() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.typealias("Fixture216TypeAlias"))
             assertReferenced(.extensionProtocol("FixtureProtocol216")) {
                 self.assertReferenced(.varInstance("someExtensionProperty"))
@@ -621,8 +621,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsInferredAssociatedType() {
-        analyze(retainPublic: true) {
+    func testRetainsInferredAssociatedType() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct120")) {
                 self.assertReferenced(.enum("AssociatedType"))
             }
@@ -632,8 +632,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsAssociatedTypeTypeAlias() {
-        analyze(retainPublic: true) {
+    func testRetainsAssociatedTypeTypeAlias() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass87Usage")) {
                 self.assertReferenced(.functionMethodInstance("somePublicFunction()"))
             }
@@ -650,16 +650,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsExternalAssociatedTypeTypeAlias() {
-        analyze(retainPublic: true) {
+    func testRetainsExternalAssociatedTypeTypeAlias() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.struct("Fixture110")) {
                 self.assertReferenced(.typealias("Value"))
             }
         }
     }
 
-    func testUnusedAssociatedType() {
-        analyze(retainPublic: true) {
+    func testUnusedAssociatedType() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass88Usage")) {
                 self.assertReferenced(.functionMethodInstance("somePublicFunction()"))
             }
@@ -675,15 +675,15 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testIsolatedCyclicRootReferences() {
-        analyze(retainPublic: true) {
+    func testIsolatedCyclicRootReferences() throws {
+        try analyze(retainPublic: true) {
             assertNotReferenced(.class("FixtureClass90"))
             assertNotReferenced(.class("FixtureClass91"))
         }
     }
 
-    func testRetainsUsedProtocolThatInheritsForeignProtocol() {
-        analyze(retainPublic: true) {
+    func testRetainsUsedProtocolThatInheritsForeignProtocol() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol96")) {
                 self.assertReferenced(.varInstance("usedValue"))
                 self.assertNotReferenced(.varInstance("unusedValue"))
@@ -698,8 +698,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsProtocolMethodsImplementedInSuperclasss() {
-        analyze(retainPublic: true) {
+    func testRetainsProtocolMethodsImplementedInSuperclasss() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol97")) {
                 self.assertReferenced(.functionMethodInstance("someProtocolMethod1()"))
                 self.assertReferenced(.functionMethodInstance("someProtocolMethod2()"))
@@ -718,8 +718,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testProtocolMethodsImplementedOnlyInExtension() {
-        analyze(retainPublic: true) {
+    func testProtocolMethodsImplementedOnlyInExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol115"))
             assertNotRedundantProtocol("FixtureProtocol115")
             assertReferenced(.extensionProtocol("FixtureProtocol115")) {
@@ -729,8 +729,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testPublicProtocolMethodImplementedOnlyInExtension() {
-        analyze(retainPublic: true) {
+    func testPublicProtocolMethodImplementedOnlyInExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol116"))
             assertNotRedundantProtocol("FixtureProtocol116")
             assertReferenced(.extensionProtocol("FixtureProtocol116")) {
@@ -740,8 +740,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testProtocolImplementInClassAndExtension() {
-        analyze(retainPublic: true) {
+    func testProtocolImplementInClassAndExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass98")) {
                 self.assertReferenced(.functionMethodInstance("method1()"))
                 self.assertReferenced(.functionMethodInstance("method2()"))
@@ -753,8 +753,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testConstrainedProtocolExtensionSatisfiesProtocolRequirement() {
-        analyze(retainPublic: true) {
+    func testConstrainedProtocolExtensionSatisfiesProtocolRequirement() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol1021A")) {
                 self.assertReferenced(.varInstance("value"))
             }
@@ -766,8 +766,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testDoesNotRetainProtocolMembersImplementedByExternalType() {
-        analyze(retainPublic: true) {
+    func testDoesNotRetainProtocolMembersImplementedByExternalType() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol110")) {
                 self.assertReferenced(.functionMethodInstance("sync(execute:)"))
                 self.assertNotReferenced(.functionMethodInstance("async(execute:)"))
@@ -789,16 +789,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testDoesNotRetainDescendantsOfUnusedDeclaration() {
-        analyze(retainPublic: true) {
+    func testDoesNotRetainDescendantsOfUnusedDeclaration() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass99Outer")) {
                 self.assertNotReferenced(.class("FixtureClass99"))
             }
         }
     }
 
-    func testNestedDeclarations() {
-        analyze(retainPublic: true) {
+    func testNestedDeclarations() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass102")) {
                 self.assertReferenced(.functionMethodInstance("nested1()"))
                 self.assertReferenced(.functionMethodInstance("nested2()"))
@@ -806,8 +806,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testIdenticallyNamedVarsInStaticAndInstanceScopes() {
-        analyze(retainPublic: true) {
+    func testIdenticallyNamedVarsInStaticAndInstanceScopes() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass95")) {
                 self.assertReferenced(.varInstance("someVar"))
                 self.assertReferenced(.varStatic("someVar"))
@@ -815,8 +815,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testProtocolConformingMembersAreRetained() {
-        analyze(retainPublic: true) {
+    func testProtocolConformingMembersAreRetained() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass27")) {
                 self.assertReferenced(.functionMethodInstance("protocolMethod()"))
                 self.assertReferenced(.functionMethodClass("staticProtocolMethod()"))
@@ -835,16 +835,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testProtocolConformedByStaticMethodOutsideExtension() {
-        analyze(retainPublic: true) {
+    func testProtocolConformedByStaticMethodOutsideExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass64")) // public
             assertReferenced(.class("FixtureClass65")) // retained by FixtureClass64
             assertReferenced(.functionOperatorInfix("==(_:_:)")) // Equatable
         }
     }
 
-    func testClassRetainedByUnusedInstanceVariable() {
-        analyze(retainPublic: true) {
+    func testClassRetainedByUnusedInstanceVariable() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass71")) {
                 self.assertNotReferenced(.varInstance("someVar"))
             }
@@ -852,8 +852,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testStaticPropertyDeclaredWithCompositeValuesIsNotRetained() {
-        analyze(retainPublic: true) {
+    func testStaticPropertyDeclaredWithCompositeValuesIsNotRetained() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass38")) {
                 self.assertNotReferenced(.varStatic("propertyA"))
                 self.assertNotReferenced(.varStatic("propertyB"))
@@ -861,16 +861,71 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainImplicitDeclarations() {
-        analyze(retainPublic: true) {
+    func testRetainImplicitDeclarations() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct2")) {
                 self.assertReferenced(.functionConstructor("init(someVar:)"))
             }
         }
     }
 
-    func testRetainsPropertyWrappers() {
-        analyze(retainPublic: true) {
+    func testRetainsSynthesizedEquatableProperties() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("SynthesizedEqualityValue")) {
+                self.assertReferenced(.varInstance("number"))
+                self.assertNotAssignOnlyProperty(.varInstance("number"))
+                self.assertReferenced(.varInstance("label"))
+                self.assertNotAssignOnlyProperty(.varInstance("label"))
+            }
+            assertReferenced(.struct("ManualEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("ExtensionEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("DefaultEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("GlobalEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("ExternalDefaultEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("ExtendedDefaultEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+            }
+            assertReferenced(.struct("ConstructedOnlyEqualityValue")) {
+                self.assertAssignOnlyProperty(.varInstance("ignored"))
+                self.assertNotAssignOnlyProperty(.varInstance("used"))
+            }
+            for name in ["GenericEqualityValue", "LibraryEqualityValue", "NestedEqualityLeaf", "ClosureEqualityValue", "DictionaryEqualityKey"] {
+                assertReferenced(.struct(name)) {
+                    self.assertNotAssignOnlyProperty(.varInstance("value"))
+                }
+            }
+            assertNotReferenced(.struct("UnreachableEqualityValue"))
+        }
+    }
+
+    #if os(macOS)
+        func testRetainsNestedSwiftUIProjectedState() throws {
+            try analyze(retainPublic: true) {
+                assertReferenced(.struct("NestedProjectionPreviews")) {
+                    self.assertReferenced(.struct("FirstPreview")) {
+                        self.assertReferenced(.varInstance("firstSelection"))
+                    }
+                    self.assertReferenced(.struct("SecondPreview")) {
+                        self.assertReferenced(.varInstance("secondSelection"))
+                        self.assertNotReferenced(.varInstance("unusedSelection"))
+                    }
+                }
+            }
+        }
+    #endif
+
+    func testRetainsPropertyWrappers() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("Fixture111")) {
                 self.assertReferenced(.varInstance("someVar"))
                 self.assertReferenced(.functionMethodStatic("buildBlock()"))
@@ -882,31 +937,31 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsStringInterpolationAppendInterpolation() {
-        analyze(retainPublic: true) {
+    func testRetainsStringInterpolationAppendInterpolation() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.extensionStruct("DefaultStringInterpolation")) {
                 self.assertReferenced(.functionMethodInstance("appendInterpolation(test:)"))
             }
         }
     }
 
-    func testRetainsProtocolsViaCompositeTypealias() {
-        analyze(retainPublic: true) {
+    func testRetainsProtocolsViaCompositeTypealias() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("Fixture200"))
             assertReferenced(.protocol("Fixture201"))
             assertReferenced(.typealias("Fixture202"))
         }
     }
 
-    func testCircularTypeInheritance() {
-        analyze {
+    func testCircularTypeInheritance() throws {
+        try analyze {
             // Intentionally blank.
             // Fixture contains a circular reference that shouldn't cause a stack overflow.
         }
     }
 
-    func testRetainsResultBuilderMethods() {
-        analyze(retainPublic: true) {
+    func testRetainsResultBuilderMethods() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass130")) {
                 self.assertReferenced(.functionMethodStatic("buildExpression(_:)"))
                 self.assertReferenced(.functionMethodStatic("buildOptional(_:)"))
@@ -920,16 +975,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsCallAsFunction() {
-        analyze(retainPublic: true) {
+    func testRetainsCallAsFunction() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct1")) {
                 self.assertReferenced(.functionMethodInstance("callAsFunction(_:)"))
             }
         }
     }
 
-    func testDoesNotRetainLazyProperty() {
-        analyze(retainPublic: true) {
+    func testDoesNotRetainLazyProperty() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass36")) {
                 self.assertNotReferenced(.varInstance("someLazyVar"))
                 self.assertNotReferenced(.varInstance("someVar"))
@@ -937,8 +992,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsDynamicMemberLookupSubscript() {
-        analyze(retainPublic: true) {
+    func testRetainsDynamicMemberLookupSubscript() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct7")) {
                 self.assertReferenced(.functionSubscript("subscript(dynamicMember:)"))
                 self.assertNotReferenced(.functionSubscript("subscript(_:)"))
@@ -946,16 +1001,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsDynamicMemberLookupSubscriptInExternalTypeExtension() {
-        analyze(retainPublic: true) {
+    func testRetainsDynamicMemberLookupSubscriptInExternalTypeExtension() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.extensionEnum("AttributeDynamicLookup")) {
                 self.assertReferenced(.functionSubscript("subscript(dynamicMember:)"))
             }
         }
     }
 
-    func testRetainsCodableProperties() {
-        analyze(
+    func testRetainsCodableProperties() throws {
+        try analyze(
             retainPublic: true,
             retainCodableProperties: false,
             retainAssignOnlyProperties: false
@@ -966,7 +1021,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
 
-        analyze(
+        try analyze(
             retainPublic: true,
             retainCodableProperties: true
         ) {
@@ -978,8 +1033,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsEncodableProperties() {
-        analyze(
+    func testRetainsEncodableProperties() throws {
+        try analyze(
             retainPublic: true,
             retainEncodableProperties: false,
             retainAssignOnlyProperties: false
@@ -990,7 +1045,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
 
-        analyze(
+        try analyze(
             retainPublic: true,
             retainEncodableProperties: true
         ) {
@@ -1002,8 +1057,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsEquatableProperties() {
-        analyze(
+    func testRetainsEquatableProperties() throws {
+        try analyze(
             retainPublic: true,
             retainEquatableProperties: false,
             retainAssignOnlyProperties: false
@@ -1014,7 +1069,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
 
-        analyze(
+        try analyze(
             retainPublic: true,
             retainEquatableProperties: true
         ) {
@@ -1036,8 +1091,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsHashableProperties() {
-        analyze(
+    func testRetainsHashableProperties() throws {
+        try analyze(
             retainPublic: true,
             retainHashableProperties: false,
             retainAssignOnlyProperties: false
@@ -1048,7 +1103,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
 
-        analyze(
+        try analyze(
             retainPublic: true,
             retainHashableProperties: true
         ) {
@@ -1060,18 +1115,18 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsFilesOption() {
-        analyze(retainFiles: [testFixturePath.string]) {
+    func testRetainsFilesOption() throws {
+        try analyze(retainFiles: [testFixturePath.string]) {
             assertReferenced(.class("FixtureClass100"))
         }
 
-        analyze(retainFiles: []) {
+        try analyze(retainFiles: []) {
             assertNotReferenced(.class("FixtureClass100"))
         }
     }
 
-    func testMainActorAnnotation() {
-        analyze(retainPublic: true) {
+    func testMainActorAnnotation() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass132")) {
                 self.assertReferenced(.functionConstructor("init(value:)"))
             }
@@ -1081,8 +1136,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
 
     // https://github.com/apple/swift/issues/64686
     // https://github.com/peripheryapp/periphery/issues/264
-    func testSelfReferencedConstructor() {
-        analyze(retainPublic: true) {
+    func testSelfReferencedConstructor() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct3")) {
                 self.assertReferenced(.functionConstructor("init(value:)"))
             }
@@ -1096,16 +1151,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     }
 
     // https://github.com/apple/swift/issues/56541
-    func testStaticMemberUsedAsSubscriptKey() {
-        analyze(retainPublic: true) {
+    func testStaticMemberUsedAsSubscriptKey() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.enum("FixtureEnum128")) {
                 self.assertReferenced(.varStatic("someVar"))
             }
         }
     }
 
-    func testRetainsDynamicReplacement() {
-        analyze(retainPublic: true) {
+    func testRetainsDynamicReplacement() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct8")) {
                 self.assertReferenced(.functionMethodStatic("originalStaticMethod()"))
                 self.assertReferenced(.functionMethodStatic("replacementStaticMethod()"))
@@ -1124,13 +1179,13 @@ final class RetentionTest: FixtureSourceGraphTestCase {
 
     // MARK: - Comment Commands
 
-    func testIgnoreComments() {
+    func testIgnoreComments() throws {
         // ensure this external module is explicitly indexed so we can tell if it is unused
         let additionalFilesToIndex = [
             FixturesProjectPath.appending("Sources/UnusedModuleFixtures/UnusedModuleDeclaration.swift"),
         ]
 
-        analyze(retainPublic: true, additionalFilesToIndex: additionalFilesToIndex) {
+        try analyze(retainPublic: true, additionalFilesToIndex: additionalFilesToIndex) {
             assertReferenced(.module("UnusedModuleFixtures"))
             assertReferenced(.class("Fixture113")) {
                 self.assertReferenced(.functionMethodInstance("someFunc(param:)")) {
@@ -1190,7 +1245,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
 
         // inline comment command tests
-        analyze(retainPublic: false) {
+        try analyze(retainPublic: false) {
             assertReferenced(.class("Fixture300Class"))
             assertReferenced(.class("Fixture301Class"))
 
@@ -1214,8 +1269,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testIgnoreAllComment() {
-        analyze(retainPublic: false) {
+    func testIgnoreAllComment() throws {
+        try analyze(retainPublic: false) {
             assertReferenced(.class("Fixture115")) {
                 self.assertReferenced(.functionMethodInstance("someFunc(param:)")) {
                     self.assertReferenced(.varParameter("param"))
@@ -1228,8 +1283,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testCommentCommandOverride() {
-        analyze(retainPublic: true) {
+    func testCommentCommandOverride() throws {
+        try analyze(retainPublic: true) {
             // Test relative path override (gets converted to absolute)
             assertOverrides(.class("FixtureClass136"), [
                 .location(FilePath.current.pushing("some/other/file.swift"), 12, 34),
@@ -1242,8 +1297,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testSuperfluousIgnoreCommand() {
-        analyze(retainPublic: true) {
+    func testSuperfluousIgnoreCommand() throws {
+        try analyze(retainPublic: true) {
             // These have ignore commands but are actually used, so the ignore is superfluous
             assertSuperfluousIgnoreCommand(.functionFree("superfluouslyIgnoredFunc()"))
             assertSuperfluousIgnoreCommand(.class("SuperfluouslyIgnoredClass"))
@@ -1293,15 +1348,15 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
 
-        analyze(retainPublic: true, superfluousIgnoreComments: false) {
+        try analyze(retainPublic: true, superfluousIgnoreComments: false) {
             // Superfluous ignore warnings should be suppressed when disabled.
             assertNotSuperfluousIgnoreCommand(.functionFree("superfluouslyIgnoredFunc()"))
             assertNotSuperfluousIgnoreCommand(.class("SuperfluouslyIgnoredClass"))
         }
     }
 
-    func testSuperfluousIgnoreCommandOnProtocolMember() {
-        analyze(retainPublic: true) {
+    func testSuperfluousIgnoreCommandOnProtocolMember() throws {
+        try analyze(retainPublic: true) {
             // Protocol member with ignore that only has related references (from conformances
             // and default implementations) - the ignore is NOT superfluous.
             assertReferenced(.protocol("CorrectlyIgnoredProtocol")) {
@@ -1319,8 +1374,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     // MARK: - Swift Testing
 
     #if canImport(Testing)
-        func testRetainsSwiftTestingDeclarations() {
-            analyze {
+        func testRetainsSwiftTestingDeclarations() throws {
+            try analyze {
                 assertReferenced(.functionFree("swiftTestingFreeFunction()"))
 
                 assertReferenced(.class("SwiftTestingClass")) {
@@ -1345,8 +1400,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
 
     // MARK: - Assign-only properties
 
-    func testStructImplicitInitializer() {
-        analyze(retainPublic: true, retainAssignOnlyProperties: false) {
+    func testStructImplicitInitializer() throws {
+        try analyze(retainPublic: true, retainAssignOnlyProperties: false) {
             assertReferenced(.struct("FixtureStruct13_Codable")) {
                 self.assertAssignOnlyProperty(.varInstance("assignOnly"))
             }
@@ -1356,7 +1411,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
 
-        analyze(retainPublic: true, retainAssignOnlyProperties: true) {
+        try analyze(retainPublic: true, retainAssignOnlyProperties: true) {
             assertReferenced(.struct("FixtureStruct13_Codable")) {
                 self.assertReferenced(.varInstance("assignOnly"))
                 self.assertNotAssignOnlyProperty(.varInstance("assignOnly"))
@@ -1370,8 +1425,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testSimplePropertyAssignedButNeverRead() {
-        analyze(retainPublic: true, retainAssignOnlyProperties: false) {
+    func testSimplePropertyAssignedButNeverRead() throws {
+        try analyze(retainPublic: true, retainAssignOnlyProperties: false) {
             assertReferenced(.class("FixtureClass70")) {
                 self.assertAssignOnlyProperty(.varInstance("simpleUnreadVar"))
                 self.assertAssignOnlyProperty(.varInstance("simpleUnreadShadowedVar"))
@@ -1395,7 +1450,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
 
-        analyze(retainPublic: true, retainAssignOnlyProperties: true) {
+        try analyze(retainPublic: true, retainAssignOnlyProperties: true) {
             assertReferenced(.class("FixtureClass70")) {
                 self.assertReferenced(.varInstance("simpleUnreadVar"))
                 self.assertNotAssignOnlyProperty(.varInstance("simpleUnreadVar"))
@@ -1427,8 +1482,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testSimpleAssignOnlyPropertyNameConflict() {
-        analyze(retainPublic: true) {
+    func testSimpleAssignOnlyPropertyNameConflict() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass131")) {
                 self.assertAssignOnlyProperty(.varInstance("someProperty"))
                 self.assertReferenced(.varStatic("someProperty"))
@@ -1436,8 +1491,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsAssignOnlyPropertyTypes() {
-        analyze(
+    func testRetainsAssignOnlyPropertyTypes() throws {
+        try analyze(
             retainPublic: true,
             retainAssignOnlyProperties: false,
             retainAssignOnlyPropertyTypes: ["CustomType", "(CustomType, String)", "Swift.Double"]
@@ -1476,8 +1531,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
 
     // MARK: - Unused Parameters
 
-    func testRetainsParamUsedInOverriddenMethod() {
-        analyze(retainPublic: true) {
+    func testRetainsParamUsedInOverriddenMethod() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass101Base")) {
                 // Not used and not overridden.
                 self.assertReferenced(.functionMethodInstance("func1(param:)")) {
@@ -1591,8 +1646,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsForeignProtocolParametersInSubclass() {
-        analyze(retainPublic: true) {
+    func testRetainsForeignProtocolParametersInSubclass() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass109")) {
                 self.assertReferenced(.functionMethodInstance("copy(with:)")) {
                     self.assertReferenced(.varParameter("zone"))
@@ -1606,8 +1661,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsForeignProtocolParameters() {
-        analyze(retainPublic: true) {
+    func testRetainsForeignProtocolParameters() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass103")) {
                 self.assertReferenced(.functionConstructor("init(from:)")) {
                     self.assertReferenced(.varParameter("decoder"))
@@ -1621,8 +1676,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainUnusedProtocolFuncParams() {
-        analyze(
+    func testRetainUnusedProtocolFuncParams() throws {
+        try analyze(
             retainPublic: true,
             retainUnusedProtocolFuncParams: true
         ) {
@@ -1649,8 +1704,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsProtocolParameters() {
-        analyze(retainPublic: true) {
+    func testRetainsProtocolParameters() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol104")) {
                 // Used in a conformance.
                 self.assertReferenced(.functionMethodInstance("func1(param1:param2:)")) {
@@ -1799,8 +1854,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsOpenClassParameters() {
-        analyze(retainPublic: true) {
+    func testRetainsOpenClassParameters() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass112")) {
                 self.assertReferenced(.functionMethodInstance("doSomething(with:)")) {
                     self.assertReferenced(.varParameter("value"))
@@ -1809,14 +1864,14 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testIgnoreUnusedParamInUnusedFunction() {
-        analyze {
+    func testIgnoreUnusedParamInUnusedFunction() throws {
+        try analyze {
             assertNotReferenced(.class("FixtureClass105"))
         }
     }
 
-    func testRetainsFunctionParametersOnProtocolMembersImplementedByExternalType() {
-        analyze(retainPublic: true) {
+    func testRetainsFunctionParametersOnProtocolMembersImplementedByExternalType() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol125")) {
                 self.assertReferenced(.functionMethodInstance("object(forKey:)")) {
                     self.assertReferenced(.varParameter("key"))
@@ -1825,8 +1880,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testRetainsFunctionParametersOnUnimplementedProtocolMembers() {
-        analyze(retainPublic: true) {
+    func testRetainsFunctionParametersOnUnimplementedProtocolMembers() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.protocol("FixtureProtocol126")) {
                 self.assertReferenced(.functionMethodInstance("unimplementedFunc(param:)")) {
                     self.assertReferenced(.varParameter("param"))
@@ -1840,29 +1895,29 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
-    func testCustomConstructorWithLiteral() {
-        analyze(retainPublic: true) {
+    func testCustomConstructorWithLiteral() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.extensionStruct("Array")) {
                 self.assertReferenced(.functionConstructor("init(title:)"))
             }
         }
     }
 
-    func testRetainsInitializerCalledOnTypeAlias() {
+    func testRetainsInitializerCalledOnTypeAlias() throws {
         // Resolved by https://github.com/swiftlang/swift/commit/178d6c315dcce9d1110bb23ad905dffaf28c2c3b
         guard Self.swiftVersion.version.isVersion(greaterThan: "6.2.4") else {
             return
         }
 
-        analyze(retainPublic: true) {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass219")) {
                 self.assertReferenced(.functionConstructor("init(foo:)"))
             }
         }
     }
 
-    func testDoesNotRetainSPIMembers() {
-        analyze(retainPublic: true, noRetainSPI: ["STP"]) {
+    func testDoesNotRetainSPIMembers() throws {
+        try analyze(retainPublic: true, noRetainSPI: ["STP"]) {
             assertReferenced(.class("FixtureClass220")) {
                 self.assertReferenced(.functionMethodInstance("publicFunc()"))
                 self.assertNotReferenced(.functionMethodInstance("stpSpiFunc()"))
@@ -1875,8 +1930,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
 
     // MARK: - Inherited Initializers
 
-    func testRetainsSuperclassInitializerCalledOnSubclass() {
-        analyze(retainPublic: true) {
+    func testRetainsSuperclassInitializerCalledOnSubclass() throws {
+        try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass221Parent")) {
                 self.assertReferenced(.functionConstructor("init(param:)"))
             }
