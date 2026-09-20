@@ -35,13 +35,20 @@ final class UpdateChecker {
     }
 
     deinit {
-        // Invalidating a URLSession while a request is still in flight crashes inside
-        // FoundationNetworking on Linux (SIGILL). An abandoned session is reclaimed when the
-        // process exits, so only tear it down once we know nothing is in flight.
-        let status = status.withLock { $0 }
-        guard !status.didStart || status.didFinish else { return }
+        #if canImport(FoundationNetworking)
+        // Never tear the session down on Linux. Invalidating it while a request was in
+        // flight aborted the process with SIGILL, and waiting for the request first only
+        // narrowed the window: CI still caught an intermittent SIGSEGV on Swift 6.1 with
+        // the request already settled. The session is ephemeral and the process exits
+        // immediately after the scan, so leaving it alone costs nothing.
+        #else
+            // Invalidating while a request is still in flight is unsafe, so only tear down a
+            // session we know has settled.
+            let status = status.withLock { $0 }
+            guard !status.didStart || status.didFinish else { return }
 
-        urlSession.invalidateAndCancel()
+            urlSession.invalidateAndCancel()
+        #endif
     }
 
     private func finish() {
