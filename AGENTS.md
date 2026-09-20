@@ -8,9 +8,13 @@ major features, dependencies, CI, release, and distribution changes first.
   need a used-but-not-compared control.
 - Preserve existing configuration and comment syntax, library names,
   attribution, and supported paths unless a change is explicitly justified.
-- Preserve incremental SwiftPM behavior: clean only for `--clean-build`; use
-  `swift build --show-bin-path` with matching build arguments; keep explicit
-  index-store paths authoritative; never use stale or alternate stores silently.
+- Managed SwiftPM scans clean before building: `--enable-index-store` does not
+  invalidate already-compiled tasks, so reusing an unindexed build tree yields a
+  stale index and wrong results. This gives up incremental builds deliberately;
+  keep that cost documented, and keep `--skip-build` with `--index-store-path`
+  working as the incremental path. Use `swift build --show-bin-path` with
+  matching build arguments; an explicit index-store path stays authoritative and
+  suppresses the managed clean; never use stale or alternate stores silently.
 - Never weaken assertions, add broad exclusions, regenerate baselines, or treat
   compilation alone as correctness evidence.
 - Validate affected tests and the full suite; record the exact toolchain, commit,
