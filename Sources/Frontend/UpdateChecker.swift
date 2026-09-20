@@ -2,12 +2,18 @@ import Configuration
 import Foundation
 import Logger
 import Shared
+import Synchronization
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking
 #endif
 
 final class UpdateChecker {
+    private struct Status {
+        var didStart = false
+        var didFinish = false
+    }
+
     private let logger: Logger
     private let debugLogger: ContextualLogger
     private let configuration: Configuration
@@ -16,6 +22,7 @@ final class UpdateChecker {
     private var latestVersion: String?
     private let semaphore: DispatchSemaphore
     private var error: Error?
+    private let status = Mutex(Status())
 
     required init(logger: Logger, configuration: Configuration) {
         self.logger = logger
@@ -28,7 +35,18 @@ final class UpdateChecker {
     }
 
     deinit {
+        // Invalidating a URLSession while a request is still in flight crashes inside
+        // FoundationNetworking on Linux (SIGILL). An abandoned session is reclaimed when the
+        // process exits, so only tear it down once we know nothing is in flight.
+        let status = status.withLock { $0 }
+        guard !status.didStart || status.didFinish else { return }
+
         urlSession.invalidateAndCancel()
+    }
+
+    private func finish() {
+        status.withLock { $0.didFinish = true }
+        semaphore.signal()
     }
 
     func run() {
@@ -46,7 +64,7 @@ final class UpdateChecker {
             if let error {
                 debugLogger.debug("error: \(error.localizedDescription)")
                 self.error = error
-                semaphore.signal()
+                finish()
                 return
             }
 
@@ -63,15 +81,30 @@ final class UpdateChecker {
                 let message = "Failed to identify latest release tag in: \(json)"
                 self.error = PeripheryError.updateCheckError(message: message)
                 debugLogger.debug(message)
-                semaphore.signal()
+                finish()
                 return
             }
 
             latestVersion = tagName
-            semaphore.signal()
+            finish()
         }
 
+        status.withLock { $0.didStart = true }
         task.resume()
+    }
+
+    /// Waits for an in-flight update check to settle.
+    ///
+    /// The check is started before the scan and almost always completes long before the scan
+    /// does, so this returns immediately in practice. It matters when it doesn't: reading
+    /// `latestVersion` without waiting races the session's callback, and letting the session
+    /// deallocate mid-transfer crashes on Linux.
+    func waitForCompletion(timeout: TimeInterval = 5) {
+        guard status.withLock({ $0.didStart }) else { return }
+
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            debugLogger.debug("timed out after \(timeout)s waiting for the update check")
+        }
     }
 
     func notifyIfAvailable() {
