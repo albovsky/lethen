@@ -10,7 +10,9 @@ Intended website: **lethen.sh**. This repository is the project home while the w
 
 [3.8.1-dev.1](https://github.com/albovsky/lethen/releases/tag/3.8.1-dev.1) is the first lethen development prerelease, distributed from source. It fixes default SwiftPM index discovery and fixture setup on Swift 6.4 / Xcode 27, plus two analysis defects reproduced during a private-project audit.
 
-Managed SwiftPM scans rebuild existing products to guarantee fresh indexes. Use `--skip-build` only with an index you know is current.
+Managed SwiftPM scans clean and rebuild existing products to guarantee a fresh index. This is deliberate and it has a real cost: **a managed SwiftPM scan is always a full rebuild, never an incremental one.** SwiftPM does not treat `--enable-index-store` as a change that invalidates already-compiled tasks, so a build tree produced by a plain `swift build` yields a stale or partial index and silently wrong results. Cleaning is the only way we can currently rule that out.
+
+To keep incremental builds, build the index yourself and scan it with `--skip-build --index-store-path <path>`. Use `--skip-build` only with an index you know is current.
 
 The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. Signed binaries, Homebrew, and a hosted installer are separate work.
 

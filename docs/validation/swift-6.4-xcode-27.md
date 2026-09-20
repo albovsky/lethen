@@ -86,3 +86,39 @@ Regression controls cover construction without comparison, a source-visible iden
 Directory-change failures now use an accurate generic diagnostic instead of incorrectly classifying every failure as a missing file. The release discovery fixture copies only its manifest and source inputs. Managed SwiftPM rebuilds remain unchanged because removing them would restore the demonstrated stale-index defect. These changes are not included in the immutable `3.8.1-dev.1` tag.
 
 Follow-up CI exposed a Linux FoundationNetworking teardown crash after successful Bazel scans. CI scan commands now disable update checks, matching the dedicated Xcode 27 gate and removing that unrelated network dependency. This does not establish a fix for update checks in ordinary CLI use.
+
+## Update check teardown
+
+The Linux crash is now fixed rather than hidden. `ScanCommand` started the GitHub update
+request before the scan and read `latestVersion` at the end without ever waiting for it, so a
+still-running request was torn down when the `UpdateChecker` deallocated. On Linux that aborted
+the process with SIGILL inside FoundationNetworking's `URLSession` teardown, after the scan had
+already produced correct output. The same unsynchronised read was a data race on every platform;
+it simply failed loudly only on Linux.
+
+`ScanCommand` now calls `waitForCompletion()` before reading the result, bounded to five seconds.
+The request is issued before the build and indexing phases, so in practice it has long since
+settled and the wait returns immediately. `deinit` additionally declines to invalidate a session
+that is still in flight, covering the case where the wait does time out; an abandoned ephemeral
+session is reclaimed when the process exits.
+
+`.github/scripts/verify-update-check-teardown.sh` runs five scans with the update check enabled
+and requires each to exit 0. It is wired into the Linux job, which is where the crash reproduced.
+The check is allowed to fail its network request: an unreachable endpoint, a 404, and a
+rate-limit response all take the same handled path, so the step fails only if the process dies.
+CI scans keep `--disable-update-check`, which remains correct for a scan gate — the dedicated
+step is what exercises the network path.
+
+This fix is verified on macOS (build, lint, 322 tests, strict self-scan, and the teardown script)
+but the crash itself only reproduces on Linux, so the Linux CI job is the real verification.
+
+## Managed SwiftPM rebuilds
+
+Unconditional cleaning is retained. A conditional clean keyed on index-store and build-product
+timestamps was considered and rejected for this release: a false "fresh" verdict silently
+restores the stale-index defect this branch exists to fix, and mtime ordering within a single
+build is not a sound signal for it. The cost — no incremental builds for managed SwiftPM scans —
+is now stated in the README along with the `--skip-build --index-store-path` escape hatch.
+
+Version string bumped to `3.8.1-dev.2`. The `3.8.1-dev.1` tag is immutable and predates the
+whole-value equality fix, so builds from this branch must not claim to be it.
