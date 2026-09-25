@@ -3,7 +3,12 @@ import Foundation
 
 enum SwiftVersionParser {
     static func parse(_ fullVersion: String) throws -> VersionString {
-        guard let rawVersion = fullVersion.components(separatedBy: "Swift version").last?.split(separator: " ").first else {
+        let components = fullVersion.components(separatedBy: "Swift version")
+
+        guard components.count > 1,
+              let rawVersion = components.last?.trimmed.split(separator: " ").first,
+              rawVersion.first?.isNumber == true
+        else {
             throw PeripheryError.swiftVersionParseError(fullVersion: fullVersion)
         }
 

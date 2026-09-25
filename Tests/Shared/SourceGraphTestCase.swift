@@ -28,7 +28,10 @@ open class SourceGraphTestCase: XCTestCase {
         setupState = TestSetupState()
         logger = Logger(quiet: true, verbose: false, colorMode: .never)
         shell = ShellImpl(logger: logger)
-        swiftVersion = SwiftVersion(shell: shell)
+        swiftVersion = nil
+        setupState.capture {
+            swiftVersion = try SwiftVersion(shell: shell)
+        }
         let configuration = Configuration()
         configuration.quiet = true
         graph = SourceGraph(configuration: configuration, logger: logger)

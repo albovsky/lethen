@@ -19,4 +19,14 @@ final class SwiftVersionParserTest: XCTestCase {
         let v5 = try SwiftVersionParser.parse("swift-driver version: 1.62.8 Apple Swift version 5.7 (swiftlang-5.7.0.127.4 clang-1400.0.29.50)\nTarget: arm64-apple-macosx12.0")
         XCTAssertEqual(v5, "5.7")
     }
+
+    func testParseRejectsOutputWithoutAVersion() {
+        for output in ["", "not a swift toolchain", "Swift version", "Swift version unknown"] {
+            XCTAssertThrowsError(try SwiftVersionParser.parse(output), output) { error in
+                guard let error = error as? PeripheryError, case .swiftVersionParseError = error else {
+                    return XCTFail("Expected a parse error for \(output), got: \(error)")
+                }
+            }
+        }
+    }
 }

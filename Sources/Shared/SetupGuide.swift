@@ -22,6 +22,9 @@ public enum SetupSelection {
 open class SetupGuideHelpers {
     public let logger: Logger
 
+    /// Reads one line of input, or nil once input has ended. Tests script this.
+    public var readInput: () -> String? = { readLine(strippingNewline: true) }
+
     public init(logger: Logger) {
         self.logger = logger
     }
@@ -36,73 +39,87 @@ open class SetupGuideHelpers {
         }
     }
 
-    public func select(single options: [String]) -> String {
-        display(options: options)
-        print(logger.colorize("?", .boldYellow) + " Type the number for the option you wish to select")
-        print(logger.colorize("=> ", .bold), terminator: "")
+    public func select(single options: [String]) throws -> String {
+        while true {
+            display(options: options)
+            print(logger.colorize("?", .boldYellow) + " Type the number for the option you wish to select")
+            print(logger.colorize("=> ", .bold), terminator: "")
+            let input = try readRequiredInput()
 
-        if let strChoice = readLine(strippingNewline: true)?.trimmed,
-           let choice = Int(strChoice)
-        {
-            if let option = options[safe: choice - 1] {
-                return option
+            if let choice = Int(input) {
+                if let option = options[safe: choice - 1] {
+                    return option
+                }
+
+                print(logger.colorize("\nInvalid option: \(input)\n", .boldYellow))
             } else {
-                print(logger.colorize("\nInvalid option: \(strChoice)\n", .boldYellow))
+                print(logger.colorize("\nInvalid input, expected a number.\n", .boldYellow))
             }
         }
-
-        print(logger.colorize("\nInvalid input, expected a number.\n", .boldYellow))
-        return select(single: options)
     }
 
-    public func select(multiple options: [String]) -> SetupSelection {
+    public func select(multiple options: [String]) throws -> SetupSelection {
         let helpMsg = " Delimit choices with a single space, e.g: 1 2 3"
 
-        display(options: options)
-        print(logger.colorize("?", .boldYellow) + helpMsg)
-        print(logger.colorize("=> ", .bold), terminator: "")
-
-        if let strChoices = readLine(strippingNewline: true)?.trimmed.split(separator: " ", omittingEmptySubsequences: true) {
+        while true {
+            display(options: options)
+            print(logger.colorize("?", .boldYellow) + helpMsg)
+            print(logger.colorize("=> ", .bold), terminator: "")
+            let choices = try readRequiredInput().split(separator: " ", omittingEmptySubsequences: true)
             var selected: [String] = []
+            var isValid = true
 
-            for strChoice in strChoices {
-                if let choice = Int(strChoice),
-                   let option = options[safe: choice - 1]
-                {
+            for choice in choices {
+                if let index = Int(choice), let option = options[safe: index - 1] {
                     selected.append(option)
                 } else {
-                    print(logger.colorize("\nInvalid option: \(strChoice)\n", .boldYellow))
-                    return select(multiple: options)
+                    print(logger.colorize("\nInvalid option: \(choice)\n", .boldYellow))
+                    isValid = false
+                    break
                 }
             }
 
-            if !selected.isEmpty { return .some(selected) }
-        }
+            if isValid, !selected.isEmpty {
+                return .some(selected)
+            }
 
-        print(logger.colorize("\nInvalid input, expected a number.\n", .boldYellow))
-        return select(multiple: options)
-    }
-
-    public func selectBoolean() -> Bool {
-        print(
-            "(" + logger.colorize("Y", .boldGreen) + ")es" +
-                "/" +
-                "(" + logger.colorize("N", .boldGreen) + ")o" +
-                logger.colorize("\n=> ", .bold),
-            terminator: ""
-        )
-
-        if let answer = readLine(strippingNewline: true)?.trimmed.lowercased(),
-           !answer.isEmpty
-        {
-            if ["y", "yes"].contains(answer) {
-                return true
-            } else if ["n", "no"].contains(answer) {
-                return false
+            if isValid {
+                print(logger.colorize("\nInvalid input, expected a number.\n", .boldYellow))
             }
         }
+    }
 
-        print(logger.colorize("\nInvalid input, expected 'y' or 'n'.\n", .boldYellow))
-        return selectBoolean()
+    public func selectBoolean() throws -> Bool {
+        while true {
+            print(
+                "(" + logger.colorize("Y", .boldGreen) + ")es" +
+                    "/" +
+                    "(" + logger.colorize("N", .boldGreen) + ")o" +
+                    logger.colorize("\n=> ", .bold),
+                terminator: ""
+            )
+            let answer = try readRequiredInput().lowercased()
+
+            if ["y", "yes"].contains(answer) {
+                return true
+            }
+
+            if ["n", "no"].contains(answer) {
+                return false
+            }
+
+            print(logger.colorize("\nInvalid input, expected 'y' or 'n'.\n", .boldYellow))
+        }
+    }
+
+    // MARK: - Private
+
+    private func readRequiredInput() throws -> String {
+        guard let input = readInput() else {
+            print("")
+            throw PeripheryError.guidedSetupError(message: "Input ended before a choice was made; the guided setup needs an interactive terminal")
+        }
+
+        return input.trimmed
     }
 }
