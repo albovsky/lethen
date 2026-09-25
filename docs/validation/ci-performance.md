@@ -13,7 +13,7 @@ job being created and starting, run time the gap between starting and completing
 | macOS jobs scheduled per pull request | 8 | 3 |
 | macOS queue wait, average | 34 min | 0 min quiet, 13 min while three other runs were live |
 | Linux queue wait, average | 0.5 min | 0 min |
-| Longest job on a pull request | macOS main-snapshot, 15 to 20 min, failing | Swift 6.4 / Xcode 27, 8.6 to 13 min |
+| Longest job on a pull request | macOS main-snapshot, 15 to 20 min, failing | macOS 6.3, 7 to 10 min (Swift 6.4 / Xcode 27 is 6.6 min with warm caches) |
 | macOS 6.3 job | 13.7 min | 7.3 to 9.8 min |
 | macOS 6.3 test step, wall | 494 s for 71 s of test code | 265 to 315 s for 52 to 65 s of test code |
 | Push to master, wall clock | 41 to 43 min (two runs) | 16 min (run 36152028610, `master` profile, 14 jobs) |
@@ -150,8 +150,11 @@ Taken now:
   8.6 min against 13.1 min on the run before, with a quiet queue; the whole run took 10
   min wall clock with zero queue wait on every job. The caches were saved for the next
   run, where the 2 min of dependency compilation and the 100 s of Xcode fixture builds
-  come from cache. Hosted macOS runners vary noticeably between runs: macOS 6.3 took
-  7.3 min on one run and 9.8 min on the next with identical steps.
+  come from cache. With the caches warm (runs 36152121800 and 36153987628) the job took
+  6.6 and 6.8 min, so the pull request critical path is now the macOS 6.3 job at 7 to
+  10 min, and the final #10 run (36153987628) took 12 min wall clock with zero queue
+  wait. Hosted macOS runners vary noticeably between runs: macOS 6.3 took 7.3 min on
+  one run and 10.1 min on another with identical steps.
 
 Recommended, not taken, because each changes a documented policy:
 
