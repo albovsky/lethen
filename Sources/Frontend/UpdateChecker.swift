@@ -19,7 +19,7 @@ final class UpdateChecker {
     private let configuration: Configuration
     private let urlSession: URLSession
     private let releasesURL: URL
-    private var latestVersion: String?
+    private var latestVersion: ReleaseVersion?
     private let semaphore: DispatchSemaphore
     private var error: Error?
     private let status = Mutex(Status())
@@ -31,8 +31,14 @@ final class UpdateChecker {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 10
         urlSession = URLSession(configuration: config)
-        // `/releases/latest` never returns a prerelease, so it cannot see development releases.
-        releasesURL = URL(string: "https://api.github.com/repos/albovsky/lethen/releases?per_page=30")!
+        // `/releases/latest` is the newest stable release, which is all a stable build is offered. It never returns a
+        // prerelease, so development builds read the release list instead: GitHub orders it newest first, and the
+        // newest development and stable releases are within its first page.
+        releasesURL = if Self.isDevelopmentBuild {
+            URL(string: "https://api.github.com/repos/albovsky/lethen/releases?per_page=100")!
+        } else {
+            URL(string: "https://api.github.com/repos/albovsky/lethen/releases/latest")!
+        }
         semaphore = DispatchSemaphore(value: 0)
     }
 
@@ -60,7 +66,7 @@ final class UpdateChecker {
         var urlRequest = URLRequest(url: releasesURL)
         urlRequest.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
 
-        let task = urlSession.dataTask(with: urlRequest) { [weak self] data, _, error in
+        let task = urlSession.dataTask(with: urlRequest) { [weak self] data, response, error in
             guard let self else { return }
 
             if let error {
@@ -70,8 +76,14 @@ final class UpdateChecker {
                 return
             }
 
+            if (response as? HTTPURLResponse)?.statusCode == 404, !Self.isDevelopmentBuild {
+                debugLogger.debug("no stable release is published")
+                finish()
+                return
+            }
+
             guard let jsonData = data,
-                  let releases = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? [[String: Any]]
+                  let releases = Self.releases(fromJSON: jsonData)
             else {
                 var json = "N/A"
 
@@ -86,7 +98,7 @@ final class UpdateChecker {
                 return
             }
 
-            latestVersion = Self.latestVersion(in: releases, includingPrereleases: Self.isPrerelease(PeripheryVersion))
+            latestVersion = ReleaseVersion.latest(of: releases, includingPrereleases: Self.isDevelopmentBuild)
             finish()
         }
 
@@ -113,10 +125,10 @@ final class UpdateChecker {
 
         debugLogger.debug("latest: \(latestVersion)")
 
-        guard latestVersion.isVersion(greaterThan: PeripheryVersion) else { return }
+        guard let localVersion = Self.localVersion, latestVersion > localVersion else { return }
 
         logger.info(logger.colorize("\nUpdate Available!", .boldGreen))
-        let boldLatestVersion = logger.colorize(latestVersion, .bold)
+        let boldLatestVersion = logger.colorize(latestVersion.tag, .bold)
         let boldLocalVersion = logger.colorize(PeripheryVersion, .bold)
         logger.info("Version \(boldLatestVersion) is now available, you are using version \(boldLocalVersion).")
         logger.info("Release notes: " + logger.colorize("https://github.com/albovsky/lethen/releases/tag/\(latestVersion)", .bold))
@@ -126,7 +138,7 @@ final class UpdateChecker {
     }
 
     /// Waits for the check to finish, returning the latest applicable release, or nil when none is published.
-    func wait() -> Result<String?, PeripheryError> {
+    func wait() -> Result<ReleaseVersion?, PeripheryError> {
         let waitResult = semaphore.wait(timeout: .now() + 60)
 
         if let error = error as? PeripheryError {
@@ -144,16 +156,30 @@ final class UpdateChecker {
         return .success(latestVersion)
     }
 
-    /// A development build is offered newer development releases; a stable build is offered only stable releases.
-    static func latestVersion(in releases: [[String: Any]], includingPrereleases: Bool) -> String? {
-        releases
-            .filter { $0["draft"] as? Bool != true }
-            .filter { includingPrereleases || $0["prerelease"] as? Bool != true }
-            .compactMap { $0["tag_name"] as? String }
-            .max { $1.isVersion(greaterThan: $0) }
-    }
+    static let localVersion = ReleaseVersion(PeripheryVersion)
 
-    static func isPrerelease(_ version: String) -> Bool {
-        version.contains("-")
+    /// A development build is offered newer development releases; a stable build is offered only stable releases.
+    static let isDevelopmentBuild = localVersion?.isPrerelease ?? true
+
+    /// Published releases from either a release list or a single release object, excluding drafts.
+    private static func releases(fromJSON data: Data) -> [(tag: String, isPrerelease: Bool)]? {
+        guard let json = try? JSONSerialization.jsonObject(with: data, options: []) else { return nil }
+
+        let objects: [[String: Any]]
+        if let list = json as? [[String: Any]] {
+            objects = list
+        } else if let object = json as? [String: Any], object["tag_name"] != nil {
+            objects = [object]
+        } else {
+            return nil
+        }
+
+        return objects
+            .filter { $0["draft"] as? Bool != true }
+            .compactMap { object in
+                guard let tag = object["tag_name"] as? String else { return nil }
+
+                return (tag, object["prerelease"] as? Bool == true)
+            }
     }
 }

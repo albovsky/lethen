@@ -2,6 +2,7 @@ import ArgumentParser
 import Configuration
 import Foundation
 import Logger
+import Shared
 
 struct CheckUpdateCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -17,16 +18,18 @@ struct CheckUpdateCommand: ParsableCommand {
         let boldLocalVersion = logger.colorize(PeripheryVersion, .bold)
 
         guard let latestVersion = try checker.wait().get() else {
-            logger.info("No lethen release is published yet. You are using version \(boldLocalVersion).")
+            let kind = UpdateChecker.isDevelopmentBuild ? "" : "stable "
+            logger.info("No \(kind)lethen release is published yet. You are using version \(boldLocalVersion).")
             return
         }
 
-        let boldLatestVersion = logger.colorize(latestVersion, .bold)
+        let boldLatestVersion = logger.colorize(latestVersion.tag, .bold)
+        let localVersion = UpdateChecker.localVersion
 
-        if latestVersion.isVersion(greaterThan: PeripheryVersion) {
+        if let localVersion, latestVersion > localVersion {
             logger.info(logger.colorize("* Update Available", .boldGreen))
             logger.info("Version \(boldLatestVersion) is now available, you are using version \(boldLocalVersion).")
-        } else if PeripheryVersion.isVersion(greaterThan: latestVersion) {
+        } else if let localVersion, localVersion > latestVersion {
             logger.info("You are using version \(boldLocalVersion), which is newer than the latest release, \(boldLatestVersion).")
         } else {
             logger.info("You are using the latest version, \(boldLatestVersion).")
