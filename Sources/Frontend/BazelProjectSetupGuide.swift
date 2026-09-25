@@ -16,9 +16,16 @@ final class BazelProjectSetupGuide: SetupGuideHelpers, SetupGuide {
     }
 
     func perform() throws -> ProjectKind {
+        // lethen is not published to the Bazel Central Registry, where the 'periphery' module is upstream
+        // Periphery. The override makes Bazel build the scanner from lethen's source instead.
         print(logger.colorize("\nAdd the following snippet to your MODULE.bazel file:", .bold))
         print(logger.colorize("""
-        bazel_dep(name = "periphery", version = "\(PeripheryVersion)")
+        bazel_dep(name = "periphery", dev_dependency = True)
+        git_override(
+            module_name = "periphery",
+            remote = "https://github.com/albovsky/lethen.git",
+            tag = "\(PeripheryVersion)",
+        )
         use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphery_generated")
         """, .lightGray))
         print(logger.colorize("\nEnter to continue when ready ", .bold), terminator: "")

@@ -76,6 +76,7 @@ public final class BazelProjectDriver: ProjectDriver {
     }
 
     public func build() throws {
+        warnIfPeripheryModuleIsNotOverridden()
         try fileManager.createDirectory(at: outputPath.url, withIntermediateDirectories: true)
 
         let configPath = outputPath.appending("periphery.yml")
@@ -126,7 +127,32 @@ public final class BazelProjectDriver: ProjectDriver {
         exit(status)
     }
 
+    /// Whether a root `MODULE.bazel` resolves the `periphery` module from source rather than from a registry.
+    ///
+    /// The generated scan target runs `@periphery//:periphery`. Without a non-registry override, Bazel fetches
+    /// that module from the Bazel Central Registry, which serves upstream Periphery rather than lethen.
+    static func overridesPeripheryModule(_ moduleFile: String) -> Bool {
+        let comments = #/#[^\n]*/#
+        let contents = moduleFile.replacing(comments, with: "")
+        let isPeripheryModuleItself = #/\bmodule\s*\([^)]*\bname\s*=\s*"periphery"/#
+        let sourceOverride = #/\b(?:git|local_path|archive)_override\s*\([^)]*\bmodule_name\s*=\s*"periphery"/#
+
+        return contents.contains(isPeripheryModuleItself) || contents.contains(sourceOverride)
+    }
+
     // MARK: - Private
+
+    private func warnIfPeripheryModuleIsNotOverridden() {
+        guard let moduleFile = try? String(contentsOfFile: "MODULE.bazel", encoding: .utf8),
+              !Self.overridesPeripheryModule(moduleFile)
+        else { return }
+
+        logger.warn(
+            "MODULE.bazel does not override the 'periphery' module, so Bazel resolves it from the registry, " +
+                "which serves upstream Periphery. The scan will not include lethen's fixes. " +
+                "Run 'lethen scan --setup' for a MODULE.bazel snippet that uses lethen."
+        )
+    }
 
     private func queryTargets() throws -> [String] {
         try shell
