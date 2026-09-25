@@ -134,8 +134,9 @@ public final class BazelProjectDriver: ProjectDriver {
     static func overridesPeripheryModule(_ moduleFile: String) -> Bool {
         let comments = #/#[^\n]*/#
         let contents = moduleFile.replacing(comments, with: "")
-        let isPeripheryModuleItself = #/\bmodule\s*\([^)]*\bname\s*=\s*"periphery"/#
-        let sourceOverride = #/\b(?:git|local_path|archive)_override\s*\([^)]*\bmodule_name\s*=\s*"periphery"/#
+        // Starlark strings may use either quote style.
+        let isPeripheryModuleItself = #/\bmodule\s*\([^)]*\bname\s*=\s*["']periphery["']/#
+        let sourceOverride = #/\b(?:git|local_path|archive)_override\s*\([^)]*\bmodule_name\s*=\s*["']periphery["']/#
 
         return contents.contains(isPeripheryModuleItself) || contents.contains(sourceOverride)
     }

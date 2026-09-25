@@ -44,6 +44,8 @@ final class BazelModuleOverrideTest: XCTestCase {
             """,
             #"local_path_override(module_name = "periphery", path = "../lethen")"#,
             #"archive_override(module_name="periphery", urls = ["https://example.com/lethen.zip"])"#,
+            "local_path_override(module_name = 'periphery', path = '../lethen')",
+            "git_override(module_name = 'periphery', remote = 'https://github.com/albovsky/lethen.git', tag = 'x')",
         ]
 
         for override in overrides {
@@ -61,5 +63,6 @@ final class BazelModuleOverrideTest: XCTestCase {
         """
 
         XCTAssertTrue(BazelProjectDriver.overridesPeripheryModule(moduleFile))
+        XCTAssertTrue(BazelProjectDriver.overridesPeripheryModule("module(name = 'periphery')"))
     }
 }
