@@ -57,7 +57,7 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
 
         var project: XcodeProjectlike?
 
-        if let workspacePath = identifyWorkspace() {
+        if let workspacePath = try identifyWorkspace() {
             project = try XcodeWorkspace(
                 path: workspacePath,
                 xcodebuild: xcodebuild,
@@ -65,7 +65,7 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
                 logger: logger,
                 shell: shell
             )
-        } else if let projectPath = identifyProject() {
+        } else if let projectPath = try identifyProject() {
             var loadedProjectPaths: Set<FilePath> = []
             project = try XcodeProject(
                 path: projectPath,
@@ -86,18 +86,18 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         ).map(\.self).sorted()
 
         print(logger.colorize("\nSelect the schemes to build:", .bold))
-        print("Periphery will scan all files built by your chosen schemes.")
-        configuration.schemes = select(multiple: schemes).selectedValues
+        print("Lethen will scan all files built by your chosen schemes.")
+        configuration.schemes = try select(multiple: schemes).selectedValues
 
         print(logger.colorize("\nDoes this project contain Objective-C code?", .bold))
-        let containsObjC = selectBoolean()
+        let containsObjC = try selectBoolean()
 
         if containsObjC {
-            print(logger.colorize("\nPeriphery cannot scan Objective-C code and, as a result, cannot detect Swift types referenced by Objective-C code.", .bold))
+            print(logger.colorize("\nLethen cannot scan Objective-C code and, as a result, cannot detect Swift types referenced by Objective-C code.", .bold))
             print("To avoid false positives, you have a few options:")
             let retainObjcAccessibleOption = logger.colorize("Assume all types accessible from Objective-C are in use:", .bold) + " This includes public NSObject instances (and their subclasses), as well as any types explicitly annotated with @objc. This approach will eliminate false positives but may also result in a lot of missed unused code."
             let retainObjcAnnotationOption = logger.colorize("Assume only types annotated with @objc are in use:", .bold) + " This option may lead to false positives, but they can be easily corrected by adding the necessary @objc annotations."
-            let objcChoice = select(single: [
+            let objcChoice = try select(single: [
                 retainObjcAccessibleOption,
                 retainObjcAnnotationOption,
                 logger.colorize("Do nothing:", .bold) + " Do not assume any Swift types are used in Objective-C code.",
@@ -153,13 +153,13 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
             .filter { !podSchemes.contains($0) }
     }
 
-    private func identifyWorkspace() -> FilePath? {
+    private func identifyWorkspace() throws -> FilePath? {
         var workspacePath: FilePath?
 
         if workspacePaths.count > 1 {
             print(logger.colorize("Found multiple workspaces, please select the one that defines the schemes for building your project:", .bold))
             let workspaces = workspacePaths.map { $0.relativeTo(.current).string }
-            let workspace = select(single: workspaces)
+            let workspace = try select(single: workspaces)
             workspacePath = FilePath.makeAbsolute(workspace)
             print("")
         } else {
@@ -174,13 +174,13 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         return nil
     }
 
-    private func identifyProject() -> FilePath? {
+    private func identifyProject() throws -> FilePath? {
         var projectPath: FilePath?
 
         if projectPaths.count > 1 {
             print(logger.colorize("Found multiple projects, please select the one that defines the schemes for building your project:", .bold))
             let projects = projectPaths.map { $0.relativeTo(.current).string }.sorted()
-            let project = select(single: projects)
+            let project = try select(single: projects)
             projectPath = FilePath.makeAbsolute(project)
             print("")
         } else {

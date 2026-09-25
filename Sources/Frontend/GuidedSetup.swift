@@ -41,7 +41,7 @@ final class GuidedSetup: SetupGuideHelpers {
 
         if projectGuides.count > 1 {
             print(logger.colorize("Select which project to use:", .bold))
-            let kindName = select(single: projectGuides.map(\.projectKindName))
+            let kindName = try select(single: projectGuides.map(\.projectKindName))
             projectGuide_ = projectGuides.first { $0.projectKindName == kindName }
             print("")
         } else if let singleGuide = projectGuides.first {
@@ -50,7 +50,7 @@ final class GuidedSetup: SetupGuideHelpers {
         }
 
         guard let projectGuide = projectGuide_ else {
-            fatalError("Failed to identify project type.")
+            throw PeripheryError.guidedSetupError(message: "Failed to identify a project in the current directory: no Package.swift, Xcode project or workspace, or Bazel module was found")
         }
 
         print(logger.colorize("*", .boldGreen) + " Inspecting project...")
@@ -66,7 +66,7 @@ final class GuidedSetup: SetupGuideHelpers {
 
         if configuration.hasNonDefaultValues {
             print(logger.colorize("\nSave configuration to \(Configuration.defaultConfigurationFile)?", .bold))
-            shouldSave = selectBoolean()
+            shouldSave = try selectBoolean()
 
             if shouldSave {
                 try configuration.save()

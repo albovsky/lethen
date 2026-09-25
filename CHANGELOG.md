@@ -12,6 +12,29 @@
 
 - None.
 
+## 3.8.1 (2026-09-25)
+
+The first lethen release. Lethen is an independent, MIT-licensed fork of Periphery 3.8.0; tags through 3.8.0 are upstream history. This is the last release that supports Swift 6.1 and 6.2; 3.9.0 requires Swift 6.3 (Xcode 26.4).
+
+##### Breaking
+
+- None.
+
+##### Enhancements
+
+- The executable is `lethen`. User-facing messages, the guided setup, the bug report template, and the mise Docker tasks name lethen; the historical upstream guide no longer carries the commercial banner, sponsor material, or upstream images. Existing `.periphery.yml` files, `// periphery:` comment commands, the `PeripheryKit` library, and the `periphery` Bazel module remain supported.
+- The optional update checker reads lethen's releases; development builds are offered newer development releases, stable builds only stable releases.
+- Bazel mode warns when `MODULE.bazel` has no source override for the `periphery` module, and `lethen scan --setup` prints the override snippet for the installed version.
+
+##### Bug Fixes
+
+- Managed SwiftPM scans resolve the active binary directory and enable indexing explicitly, including release builds, so the index store is found on Swift 6.4 / Xcode 27, and a missing store fails with an actionable error. Managed scans rebuild existing products to rule out a stale index; use `--skip-build` with `--index-store-path` for an index you know is current.
+- Generated SwiftUI state projections are connected to their source property, so state used only through its binding is no longer reported as unused.
+- Properties read only by synthesized `Equatable` and `Hashable` conformances are no longer reported as assign-only when a value reaches a comparison.
+- Top-level code in `main.swift` no longer attributes its references to the nearest preceding declaration.
+- The update check no longer crashes the process on Linux after a successful scan.
+- The guided setup reports an error instead of crashing when no project is detected, and fails instead of looping forever when input ends; `--project` on Linux is a usage error; a missing or unparseable Swift toolchain is reported instead of crashing; errors thrown by concurrent indexing jobs are collected safely.
+
 ## 3.8.0 (2026-07-25)
 
 ##### Breaking
