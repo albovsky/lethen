@@ -2,12 +2,19 @@
 import XCTest
 
 final class TestSetupStateTest: XCTestCase {
-    func testSetupStatePreservesErrorAndRecovers() {
-        enum Expected: Error { case failure }
+    func testSetupStateKeepsFirstFailureAndSkipsLaterCaptures() {
+        enum Expected: Error { case first, second }
         let state = TestSetupState()
-        state.capture { throw Expected.failure }
-        XCTAssertThrowsError(try state.check()) { XCTAssertTrue($0 is Expected) }
-        state.capture {}
         XCTAssertNoThrow(try state.check())
+        state.capture { throw Expected.first }
+        var ranLaterCapture = false
+        state.capture {
+            ranLaterCapture = true
+            throw Expected.second
+        }
+        XCTAssertFalse(ranLaterCapture)
+        XCTAssertThrowsError(try state.check()) { error in
+            guard case Expected.first = error else { return XCTFail("Expected the first failure, got: \(error)") }
+        }
     }
 }

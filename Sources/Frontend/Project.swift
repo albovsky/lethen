@@ -59,7 +59,7 @@ final class Project {
                     logger: logger
                 )
             #else
-                fatalError("Xcode projects are not supported on this platform.")
+                throw PeripheryError.usageError("Xcode projects are only supported on macOS. On this platform, scan a Swift package, or use '--bazel' or '--generic-project-config'.")
             #endif
         case .spm:
             return try SPMProjectDriver(configuration: configuration, shell: shell, logger: logger)
