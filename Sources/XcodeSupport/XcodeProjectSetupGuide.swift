@@ -86,14 +86,14 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         ).map(\.self).sorted()
 
         print(logger.colorize("\nSelect the schemes to build:", .bold))
-        print("Periphery will scan all files built by your chosen schemes.")
+        print("Lethen will scan all files built by your chosen schemes.")
         configuration.schemes = select(multiple: schemes).selectedValues
 
         print(logger.colorize("\nDoes this project contain Objective-C code?", .bold))
         let containsObjC = selectBoolean()
 
         if containsObjC {
-            print(logger.colorize("\nPeriphery cannot scan Objective-C code and, as a result, cannot detect Swift types referenced by Objective-C code.", .bold))
+            print(logger.colorize("\nLethen cannot scan Objective-C code and, as a result, cannot detect Swift types referenced by Objective-C code.", .bold))
             print("To avoid false positives, you have a few options:")
             let retainObjcAccessibleOption = logger.colorize("Assume all types accessible from Objective-C are in use:", .bold) + " This includes public NSObject instances (and their subclasses), as well as any types explicitly annotated with @objc. This approach will eliminate false positives but may also result in a lot of missed unused code."
             let retainObjcAnnotationOption = logger.colorize("Assume only types annotated with @objc are in use:", .bold) + " This option may lead to false positives, but they can be easily corrected by adding the necessary @objc annotations."

@@ -3,5 +3,5 @@
 set -e
 
 export DOCKER_CLI_HINTS=false
-docker build -t periphery -f docker/Dockerfile-Bazel .
-docker run --rm -t periphery scan "$@" --bazel --baseline baselines/linux-bazel.json
+docker build -t lethen -f docker/Dockerfile-Bazel .
+docker run --rm -t lethen scan "$@" --bazel --baseline baselines/linux-bazel.json

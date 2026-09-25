@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- User-facing messages, the guided setup, the bug report template, and the mise Docker tasks now name lethen; the historical upstream guide no longer carries the commercial banner, sponsor material, or upstream images.
 
 ##### Bug Fixes
 

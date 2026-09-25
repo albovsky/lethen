@@ -1,37 +1,6 @@
-> [!IMPORTANT]
->
-> Periphery has transitioned from an open-source project to a commercial product. This change will support the continued maintenance of Periphery and the development of more advanced features.
->
-> This repository is preserved as a historical record of the original open-source project and will remain available for anyone who wishes to fork and continue building upon it.
->
-> All existing issues have been migrated to the new [issue tracker](https://github.com/periphery-pro/issues). Please use that repository to browse existing issues or report a new one.
->
-> **[Read more about the transition.](https://periphery.pro/a-new-chapter)**
+# Upstream Periphery guide (historical)
 
-<br>
-
-<details>
-<summary>Click to expand original README</summary>
-
-<h1 align="center">
-  <img src="assets/logo.png" alt="Periphery" height="60" />
-  <br>
-  Periphery
-</h1>
-
-<h4 align="center">A tool to identify unused code in Swift projects.</h4>
-<p align="center"><q><i>Now I am become Delete, the destroyer of codes.</i></q></p>
-
-<p align="center">
-<a href="https://github.com/peripheryapp/periphery/releases/latest">
-<img src="https://img.shields.io/github/release/peripheryapp/periphery.svg?color=008DFF"/></a>
-<img src="https://img.shields.io/badge/platform-macOS%20|%20Linux-008DFF">
-<a href="#sponsors-">
-<img src="https://img.shields.io/github/sponsors/peripheryapp?logo=githubsponsors&color=db61a2">
-</a>
-<br>
-<br>
-</p>
+This is the analysis and usage guide of upstream Periphery 3.8.0, kept for reference. Lethen keeps the same analysis options, configuration keys, and comment commands; substitute `lethen` for `periphery` in commands. The installation, continuous-integration, and build-system sections describe upstream's distribution and are superseded by the [lethen README](../README.md).
 
 ## Contents
 
@@ -58,7 +27,6 @@
 - [Platforms](#platforms)
 - [Troubleshooting](#troubleshooting)
 - [Known Bugs](#known-bugs)
-- [Sponsors](#sponsors-) ![Sponsors](assets/sponsor.svg)
 
 ## Installation
 
@@ -401,17 +369,11 @@ Before setting up Xcode integration, first get Periphery working in a terminal, 
 
 Select your project in the Project Navigator and click the + button at the bottom left of the Targets section. Select **Other** and choose **Aggregate**. Hit Next.
 
-![Step 1](assets/xcode-integration/1.png)
-
 Choose a name for the new target, e.g., "Periphery" or "Unused Code".
-
-![Step 2](assets/xcode-integration/2.png)
 
 ### Step 2: Add a Run Script Build Phase
 
 In the **Build Phases** section, click the + button to add a new Run Script phase.
-
-![Step 3](assets/xcode-integration/3.png)
 
 Copy and paste your Periphery command into the script input.
 
@@ -419,13 +381,9 @@ Copy and paste your Periphery command into the script input.
 > 1. Include the `--format xcode` option to ensure results are always formatted so that Xcode can parse them.
 > 2. Use the absolute path to `periphery`.
 
-![Step 4](assets/xcode-integration/4.png)
-
 ### Step 3: Disable User Script Sandboxing
 
 You must disable **User Script Sandboxing** for the Run Script phase. Periphery requires access to your project's index store and source files, which are blocked by Xcode's default sandbox. To disable sandboxing, set the `ENABLE_USER_SCRIPT_SANDBOXING` option to `No` in the Build Settings for the Periphery aggregate target.
-
-![Step 4](assets/xcode-integration/5.png)
 
 ### Step 4: Select & Run
 
@@ -433,8 +391,6 @@ You're ready to roll. You should now see the new scheme in the dropdown. Select 
 
 > [!TIP]
 > If you'd like others on your team to be able to use the scheme, you'll need to mark it as _Shared_. This can be done by selecting _Manage Schemes..._ and selecting the _Shared_ checkbox next to the new scheme. The scheme definition can now be checked into source control.
-
-![Step 5](assets/xcode-integration/6.png)
 
 ## Excluding Files
 
@@ -585,35 +541,3 @@ Due to some underlying bugs in Swift, Periphery may in some instances report inc
 | [56327](https://github.com/apple/swift/issues/56327) | Index store does not relate objc optional protocol method implemented in subclass |
 | [56189](https://github.com/apple/swift/issues/56189) | Index store should relate appendInterpolation from string literals |
 | [56165](https://github.com/apple/swift/issues/56165) | Index store does not relate constructor via literal notation |
-
-## Sponsors ![Sponsors](assets/sponsor-20.svg)
-
-Periphery is a passion project that takes a huge amount of effort to maintain and develop. If you find Periphery useful, please consider sponsoring through [GitHub Sponsors](https://github.com/sponsors/peripheryapp).
-
-Special thanks go to the following generous sponsors:
-
-### SaGa Corp
-
-[SaGa Corp](https://www.sagacorp.fr) develops unique technology for financial players and their customers.
-
-<a href="https://www.sagacorp.fr" alt="SaGa Corp">
-    <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://github.com/peripheryapp/periphery/raw/master/assets/sponsors/saga-corp-white.svg">
-        <source media="(prefers-color-scheme: light)" srcset="https://github.com/peripheryapp/periphery/raw/master/assets/sponsors/saga-corp-black.svg">
-        <img src="https://github.com/peripheryapp/periphery/raw/master/assets/sponsors/saga-corp-black.svg" width="150">
-    </picture>
-</a>
-
-### Emerge Tools
-
-[Emerge Tools](https://www.emergetools.com) is a suite of revolutionary products designed to supercharge mobile apps and the teams that build them.
-
-<a href="https://www.emergetools.com" alt="Emerge Tools">
-    <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://github.com/peripheryapp/periphery/raw/master/assets/sponsors/emerge-tools-vertical-white.svg">
-        <source media="(prefers-color-scheme: light)" srcset="https://github.com/peripheryapp/periphery/raw/master/assets/sponsors/emerge-tools-vertical-black.svg">
-        <img src="https://github.com/peripheryapp/periphery/raw/master/assets/sponsors/emerge-tools-vertical-black.svg">
-    </picture>
-</a>
-
-</details>
