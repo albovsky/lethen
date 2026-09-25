@@ -34,7 +34,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Add the `export PATH` line to your shell profile to keep it in future sessions. Run `lethen scan --project-root /path/to/your/project --disable-update-check` to scan a project. Project builds may need network access to resolve dependencies. Scanning requires no account, paid plan, or commercial service.
 
-Install prerelease tags manually: the optional update checker uses GitHub's stable `/releases/latest` endpoint and does not discover prereleases.
+Install prerelease tags manually. The optional update checker offers development builds newer development releases, and stable builds only stable releases.
 
 ## Verified combinations
 
