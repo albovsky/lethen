@@ -124,10 +124,12 @@ public final class Xcodebuild {
         // data. If scheme A is built, then the source file modified and then scheme B built, the index store will
         // contain two records for that source file. One reflects the state of the file when scheme A was built, and the
         // other when B was built. We must therefore key the DerivedData path with the full list of schemes being built.
+        // The schemes are sorted so that the key does not depend on the order they were collected in; a `Set` of
+        // schemes iterates in a different order in each process, which used to produce a new path on every run.
 
         let xcodeVersionHash = try version().djb2Hex
         let projectHash = project.name.djb2Hex
-        let schemesHash = Array(schemes).joined().djb2Hex
+        let schemesHash = schemes.sorted().joined().djb2Hex
 
         return try Constants.cachePath().appending("DerivedData-\(xcodeVersionHash)-\(projectHash)-\(schemesHash)")
     }
