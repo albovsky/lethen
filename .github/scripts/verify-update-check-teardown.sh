@@ -9,10 +9,14 @@
 # The check itself is allowed to fail: an unreachable endpoint, a 404, or a rate-limit
 # response all take the same handled error path, so this step fails only if the process
 # dies during teardown.
+#
+# The crash is intermittent — roughly one run in five on Swift 6.1 — so the iteration
+# count is deliberately high enough to make a surviving defect very likely to show up
+# rather than pass by luck.
 set -euo pipefail
 
 binary="${1:-./.build/debug/lethen}"
-iterations="${2:-5}"
+iterations="${2:-15}"
 
 if [ ! -x "$binary" ]; then
     echo "error: lethen binary not found at $binary" >&2
@@ -45,12 +49,20 @@ EOF
 status=0
 for i in $(seq 1 "$iterations"); do
     set +e
-    (cd "$workspace" && "$binary" scan --project-root "$workspace" --quiet > /dev/null 2>&1)
+    (cd "$workspace" && "$binary" scan --project-root "$workspace" --quiet) \
+        > "$workspace/run.log" 2>&1
     exit_code=$?
     set -e
 
     if [ "$exit_code" -ne 0 ]; then
-        echo "iteration $i: scan exited $exit_code with the update check enabled" >&2
+        signal=""
+        if [ "$exit_code" -gt 128 ]; then
+            signal=" (signal $((exit_code - 128)))"
+        fi
+        echo "iteration $i: scan exited $exit_code$signal with the update check enabled" >&2
+        echo "--- output ---" >&2
+        cat "$workspace/run.log" >&2
+        echo "--- end output ---" >&2
         status=1
     else
         echo "iteration $i: ok"
