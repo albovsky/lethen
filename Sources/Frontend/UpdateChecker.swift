@@ -43,20 +43,14 @@ final class UpdateChecker {
     }
 
     deinit {
-        #if canImport(FoundationNetworking)
-        // Never tear the session down on Linux. Invalidating it while a request was in
-        // flight aborted the process with SIGILL, and waiting for the request first only
-        // narrowed the window: CI still caught an intermittent SIGSEGV on Swift 6.1 with
-        // the request already settled. The session is ephemeral and the process exits
-        // immediately after the scan, so leaving it alone costs nothing.
-        #else
-            // Invalidating while a request is still in flight is unsafe, so only tear down a
-            // session we know has settled.
-            let status = status.withLock { $0 }
-            guard !status.didStart || status.didFinish else { return }
+        // Invalidating while a request is still in flight is unsafe, so only tear down a
+        // session we know has settled. On Linux, invalidating a settled session still crashed
+        // intermittently on Swift 6.1; that toolchain is no longer supported, and the
+        // 15-scan teardown check in CI guards the remaining ones.
+        let status = status.withLock { $0 }
+        guard !status.didStart || status.didFinish else { return }
 
-            urlSession.invalidateAndCancel()
-        #endif
+        urlSession.invalidateAndCancel()
     }
 
     private func finish() {
