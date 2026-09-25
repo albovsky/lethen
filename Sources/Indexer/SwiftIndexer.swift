@@ -281,12 +281,15 @@ final class SwiftIndexer: Indexer {
                 }
             }
 
-            associateLatentReferences()
-            associateDanglingReferences()
-            visitDeclarations(using: declarationSyntaxVisitor)
-            let valueUses = ValueUseSyntaxVisitor(locations: SourceLocationBuilder(
+            let locationBuilder = SourceLocationBuilder(
                 file: sourceFile, locationConverter: multiplexingSyntaxVisitor.locationConverter
-            ))
+            )
+            associateLatentReferences()
+            associateDanglingReferences(
+                topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder)
+            )
+            visitDeclarations(using: declarationSyntaxVisitor)
+            let valueUses = ValueUseSyntaxVisitor(locations: locationBuilder)
             valueUses.walk(multiplexingSyntaxVisitor.syntax)
             let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
             for (call, arguments) in valueUses.arguments {
@@ -347,7 +350,7 @@ final class SwiftIndexer: Indexer {
 
         // Swift does not associate some type references with the containing declaration, resulting in references
         // with no clear parent. Property references are one example: https://github.com/apple/swift/issues/56163
-        private func associateDanglingReferences() {
+        private func associateDanglingReferences(topLevelStatements: [ClosedRange<Location>]) {
             guard !danglingReferences.isEmpty else { return }
 
             // Sort declarations to ensure deterministic candidate selection when
@@ -365,6 +368,12 @@ final class SwiftIndexer: Indexer {
             let sortedDeclLines = declsByLine.keys.sorted().reversed()
 
             for ref in danglingReferences {
+                // References from top-level code have no parent declaration by definition. Leaving them unassociated
+                // makes them root references; attributing them to a nearby declaration would hide their uses.
+                if topLevelStatements.contains(where: { $0.contains(ref.location) }) {
+                    continue
+                }
+
                 let sameLineCandidateDecls = declsByLocation[ref.location] ??
                     declsByLine[ref.location.line]
                 var candidateDecls = [Declaration]()

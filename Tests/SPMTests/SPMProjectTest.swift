@@ -16,6 +16,12 @@ final class SPMProjectTest: SPMSourceGraphTestCase {
         assertReferenced(.functionFree("main()"))
     }
 
+    func testTopLevelCodeAfterUnusedGlobal() {
+        assertReferenced(.functionFree("main()"))
+        assertReferenced(.class("PublicCrossModuleReferenced"))
+        assertNotReferenced(.varGlobal("unusedGlobalBeforeTopLevelCode"))
+    }
+
     func testCrossModuleReference() {
         assertReferenced(.class("PublicCrossModuleReferenced"))
         assertNotReferenced(.class("PublicCrossModuleNotReferenced"))
