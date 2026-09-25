@@ -12,10 +12,10 @@ final class DeterminismRegressionTest: XCTestCase {
         return SourceGraph(configuration: configuration, logger: logger)
     }
 
-    private func makeSwiftVersion() -> SwiftVersion {
+    private func makeSwiftVersion() throws -> SwiftVersion {
         let logger = Logger(quiet: true, verbose: false, colorMode: .never)
         let shell = ShellImpl(logger: logger)
-        return SwiftVersion(shell: shell)
+        return try SwiftVersion(shell: shell)
     }
 
     private func makeLocation(_ path: String, module: String, line: Int = 1, column: Int = 1) -> Location {
@@ -136,10 +136,10 @@ final class DeterminismRegressionTest: XCTestCase {
         XCTAssertEqual(base.usrs, ["base_earlier"])
     }
 
-    func testExternalOverrideRetainerRetainsWhenAnyMatchingRelatedReferenceIsExternal() {
+    func testExternalOverrideRetainerRetainsWhenAnyMatchingRelatedReferenceIsExternal() throws {
         let graph = makeGraph()
         let configuration = Configuration()
-        let swiftVersion = makeSwiftVersion()
+        let swiftVersion = try makeSwiftVersion()
 
         let overrideDecl = makeDeclaration(
             kind: .functionMethodInstance,
@@ -180,7 +180,7 @@ final class DeterminismRegressionTest: XCTestCase {
         XCTAssertTrue(graph.isRetained(overrideDecl))
     }
 
-    func testAssetReferenceRetainerHandlesAllMatchingSourcesForClassName() {
+    func testAssetReferenceRetainerHandlesAllMatchingSourcesForClassName() throws {
         let graph = makeGraph()
         let configuration = Configuration()
 
@@ -216,7 +216,7 @@ final class DeterminismRegressionTest: XCTestCase {
         graph.add(xcDataModelRef)
         graph.add(ibRef)
 
-        AssetReferenceRetainer(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
+        try AssetReferenceRetainer(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
 
         XCTAssertTrue(graph.isRetained(classDecl))
         XCTAssertTrue(graph.isRetained(outletDecl))
@@ -224,7 +224,7 @@ final class DeterminismRegressionTest: XCTestCase {
         XCTAssertNil(graph.redundantPublicAccessibility[outletDecl])
     }
 
-    func testProtocolConformanceReferenceBuilderDeterministicallySelectsSuperclassImplementation() {
+    func testProtocolConformanceReferenceBuilderDeterministicallySelectsSuperclassImplementation() throws {
         let graph = makeGraph()
         let configuration = Configuration()
 
@@ -317,7 +317,7 @@ final class DeterminismRegressionTest: XCTestCase {
         graph.add(inheritsLater, from: conformingClass)
         graph.add(inheritsEarlier, from: conformingClass)
 
-        ProtocolConformanceReferenceBuilder(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
+        try ProtocolConformanceReferenceBuilder(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
 
         XCTAssertTrue(requirement.related.contains { $0.usr == "base_widget_b_configure" })
         XCTAssertFalse(requirement.related.contains { $0.usr == "base_widget_a_configure" })
@@ -462,7 +462,7 @@ final class DeterminismRegressionTest: XCTestCase {
 
     // MARK: - AncestralReferenceEliminator with Same-Location Declarations
 
-    func testAncestralReferenceEliminatorWithSameLocationDeclarations() {
+    func testAncestralReferenceEliminatorWithSameLocationDeclarations() throws {
         // Models the real-world scenario: a struct and a macro-generated class exist at
         // the same source location. If a dangling reference (to the struct's own USR) is
         // associated with the struct itself (instead of the class), it becomes a
@@ -513,13 +513,13 @@ final class DeterminismRegressionTest: XCTestCase {
         XCTAssertTrue(graph.hasReferences(to: structDecl))
 
         graph.indexingComplete()
-        AncestralReferenceEliminator(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
+        try AncestralReferenceEliminator(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
 
         // The external reference should survive since it's not a self-reference.
         XCTAssertTrue(graph.hasReferences(to: structDecl))
     }
 
-    func testAncestralReferenceEliminatorRemovesSelfReferences() {
+    func testAncestralReferenceEliminatorRemovesSelfReferences() throws {
         // When a dangling reference is incorrectly associated with the declaration it
         // references (creating a self-reference), AncestralReferenceEliminator correctly
         // removes it. This test verifies the eliminator's behavior is correct — the fix
@@ -551,7 +551,7 @@ final class DeterminismRegressionTest: XCTestCase {
         XCTAssertTrue(graph.hasReferences(to: structDecl))
 
         graph.indexingComplete()
-        AncestralReferenceEliminator(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
+        try AncestralReferenceEliminator(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
 
         // Self-reference should be eliminated, leaving the struct unreferenced.
         XCTAssertFalse(graph.hasReferences(to: structDecl))
@@ -559,7 +559,7 @@ final class DeterminismRegressionTest: XCTestCase {
 
     // MARK: - Protocol Conformance Inversion with Multiple Conformances
 
-    func testProtocolConformanceInversionHandlesMultipleConformances() {
+    func testProtocolConformanceInversionHandlesMultipleConformances() throws {
         // When multiple classes conform to the same protocol, the inversion must
         // process all conformances correctly. Before the batch mutation fix, graph
         // mutations during iteration could cause order-dependent skipping.
@@ -659,7 +659,7 @@ final class DeterminismRegressionTest: XCTestCase {
         graph.add(conformsA, from: classA)
         graph.add(conformsB, from: classB)
 
-        ProtocolConformanceReferenceBuilder(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
+        try ProtocolConformanceReferenceBuilder(graph: graph, configuration: configuration, swiftVersion: makeSwiftVersion()).mutate()
 
         // After inversion, the protocol requirement should reference both implementations.
         XCTAssertTrue(requirement.related.contains { $0.usr == "impl_a_run" })

@@ -7,9 +7,9 @@ public struct SwiftVersion {
     public let version: VersionString
     public let fullVersion: String
 
-    public init(shell: Shell) {
-        fullVersion = try! shell.exec(["swift", "-version"]).trimmed // swiftlint:disable:this force_try
-        version = try! SwiftVersionParser.parse(fullVersion) // swiftlint:disable:this force_try
+    public init(shell: Shell) throws {
+        fullVersion = try shell.exec(["swift", "-version"]).trimmed
+        version = try SwiftVersionParser.parse(fullVersion)
     }
 
     public func validateVersion() throws {
