@@ -117,6 +117,7 @@ swift_library(
         "Shared/PeripheryError.swift",
         "Shared/ProjectKind.swift",
         "Shared/PropertyTypeSanitizer.swift",
+        "Shared/ReleaseVersion.swift",
         "Shared/SetupGuide.swift",
         "Shared/Shell.swift",
         "Shared/SwiftVersion.swift",

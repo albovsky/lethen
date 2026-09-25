@@ -79,25 +79,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        step: ["main-snapshot", "6.3", "6.2", "6.1"]
+        step: ["6.3", "6.2", "6.1"]
         include:
-          - step: "main-snapshot"
-            xcode: "26.4"
-            swiftly: "main-snapshot"
-            continueOnError: true
-            macos: "macos-26"
           - step: "6.3"
             xcode: "26.4"
+            swiftly: ""
             macos: "macos-26"
           - step: "6.2"
             xcode: "26.3.0"
+            swiftly: ""
             macos: "macos-26"
           - step: "6.1"
             xcode: "16.4"
+            swiftly: ""
             macos: "macos-15"
     runs-on: ${{ matrix.macos }}
-    continue-on-error: ${{ matrix.continueOnError == true }}
-    steps:
+    steps: &macos-steps
     - uses: actions/checkout@master
     - name: Select Xcode version
       run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
@@ -151,11 +148,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        swift: ["main-snapshot", "6.3", "6.2", "6.1"]
+        swift: ["6.3", "6.2", "6.1"]
         include:
-          - swift: "main-snapshot"
-            container: "swiftlang/swift:nightly-main"
-            continueOnError: true
           - swift: "6.3"
             container: "swift:6.3"
           - swift: "6.2"
@@ -164,8 +158,7 @@ jobs:
             container: "swift:6.1"
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
-    continue-on-error: ${{ matrix.continueOnError == true }}
-    steps:
+    steps: &linux-steps
     - uses: actions/checkout@master
     - name: Get Swift Version
       id: get-swift-version
@@ -195,3 +188,55 @@ jobs:
       run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 15
     - name: Test
       run: ${{ env.swift_test }}
+  # Nightly toolchains run the same steps but are allowed to fail, so they are separate
+  # jobs outside the required gate below.
+  macOS-nightly:
+    name: macOS (${{ matrix.step }})
+    strategy:
+      fail-fast: false
+      matrix:
+        step: ["main-snapshot"]
+        include:
+          - step: "main-snapshot"
+            xcode: "26.4"
+            swiftly: "main-snapshot"
+            macos: "macos-26"
+    runs-on: ${{ matrix.macos }}
+    continue-on-error: true
+    steps: *macos-steps
+  linux-nightly:
+    name: Linux (${{ matrix.swift }})
+    strategy:
+      fail-fast: false
+      matrix:
+        swift: ["main-snapshot"]
+        include:
+          - swift: "main-snapshot"
+            container: "swiftlang/swift:nightly-main"
+    runs-on: ubuntu-latest
+    container: ${{ matrix.container }}
+    continue-on-error: true
+    steps: *linux-steps
+  required:
+    # The single check branch protection requires. `needs` holds each dependency's latest
+    # result, including across partial reruns, and a matrix job succeeds only if all of its
+    # entries do. The gate fails unless every expected dependency is present and succeeded.
+    name: Required checks
+    if: always()
+    needs: [swift-6-4, lint, bazel, macOS, linux]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+    - name: Verify job results
+      env:
+        NEEDS: ${{ toJSON(needs) }}
+        # Keep in sync with `needs` above; a mismatch fails the gate.
+        EXPECTED: '["bazel", "linux", "lint", "macOS", "swift-6-4"]'
+      run: |
+        echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"'
+
+        if ! echo "$NEEDS" | jq -e --argjson expected "$EXPECTED" \
+          '(keys | sort) == ($expected | sort) and all(.[]; .result == "success")' > /dev/null; then
+          echo "::error::Every required job must be present and succeed."
+          exit 1
+        fi
