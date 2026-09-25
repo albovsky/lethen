@@ -109,9 +109,14 @@ The macOS 6.3 test step went from 494 s of wall time originally to 265 s, while 
 suite grew from 324 to 331 tests. The Xcode fixture cache missed on this first run and
 was saved for the next.
 
-The full suite passed locally on Swift 6.4 / Xcode 27 with the memoization: 331 tests,
-0 failures, 0 skips (22 XcodeTests, 14 SPMTests, 254 PeripheryTests, 41
-AccessibilityTests).
+Local validation of the Phase 2 branch at commit `5b52710` (the #10 head after the
+rebase onto the #9 merge): `swift build --product lethen` followed by `swift test`,
+default debug configuration, on arm64 macOS 27.0 (26A428), Xcode 27.0 (27A266a), Apple
+Swift 6.4 (swiftlang-6.4.0.34.1). 336 tests passed with 0 failures and 0 skips: 22
+XcodeTests, 14 SPMTests, 259 PeripheryTests, 41 AccessibilityTests. The count is five
+higher than on the earlier hosted runs because #5 added BazelModuleOverrideTest to
+master in between. Hosted evidence for the same changes is in the runs cited above and
+in the `swift-6.4-evidence` artifact each Swift 6.4 job uploads.
 
 ## Phase 3: self-hosted macOS runner
 
