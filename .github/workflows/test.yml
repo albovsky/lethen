@@ -187,6 +187,6 @@ jobs:
     - name: Scan
       run: ${{ env.periphery_scan }} --baseline baselines/linux.json
     - name: Verify update check teardown
-      run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 5
+      run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 15
     - name: Test
       run: ${{ env.swift_test }}
