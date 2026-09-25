@@ -235,25 +235,6 @@ jobs:
       # Xcode targets on macOS, so this check needs a macOS toolchain. Once is enough.
       if: matrix.step == '6.3'
       run: ruby .mise/tasks/scripts/gen_bazel_rules.rb && git diff --quiet --exit-code -- Sources/BUILD.bazel
-  macOS-extended:
-    name: macOS
-    needs: changes
-    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.profile != 'pr'
-    strategy:
-      fail-fast: false
-      matrix:
-        step: ["6.2", "6.1"]
-        include:
-          - step: "6.2"
-            xcode: "26.3.0"
-            swiftly: ""
-            macos: "macos-26"
-          - step: "6.1"
-            xcode: "16.4"
-            swiftly: ""
-            macos: "macos-15"
-    runs-on: ${{ matrix.macos }}
-    steps: *macos-steps
   linux:
     name: Linux
     needs: changes
@@ -261,14 +242,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        swift: ["6.3", "6.2", "6.1"]
+        swift: ["6.3"]
         include:
           - swift: "6.3"
             container: "swift:6.3"
-          - swift: "6.2"
-            container: "swift:6.2"
-          - swift: "6.1"
-            container: "swift:6.1"
     runs-on: ubuntu-latest
     container: ${{ matrix.container }}
     steps: &linux-steps
@@ -362,7 +339,7 @@ jobs:
     # profile calls for: success when it was meant to run, skipped when it was not.
     name: Required checks
     if: always()
-    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, macOS-extended, linux]
+    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, linux]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -373,7 +350,7 @@ jobs:
         CODE: ${{ needs.changes.outputs.code }}
         # Keep in sync with `needs` above; a mismatch fails the gate.
         CORE: '["changes", "swift-6-4", "lint", "bazel", "macOS", "linux"]'
-        EXTENDED: '["bazel-extended", "macOS-extended"]'
+        EXTENDED: '["bazel-extended"]'
       run: |
         echo "profile=$PROFILE code=$CODE"
         echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"'

@@ -1904,11 +1904,6 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     }
 
     func testRetainsInitializerCalledOnTypeAlias() throws {
-        // Resolved by https://github.com/swiftlang/swift/commit/178d6c315dcce9d1110bb23ad905dffaf28c2c3b
-        guard Self.swiftVersion.version.isVersion(greaterThan: "6.2.4") else {
-            return
-        }
-
         try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass219")) {
                 self.assertReferenced(.functionConstructor("init(foo:)"))

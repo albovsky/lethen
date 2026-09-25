@@ -41,12 +41,10 @@ Install prerelease tags manually. The optional update checker offers development
 | Build toolchain | Scanned projects / engine | Host | Evidence |
 | --- | --- | --- | --- |
 | Swift 6.4 / Xcode 27.0 | SwiftPM default swiftbuild and native; Xcode fixtures | arm64 macOS 27.0 | [baseline tests and scan comparisons](docs/validation/swift-6.4-xcode-27.md) |
-| Swift 6.1.2 / Xcode 16.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 15.7.9 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543997) |
-| Swift 6.2.4 / Xcode 26.3.0 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543962) |
 | Swift 6.3.1 / Xcode 26.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543959) |
-| Swift 6.1.3 / 6.2.4 / 6.3.3 | SwiftPM default/native | Linux x86_64, official Swift containers | [CI details](docs/validation/swift-6.4-xcode-27.md#verified-combinations) |
+| Swift 6.3.3 | SwiftPM default/native | Linux x86_64, official Swift containers | [CI details](docs/validation/swift-6.4-xcode-27.md#verified-combinations) |
 
-These checks establish specific combinations, not every Swift 6.x or macOS 15+ environment. Intel macOS and running a Swift 6.4-built binary on macOS 15 are unverified. Bazel's existing macOS/Linux build-and-scan jobs pass; independent Bazel distribution is not configured.
+These checks establish specific combinations, not every Swift 6.x or macOS 15+ environment. The minimum toolchain is Swift 6.3 (Xcode 26.4): lethen supports the current Xcode major and the final release of the previous major, the Swift toolchains they ship, and the same Swift minors on Linux through the official containers. Intel macOS and running a Swift 6.4-built binary on macOS 15 are unverified. Bazel's existing macOS/Linux build-and-scan jobs pass; independent Bazel distribution is not configured.
 
 Existing `.periphery.yml` configuration files, `// periphery:ignore` comments, and the `PeripheryKit` library name remain supported. The executable is `lethen`. The inherited Bazel module and target names remain `periphery` for now; independent Bazel distribution is not yet configured.
 

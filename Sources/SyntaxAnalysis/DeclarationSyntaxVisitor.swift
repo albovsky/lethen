@@ -27,7 +27,6 @@ public final class DeclarationSyntaxVisitor: PeripherySyntaxVisitor {
 
     private let sourceLocationBuilder: SourceLocationBuilder
     private let typeSyntaxInspector: TypeSyntaxInspector
-    private let swiftVersion: SwiftVersion
     private(set) var results: [Result] = []
 
     public var resultsByLocation: [Location: Result] {
@@ -36,9 +35,9 @@ public final class DeclarationSyntaxVisitor: PeripherySyntaxVisitor {
         }
     }
 
-    public init(sourceLocationBuilder: SourceLocationBuilder, swiftVersion: SwiftVersion) {
+    public init(sourceLocationBuilder: SourceLocationBuilder, swiftVersion _: SwiftVersion) {
+        // swiftVersion is not used in this visitor but is required by the protocol
         self.sourceLocationBuilder = sourceLocationBuilder
-        self.swiftVersion = swiftVersion
         typeSyntaxInspector = .init(sourceLocationBuilder: sourceLocationBuilder)
     }
 
@@ -119,16 +118,9 @@ public final class DeclarationSyntaxVisitor: PeripherySyntaxVisitor {
         if let memberType = node.extendedType.as(MemberTypeSyntax.self) {
             position = memberType.name.positionAfterSkippingLeadingTrivia
         } else if let identifierType = node.extendedType.as(IdentifierTypeSyntax.self),
-                  let genericArgumentClause = identifierType.genericArgumentClause
+                  identifierType.genericArgumentClause != nil
         {
-            if swiftVersion.version.isVersion(lessThanOrEqualTo: "6.2.4") {
-                // Swift <= 6.2.4: Generic protocol extensions in the form `extension Foo<Type>` have incorrect locations
-                // in the index store. This results in syntax metadata not being applied to the declaration due to the
-                // location mismatch. To workaround this, parse this node with the incorrect location.
-                position = genericArgumentClause.rightAngle.positionAfterSkippingLeadingTrivia
-            } else {
-                position = identifierType.name.positionAfterSkippingLeadingTrivia
-            }
+            position = identifierType.name.positionAfterSkippingLeadingTrivia
         }
 
         parse(

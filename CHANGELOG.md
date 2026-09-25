@@ -2,7 +2,7 @@
 
 ##### Breaking
 
-- None.
+- The minimum supported Swift version is now 6.3 (Xcode 26.4). Lethen supports the current Xcode major and the final release of the previous major.
 
 ##### Enhancements
 
