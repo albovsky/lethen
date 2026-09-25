@@ -4,6 +4,16 @@ on:
     branches:
       - master
   pull_request: {}
+  schedule:
+    # Nightly toolchains and the full stable matrix, once a day at 03:00 UTC.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Which jobs to run (see .github/scripts/plan-ci.sh)
+        type: choice
+        options: [nightly, master, pr]
+        default: nightly
 env:
   MISE_EXPERIMENTAL: 1
   swift_package_resolve: swift package resolve
@@ -15,8 +25,34 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 jobs:
+  # Hosted macOS runs at most five jobs at once for the whole account, so pull requests
+  # only build the newest stable toolchain per platform (`pr` profile). Pushes to master
+  # run every stable toolchain (`master`), and the nightly schedule adds the main-snapshot
+  # toolchains (`nightly`). Snapshot toolchains are informational and allowed to fail,
+  # so they never run on pushes or pull requests. Documentation-only changes skip the
+  # build jobs entirely.
+  changes:
+    name: Plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      profile: ${{ steps.plan.outputs.profile }}
+      code: ${{ steps.plan.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          INPUT_PROFILE: ${{ inputs.profile }}
+        run: bash .github/scripts/plan-ci.sh
   swift-6-4:
     name: Swift 6.4 / Xcode 27
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: xcode-27
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
@@ -33,66 +69,84 @@ jobs:
           path: .validation/
           include-hidden-files: true
   lint:
-    runs-on: macos-26
     name: Lint
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    # Formatting, SwiftLint and buildifier need no Apple toolchain, so this runs on
+    # Linux and stays out of the macOS queue. The generated Bazel rules are checked in
+    # the macOS job because the generator needs the macOS package manifest.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-version: 1.x
+          bazelisk-cache: true
+          repository-cache: true
       - uses: jdx/mise-action@v3
         with:
           cache: false
       - run: mise run lint-ci
-      - name: Check generated Bazel rules
-        run: mise r gen-bazel-rules && git diff --quiet --exit-code
   bazel:
-      name: Bazel (${{ matrix.bazel }}, ${{ matrix.os }})
-      strategy:
-        fail-fast: false
-        matrix:
-          bazel: [8.x, 9.x]
-          os: [macOS, Linux]
-          include:
-            - os: macOS
-              runs-on: macos-26
-              baseline: bazel.json
-            - os: Linux
-              runs-on: ubuntu-latest
-              container: swift:latest
-              cc: clang
-              baseline: linux-bazel.json
-      runs-on: ${{ matrix.runs-on }}
-      container: ${{ matrix.container }}
-      env:
-        USE_BAZEL_VERSION: ${{ matrix.bazel }}
-        CC: ${{ matrix.cc }}
-      steps:
-        - uses: actions/checkout@master
-        - uses: bazel-contrib/setup-bazel@0.15.0
-          with:
-            bazelisk-version: 1.x
-            bazelisk-cache: true
-            disk-cache: bazel-${{ matrix.os }}-${{ matrix.bazel }}
-            repository-cache: true
-        - name: Scan
-          run: bazel run //:periphery -- scan --bazel --quiet --strict --disable-update-check --baseline baselines/${{ matrix.baseline }}
-  macOS:
-    name: macOS
+    name: Bazel (${{ matrix.bazel }}, ${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
-        step: ["6.3", "6.2", "6.1"]
+        bazel: [9.x]
+        os: [macOS, Linux]
+        include: &bazel-platforms
+          - os: macOS
+            runs-on: macos-26
+            baseline: bazel.json
+          - os: Linux
+            runs-on: ubuntu-latest
+            container: swift:latest
+            cc: clang
+            baseline: linux-bazel.json
+    runs-on: ${{ matrix.runs-on }}
+    container: ${{ matrix.container }}
+    env: &bazel-env
+      USE_BAZEL_VERSION: ${{ matrix.bazel }}
+      CC: ${{ matrix.cc }}
+    steps: &bazel-steps
+      - uses: actions/checkout@master
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-version: 1.x
+          bazelisk-cache: true
+          disk-cache: bazel-${{ matrix.os }}-${{ matrix.bazel }}
+          repository-cache: true
+      - name: Scan
+        run: bazel run //:periphery -- scan --bazel --quiet --strict --disable-update-check --baseline baselines/${{ matrix.baseline }}
+  bazel-extended:
+    name: Bazel (${{ matrix.bazel }}, ${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.profile != 'pr'
+    strategy:
+      fail-fast: false
+      matrix:
+        bazel: [8.x]
+        os: [macOS, Linux]
+        include: *bazel-platforms
+    runs-on: ${{ matrix.runs-on }}
+    container: ${{ matrix.container }}
+    env: *bazel-env
+    steps: *bazel-steps
+  macOS:
+    name: macOS
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        step: ["6.3"]
         include:
           - step: "6.3"
             xcode: "26.4"
             swiftly: ""
             macos: "macos-26"
-          - step: "6.2"
-            xcode: "26.3.0"
-            swiftly: ""
-            macos: "macos-26"
-          - step: "6.1"
-            xcode: "16.4"
-            swiftly: ""
-            macos: "macos-15"
     runs-on: ${{ matrix.macos }}
     steps: &macos-steps
     - uses: actions/checkout@master
@@ -111,7 +165,12 @@ jobs:
         echo "SWIFTLY_BIN_DIR=$SWIFTLY_BIN_DIR" >> "$GITHUB_ENV"
     - name: Install Swift (Swiftly)
       if: ${{ matrix.swiftly }}
-      run: swiftly install ${{ matrix.swiftly }} --use
+      run: |
+        swiftly install ${{ matrix.swiftly }} --use
+        # Since swiftly 1.2.0 its proxies export TOOLCHAINS, which reaches the
+        # xcodebuild calls in XcodeTests and breaks package manifest linking.
+        # Call the toolchain directly so xcodebuild keeps the selected Xcode.
+        echo "$(swiftly use --print-location)/usr/bin" >> "$GITHUB_PATH"
     - name: Get Swift Version
       id: get-swift-version
       run: |
@@ -138,8 +197,34 @@ jobs:
       run: ${{ env.periphery_scan }} ${{ matrix.baseline && format('--baseline baselines/{0}', matrix.baseline) || '' }}
     - name: Test
       run: ${{ env.swift_test }}
+    - name: Check generated Bazel rules
+      # The generator reads `swift package describe`, whose manifest only includes the
+      # Xcode targets on macOS, so this check needs a macOS toolchain. Once is enough.
+      if: matrix.step == '6.3'
+      run: ruby .mise/tasks/scripts/gen_bazel_rules.rb && git diff --quiet --exit-code -- Sources/BUILD.bazel
+  macOS-extended:
+    name: macOS
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.profile != 'pr'
+    strategy:
+      fail-fast: false
+      matrix:
+        step: ["6.2", "6.1"]
+        include:
+          - step: "6.2"
+            xcode: "26.3.0"
+            swiftly: ""
+            macos: "macos-26"
+          - step: "6.1"
+            xcode: "16.4"
+            swiftly: ""
+            macos: "macos-15"
+    runs-on: ${{ matrix.macos }}
+    steps: *macos-steps
   linux:
     name: Linux
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -183,10 +268,12 @@ jobs:
       run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 15
     - name: Test
       run: ${{ env.swift_test }}
-  # Nightly toolchains run the same steps but are allowed to fail, so they are separate
-  # jobs outside the required gate below.
+  # Nightly toolchains run the same steps but are allowed to fail, so they only run on the
+  # nightly profile and stay outside the required gate below.
   macOS-nightly:
     name: macOS (${{ matrix.step }})
+    needs: changes
+    if: needs.changes.outputs.profile == 'nightly'
     strategy:
       fail-fast: false
       matrix:
@@ -201,6 +288,8 @@ jobs:
     steps: *macos-steps
   linux-nightly:
     name: Linux (${{ matrix.swift }})
+    needs: changes
+    if: needs.changes.outputs.profile == 'nightly'
     strategy:
       fail-fast: false
       matrix:
@@ -215,23 +304,37 @@ jobs:
   required:
     # The single check branch protection requires. `needs` holds each dependency's latest
     # result, including across partial reruns, and a matrix job succeeds only if all of its
-    # entries do. The gate fails unless every expected dependency is present and succeeded.
+    # entries do. Every expected dependency must be present with exactly the result the
+    # profile calls for: success when it was meant to run, skipped when it was not.
     name: Required checks
     if: always()
-    needs: [swift-6-4, lint, bazel, macOS, linux]
+    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, macOS-extended, linux]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
     - name: Verify job results
       env:
         NEEDS: ${{ toJSON(needs) }}
+        PROFILE: ${{ needs.changes.outputs.profile }}
+        CODE: ${{ needs.changes.outputs.code }}
         # Keep in sync with `needs` above; a mismatch fails the gate.
-        EXPECTED: '["bazel", "linux", "lint", "macOS", "swift-6-4"]'
+        CORE: '["changes", "swift-6-4", "lint", "bazel", "macOS", "linux"]'
+        EXTENDED: '["bazel-extended", "macOS-extended"]'
       run: |
+        echo "profile=$PROFILE code=$CODE"
         echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"'
 
-        if ! echo "$NEEDS" | jq -e --argjson expected "$EXPECTED" \
-          '(keys | sort) == ($expected | sort) and all(.[]; .result == "success")' > /dev/null; then
-          echo "::error::Every required job must be present and succeed."
+        if ! echo "$NEEDS" | jq -e --argjson core "$CORE" --argjson extended "$EXTENDED" \
+          --arg code "$CODE" --arg profile "$PROFILE" '
+          def expected($job):
+            if $job == "changes" then "success"
+            elif ($core | index($job)) != null then
+              (if $code == "true" then "success" else "skipped" end)
+            else
+              (if $code == "true" and $profile != "pr" then "success" else "skipped" end)
+            end;
+          (keys | sort) == (($core + $extended) | sort)
+            and all(to_entries[]; .value.result == expected(.key))' > /dev/null; then
+          echo "::error::Every required job must be present with the result its profile expects."
           exit 1
         fi
