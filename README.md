@@ -50,6 +50,22 @@ These checks establish specific combinations, not every Swift 6.x or macOS 15+ e
 
 Existing `.periphery.yml` configuration files, `// periphery:ignore` comments, and the `PeripheryKit` library name remain supported. The executable is `lethen`. The inherited Bazel module and target names remain `periphery` for now; independent Bazel distribution is not yet configured.
 
+### Bazel
+
+Bazel mode runs the scanner from the `periphery` module in your `MODULE.bazel`. The Bazel Central Registry's `periphery` module is upstream Periphery, not lethen, so a plain `bazel_dep` scans without lethen's fixes. Override the module to build it from lethen's source, using the tag you installed:
+
+```starlark
+bazel_dep(name = "periphery", dev_dependency = True)
+git_override(
+    module_name = "periphery",
+    remote = "https://github.com/albovsky/lethen.git",
+    tag = "3.8.1-dev.1",
+)
+use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphery_generated")
+```
+
+`lethen scan --setup` prints this snippet for your installed version, and `lethen scan --bazel` warns when `MODULE.bazel` has no source override for `periphery`.
+
 See the [historical upstream guide](docs/UPSTREAM-README.md) for analysis options and concepts. Its installation, release, sponsorship, and support links describe upstream Periphery, not lethen; substitute `lethen` for CLI invocations.
 
 ## Development
