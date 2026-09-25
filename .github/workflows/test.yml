@@ -60,6 +60,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Get Swift Version
+        run: |
+          swift_version=$(swift -version | head -n 1 | sed s/,//)
+          echo "$swift_version"
+          echo "SWIFT_VERSION=${swift_version}" >> "$GITHUB_ENV"
+      # Both caches use exact keys with no fallback: the baseline either starts from the
+      # products this exact dependency set and fixture set produced under this toolchain,
+      # or from nothing. The strict self-scan still performs its own managed clean build.
+      - name: Cache resolved dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            Package.resolved
+          key: ${{ runner.os }}-27.0-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-spm-deps-${{ hashFiles('Package.swift', 'Package.resolved') }}
+      - name: Cache Xcode fixture builds
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/com.github.peripheryapp
+          key: ${{ runner.os }}-27.0-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-xcode-fixtures-${{ hashFiles('Tests/XcodeTests/**', 'Sources/XcodeSupport/**') }}
       - name: Verify baseline
         run: bash .github/scripts/verify-swift-6.4.sh
       - uses: actions/upload-artifact@v4
@@ -88,7 +108,9 @@ jobs:
           cache: false
       - run: mise run lint-ci
   bazel:
-    name: Bazel (${{ matrix.bazel }}, ${{ matrix.os }})
+    # Job names stay static: GitHub appends the matrix values itself, and a skipped matrix
+    # job would otherwise show its name with the expressions unexpanded.
+    name: Bazel
     needs: changes
     if: needs.changes.outputs.code == 'true'
     strategy:
@@ -121,7 +143,7 @@ jobs:
       - name: Scan
         run: bazel run //:periphery -- scan --bazel --quiet --strict --disable-update-check --baseline baselines/${{ matrix.baseline }}
   bazel-extended:
-    name: Bazel (${{ matrix.bazel }}, ${{ matrix.os }})
+    name: Bazel
     needs: changes
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.profile != 'pr'
     strategy:
@@ -191,12 +213,23 @@ jobs:
     - name: Resolve dependencies
       if: steps.cache-resolved-dependencies.outputs.cache-hit != 'true'
       run: ${{ env.swift_package_resolve }}
+    - name: Cache Xcode fixture builds
+      # XcodeTests build the UIKit and SwiftUI fixture projects with xcodebuild into the
+      # lethen cache directory. The exact key has no fallback, so any fixture or Xcode
+      # change rebuilds from scratch and a restored build is always the one these sources
+      # produced.
+      uses: actions/cache@v4
+      with:
+        path: ~/Library/Caches/com.github.peripheryapp
+        key: ${{ runner.os }}-${{ matrix.xcode }}-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-xcode-fixtures-${{ hashFiles('Tests/XcodeTests/**', 'Sources/XcodeSupport/**') }}
     - name: Build
       run: ${{ env.swift_build }}
-    - name: Scan
-      run: ${{ env.periphery_scan }} ${{ matrix.baseline && format('--baseline baselines/{0}', matrix.baseline) || '' }}
+    # Test runs before Scan so it extends the cached incremental build. The scan's managed
+    # clean build would otherwise force `swift test` to recompile the whole tree.
     - name: Test
       run: ${{ env.swift_test }}
+    - name: Scan
+      run: ${{ env.periphery_scan }} ${{ matrix.baseline && format('--baseline baselines/{0}', matrix.baseline) || '' }}
     - name: Check generated Bazel rules
       # The generator reads `swift package describe`, whose manifest only includes the
       # Xcode targets on macOS, so this check needs a macOS toolchain. Once is enough.
@@ -262,16 +295,18 @@ jobs:
       run: ${{ env.swift_package_resolve }}
     - name: Build
       run: ${{ env.swift_build }}
-    - name: Scan
-      run: ${{ env.periphery_scan }} --baseline baselines/linux.json
     - name: Verify update check teardown
       run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 15
+    # Test runs before Scan so it extends the cached incremental build. The scan's managed
+    # clean build would otherwise force `swift test` to recompile the whole tree.
     - name: Test
       run: ${{ env.swift_test }}
+    - name: Scan
+      run: ${{ env.periphery_scan }} --baseline baselines/linux.json
   # Nightly toolchains run the same steps but are allowed to fail, so they only run on the
   # nightly profile and stay outside the required gate below.
   macOS-nightly:
-    name: macOS (${{ matrix.step }})
+    name: macOS nightly
     needs: changes
     if: needs.changes.outputs.profile == 'nightly'
     strategy:
@@ -287,7 +322,7 @@ jobs:
     continue-on-error: true
     steps: *macos-steps
   linux-nightly:
-    name: Linux (${{ matrix.swift }})
+    name: Linux nightly
     needs: changes
     if: needs.changes.outputs.profile == 'nightly'
     strategy:
