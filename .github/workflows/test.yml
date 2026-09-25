@@ -336,6 +336,25 @@ jobs:
     container: ${{ matrix.container }}
     continue-on-error: true
     steps: *linux-steps
+  prune-caches:
+    # Caches saved by merged or closed pull requests and deleted branches are never
+    # restored again, but they count against the 10 GB repository quota until GitHub
+    # evicts them, and eviction is least-recently-used across the whole repository, so
+    # live caches go with them and warm jobs turn cold at random. This runs nightly, and
+    # on manual runs so it can be exercised from a branch.
+    name: Prune caches
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash .github/scripts/prune-caches.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
   required:
     # The single check branch protection requires. `needs` holds each dependency's latest
     # result, including across partial reruns, and a matrix job succeeds only if all of its
