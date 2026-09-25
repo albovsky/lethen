@@ -16,6 +16,7 @@ job being created and starting, run time the gap between starting and completing
 | Longest job on a pull request | macOS main-snapshot, 15 to 20 min, failing | Swift 6.4 / Xcode 27, 8.6 to 13 min |
 | macOS 6.3 job | 13.7 min | 7.3 to 9.8 min |
 | macOS 6.3 test step, wall | 494 s for 71 s of test code | 265 to 315 s for 52 to 65 s of test code |
+| Push to master, wall clock | 41 to 43 min (two runs) | 16 min (run 36152028610, `master` profile, 14 jobs) |
 
 The jobs were never the main problem. Hosted macOS runs at most five jobs at once for the
 whole account, every run scheduled eight of them, and pushes to several branches within a
@@ -76,6 +77,11 @@ Results:
 - Nightly dispatch 36097834781 (`nightly` profile, 16 jobs): every job passed, including
   macOS main-snapshot (23.6 min) for the first time in five runs. Bazel 8.x jobs ran in
   1.0 to 1.1 min with full disk-cache hits (87 on macOS, 69 on Linux, zero compiles).
+
+The first push to `master` after #9 merged (run 36152028610, `master` profile: every
+stable toolchain, Bazel 8.x and 9.x, no snapshots) passed all 14 jobs and the gate in
+16 minutes wall clock, against 41 and 43 minutes for the two baseline pushes. No job
+waited more than 2 minutes for a runner.
 
 ## Phase 2: less time inside each job (#10)
 
