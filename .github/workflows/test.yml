@@ -190,3 +190,30 @@ jobs:
       run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 15
     - name: Test
       run: ${{ env.swift_test }}
+  required:
+    # The single check branch protection requires. It gates on every job except the
+    # continue-on-error nightly toolchains. Per-job results come from the API because
+    # `needs.<job>.result` collapses a whole matrix into one value, which cannot tell an
+    # allowed main-snapshot failure from a real one.
+    name: Required checks
+    if: always()
+    needs: [swift-6-4, lint, bazel, macOS, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+    - name: Verify job results
+      env:
+        GH_TOKEN: ${{ github.token }}
+        JOBS_URL: repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs
+      run: |
+        results=$(gh api --paginate "$JOBS_URL?per_page=100" \
+          --jq '.jobs[] | select(.name != "Required checks") | "\(.conclusion)\t\(.name)"')
+        echo "$results"
+
+        blocking=$(printf '%s\n' "$results" | grep -v 'main-snapshot' | grep -v $'^success\t' || true)
+        if [ -n "$blocking" ]; then
+          echo "::error::Required jobs did not succeed:"
+          echo "$blocking"
+          exit 1
+        fi
