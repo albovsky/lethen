@@ -30,24 +30,25 @@ The intended domain is lethen.sh; repository setup does not register the domain 
 
 ## Reliable scanning follow-up
 
-The local Swift 6.4/Xcode 27 implementation now passes 323 tests across all four targets with no failures or skips: 247 in PeripheryTests, 41 in AccessibilityTests, 22 in XcodeTests, and 13 in SPMTests. Clean/warm/default/native fixture findings match, and the strict clean self-scan passes after removal of an orphaned frontend line-count field. See [the detailed baseline](validation/swift-6.4-xcode-27.md) for the actual index-layout discovery, commands, coverage and compatibility limits. The [Pett audit](validation/pett-audit.md) reviewed 30 findings, fixed seven sampled false positives, verified 11 retained controls, and passed 60 mutation tests. The dedicated hosted baseline is green and required on master. The stable macOS/Linux matrix and all Bazel jobs build, scan, and test cleanly; the one outstanding failure is the Linux update check teardown recorded below, which is confined to Swift 6.1 and does not affect scanning. The versioned source-install gate and final release evidence are recorded in the release notes.
+The local Swift 6.4/Xcode 27 implementation now passes 323 tests across all four targets with no failures or skips: 247 in PeripheryTests, 41 in AccessibilityTests, 22 in XcodeTests, and 13 in SPMTests. Clean/warm/default/native fixture findings match, and the strict clean self-scan passes after removal of an orphaned frontend line-count field. See [the detailed baseline](validation/swift-6.4-xcode-27.md) for the actual index-layout discovery, commands, coverage and compatibility limits. The [Pett audit](validation/pett-audit.md) reviewed 30 findings, fixed seven sampled false positives, verified 11 retained controls, and passed 60 mutation tests. The dedicated hosted baseline is green and required on master. The stable macOS/Linux matrix and all Bazel jobs build, scan, and test cleanly, including the Linux update check teardown check recorded below. The versioned source-install gate and final release evidence are recorded in the release notes.
 
 ## Linux update check teardown
 
-Not resolved. The scan starts a GitHub update request up front, and tearing down its
-`URLSession` aborts the process on Linux after an otherwise successful scan, with correct
-output already written.
+The scan starts a GitHub update request up front, and tearing down its `URLSession`
+aborted the process on Linux after an otherwise successful scan, with correct output
+already written.
 
 `ScanCommand` now waits for the request to settle before reading it, and `deinit` no longer
 invalidates the session on Linux at all. The first of those changes removed the original
 SIGILL but only narrowed the window: CI caught an intermittent SIGSEGV on Swift 6.1 with the
-request already settled, one run in five. Swift 6.2, 6.3, and main-snapshot passed. The
-second change is the current attempt and is unverified — it cannot be reproduced on macOS,
-where the crash does not occur, so Linux CI is the only evidence that counts.
+request already settled, one run in five (run 35492455881). Swift 6.2, 6.3, and
+main-snapshot passed. The crash cannot be reproduced on macOS, so Linux CI is the evidence.
 
 `.github/scripts/verify-update-check-teardown.sh` runs 15 scans with update checks enabled
-and fails the Linux job if any process dies. The iteration count is deliberately high: at the
-observed failure rate, five runs pass by luck often enough to be misleading. A passing Linux
-job is the only thing that should be read as this being fixed.
+and fails the Linux job if any process dies. With the Linux teardown removed, every Linux
+job passed all 15 iterations (run 35493330055, Swift 6.1, 6.2, 6.3, and main-snapshot). At
+the observed one-in-five failure rate, an unfixed build would pass 15 runs by luck about 3%
+of the time, so each further green Linux run strengthens this evidence; a single failure
+reopens it.
 
-CI scan gates pass `--disable-update-check`, so this does not affect scan validation.
+CI scan gates pass `--disable-update-check`, so this never affected scan validation.
