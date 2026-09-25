@@ -126,13 +126,36 @@ in the `swift-6.4-evidence` artifact each Swift 6.4 job uploads.
 
 ## Phase 3: self-hosted macOS runner
 
-Not implemented. It needs a Mac that only the maintainer can provide, and the data after
-Phase 1 and 2 does not justify it yet: a lone pull request with a quiet queue is bounded
-by the Swift 6.4 baseline job at about 13 minutes, and macOS waits only appear when
-several runs overlap. If overlapping runs become the norm, a self-hosted runner removes
-the five-slot ceiling. On a public repository it must be restricted to `master`, the
-nightly schedule and same-repository pull requests, never fork pull requests. Larger
-GitHub-hosted macOS runners are not available on a personal account.
+Evaluated, prototyped and rejected. A workflow-side opt-in was built (#11, closed
+unmerged): a repository variable naming a self-hosted label, used by every macOS job
+except pull requests from forks. It is not safe on a public repository owned by a
+personal account, for these reasons:
+
+- A `pull_request` run executes the workflow file from the pull request itself. A fork
+  can edit `test.yml` to put `runs-on: self-hosted` on any job, and every self-hosted
+  runner carries the default labels `self-hosted`, `macOS` and `ARM64`, so a custom
+  label hides nothing. The fork check in the workflow is text the same pull request can
+  delete.
+- The only remaining gate is the fork-approval setting. Its default covers first-time
+  contributors only, and GitHub notes that anyone with a single merged commit or pull
+  request no longer needs approval. Requiring approval for all external contributors
+  reduces the problem to a human reviewing every fork's workflow diff before each run.
+- The control that would make it a boundary, a runner group restricted to the `master`
+  version of the workflow, exists only for organizations, and runner groups exclude
+  public repositories by default for this reason. GitHub recommends self-hosted runners
+  for private repositories only.
+- Feasibility is also weak: Apple's licence allows two macOS VMs per host, so one Mac
+  gives two ephemeral slots against five hosted ones and pays off only through per-job
+  speed; the matrix needs Xcode 16.4, which needs a macOS 15 image alongside a macOS 26
+  one; GitHub offers no overflow from a self-hosted label back to hosted runners; and the
+  maintainer would own uptime and every macOS, Xcode and runner update.
+
+The data after Phase 1 and 2 does not call for it: a pull request with a quiet queue
+finishes in 10 to 12 minutes, and macOS waits only appear when runs overlap. It becomes
+viable only for a repository in an organization, with a runner group pinned to
+`test.yml@refs/heads/master`, ephemeral VM runners on an isolated network, and approval
+required for all external contributors. Until then, the zero-hardware levers below come
+first. Larger GitHub-hosted macOS runners are not available on a personal account.
 
 ## Re-evaluation
 
