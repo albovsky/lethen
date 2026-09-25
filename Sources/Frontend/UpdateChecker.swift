@@ -18,7 +18,7 @@ final class UpdateChecker {
     private let debugLogger: ContextualLogger
     private let configuration: Configuration
     private let urlSession: URLSession
-    private let latestReleaseURL: URL
+    private let releasesURL: URL
     private var latestVersion: String?
     private let semaphore: DispatchSemaphore
     private var error: Error?
@@ -29,8 +29,10 @@ final class UpdateChecker {
         debugLogger = logger.contextualized(with: "update-check")
         self.configuration = configuration
         let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 10
         urlSession = URLSession(configuration: config)
-        latestReleaseURL = URL(string: "https://api.github.com/repos/albovsky/lethen/releases/latest")!
+        // `/releases/latest` never returns a prerelease, so it cannot see development releases.
+        releasesURL = URL(string: "https://api.github.com/repos/albovsky/lethen/releases?per_page=30")!
         semaphore = DispatchSemaphore(value: 0)
     }
 
@@ -55,7 +57,7 @@ final class UpdateChecker {
         guard !configuration.disableUpdateCheck,
               configuration.outputFormat.supportsAuxiliaryOutput else { return }
 
-        var urlRequest = URLRequest(url: latestReleaseURL)
+        var urlRequest = URLRequest(url: releasesURL)
         urlRequest.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
 
         let task = urlSession.dataTask(with: urlRequest) { [weak self] data, _, error in
@@ -69,8 +71,7 @@ final class UpdateChecker {
             }
 
             guard let jsonData = data,
-                  let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? [AnyHashable: Any],
-                  let tagName = jsonObject["tag_name"] as? String
+                  let releases = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? [[String: Any]]
             else {
                 var json = "N/A"
 
@@ -85,7 +86,7 @@ final class UpdateChecker {
                 return
             }
 
-            latestVersion = tagName
+            latestVersion = Self.latestVersion(in: releases, includingPrereleases: Self.isPrerelease(PeripheryVersion))
             finish()
         }
 
@@ -124,8 +125,13 @@ final class UpdateChecker {
         logger.info("To disable update checks pass the \(boldOption) option to the \(boldScan) command.")
     }
 
-    func wait() -> Result<String, PeripheryError> {
+    /// Waits for the check to finish, returning the latest applicable release, or nil when none is published.
+    func wait() -> Result<String?, PeripheryError> {
         let waitResult = semaphore.wait(timeout: .now() + 60)
+
+        if let error = error as? PeripheryError {
+            return .failure(error)
+        }
 
         if let error {
             return .failure(.underlyingError(error))
@@ -135,10 +141,19 @@ final class UpdateChecker {
             return .failure(PeripheryError.updateCheckError(message: "Timed out while checking for update."))
         }
 
-        if let latestVersion {
-            return .success(latestVersion)
-        }
+        return .success(latestVersion)
+    }
 
-        return .failure(PeripheryError.updateCheckError(message: "Failed to determine latest version."))
+    /// A development build is offered newer development releases; a stable build is offered only stable releases.
+    static func latestVersion(in releases: [[String: Any]], includingPrereleases: Bool) -> String? {
+        releases
+            .filter { $0["draft"] as? Bool != true }
+            .filter { includingPrereleases || $0["prerelease"] as? Bool != true }
+            .compactMap { $0["tag_name"] as? String }
+            .max { $1.isVersion(greaterThan: $0) }
+    }
+
+    static func isPrerelease(_ version: String) -> Bool {
+        version.contains("-")
     }
 }
