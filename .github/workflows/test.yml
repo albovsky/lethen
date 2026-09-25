@@ -39,6 +39,13 @@ jobs:
     outputs:
       profile: ${{ steps.plan.outputs.profile }}
       code: ${{ steps.plan.outputs.code }}
+      # Phase 3: a self-hosted Mac removes the five-job hosted macOS limit. Set the
+      # repository variable LETHEN_MACOS_RUNNER to that runner's label and every macOS job
+      # runs there, except on pull requests from forks, which always stay on hosted runners
+      # so untrusted code never reaches the machine. Empty (the default) keeps hosted
+      # runners. The machine needs the Xcode versions this workflow selects installed as
+      # /Applications/Xcode_<version>.app; see CONTRIBUTING.md.
+      macos_runner: ${{ (vars.LETHEN_MACOS_RUNNER != '' && github.event.pull_request.head.repo.fork != true) && vars.LETHEN_MACOS_RUNNER || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +60,7 @@ jobs:
     name: Swift 6.4 / Xcode 27
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: xcode-27
+    runs-on: ${{ needs.changes.outputs.macos_runner || 'xcode-27' }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
@@ -127,7 +134,7 @@ jobs:
             container: swift:latest
             cc: clang
             baseline: linux-bazel.json
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.os == 'macOS' && needs.changes.outputs.macos_runner || matrix.runs-on }}
     container: ${{ matrix.container }}
     env: &bazel-env
       USE_BAZEL_VERSION: ${{ matrix.bazel }}
@@ -152,7 +159,7 @@ jobs:
         bazel: [8.x]
         os: [macOS, Linux]
         include: *bazel-platforms
-    runs-on: ${{ matrix.runs-on }}
+    runs-on: ${{ matrix.os == 'macOS' && needs.changes.outputs.macos_runner || matrix.runs-on }}
     container: ${{ matrix.container }}
     env: *bazel-env
     steps: *bazel-steps
@@ -169,7 +176,7 @@ jobs:
             xcode: "26.4"
             swiftly: ""
             macos: "macos-26"
-    runs-on: ${{ matrix.macos }}
+    runs-on: ${{ needs.changes.outputs.macos_runner || matrix.macos }}
     steps: &macos-steps
     - uses: actions/checkout@master
     - name: Select Xcode version
@@ -252,7 +259,7 @@ jobs:
             xcode: "16.4"
             swiftly: ""
             macos: "macos-15"
-    runs-on: ${{ matrix.macos }}
+    runs-on: ${{ needs.changes.outputs.macos_runner || matrix.macos }}
     steps: *macos-steps
   linux:
     name: Linux
@@ -318,7 +325,7 @@ jobs:
             xcode: "26.4"
             swiftly: "main-snapshot"
             macos: "macos-26"
-    runs-on: ${{ matrix.macos }}
+    runs-on: ${{ needs.changes.outputs.macos_runner || matrix.macos }}
     continue-on-error: true
     steps: *macos-steps
   linux-nightly:

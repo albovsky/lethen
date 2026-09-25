@@ -126,13 +126,21 @@ in the `swift-6.4-evidence` artifact each Swift 6.4 job uploads.
 
 ## Phase 3: self-hosted macOS runner
 
-Not implemented. It needs a Mac that only the maintainer can provide, and the data after
-Phase 1 and 2 does not justify it yet: a lone pull request with a quiet queue is bounded
-by the Swift 6.4 baseline job at about 13 minutes, and macOS waits only appear when
-several runs overlap. If overlapping runs become the norm, a self-hosted runner removes
-the five-slot ceiling. On a public repository it must be restricted to `master`, the
-nightly schedule and same-repository pull requests, never fork pull requests. Larger
-GitHub-hosted macOS runners are not available on a personal account.
+Implemented as an opt-in in the workflow; the machine itself is the maintainer's to
+provide. The `Plan` job exposes a `macos_runner` output taken from the repository
+variable `LETHEN_MACOS_RUNNER`, and every macOS job (`Swift 6.4 / Xcode 27`, the macOS
+matrix, the macOS Bazel entries and the macOS nightly job) uses that label when it is
+set. Pull requests from forks never use it and stay on hosted runners, so untrusted code
+never reaches the machine. With the variable empty, which is the current state, the
+workflow is unchanged and runs on hosted runners; run 36155445043 and the runs after it
+exercise exactly that path. The self-hosted path is untested until a runner exists.
+
+The data after Phase 1 and 2 does not require it yet: a lone pull request with a quiet
+queue finishes in 10 to 12 minutes, bounded by the macOS 6.3 job, and macOS waits only
+appear when several runs overlap. If overlapping runs become the norm, registering a Mac
+and setting the variable removes the five-slot ceiling without further workflow changes.
+Larger GitHub-hosted macOS runners are not available on a personal account. The runner
+requirements are listed in CONTRIBUTING.md.
 
 ## Re-evaluation
 
