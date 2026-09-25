@@ -28,7 +28,9 @@ jobs:
   # Hosted macOS runs at most five jobs at once for the whole account, so pull requests
   # only build the newest stable toolchain per platform (`pr` profile). Pushes to master
   # run every stable toolchain (`master`), and the nightly schedule adds the main-snapshot
-  # toolchains (`nightly`). Documentation-only changes skip the build jobs entirely.
+  # toolchains (`nightly`). Snapshot toolchains are informational and allowed to fail,
+  # so they never run on pushes or pull requests. Documentation-only changes skip the
+  # build jobs entirely.
   changes:
     name: Plan
     runs-on: ubuntu-latest
@@ -70,8 +72,9 @@ jobs:
     name: Lint
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    # Formatting, SwiftLint, buildifier and the generated Bazel rules need no Apple
-    # toolchain, so this runs on Linux and stays out of the macOS queue.
+    # Formatting, SwiftLint and buildifier need no Apple toolchain, so this runs on
+    # Linux and stays out of the macOS queue. The generated Bazel rules are checked in
+    # the macOS job because the generator needs the macOS package manifest.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
@@ -84,8 +87,6 @@ jobs:
         with:
           cache: false
       - run: mise run lint-ci
-      - name: Check generated Bazel rules
-        run: mise r gen-bazel-rules && git diff --quiet --exit-code
   bazel:
     name: Bazel (${{ matrix.bazel }}, ${{ matrix.os }})
     needs: changes
@@ -196,6 +197,11 @@ jobs:
       run: ${{ env.periphery_scan }} ${{ matrix.baseline && format('--baseline baselines/{0}', matrix.baseline) || '' }}
     - name: Test
       run: ${{ env.swift_test }}
+    - name: Check generated Bazel rules
+      # The generator reads `swift package describe`, whose manifest only includes the
+      # Xcode targets on macOS, so this check needs a macOS toolchain. Once is enough.
+      if: matrix.step == '6.3'
+      run: ruby .mise/tasks/scripts/gen_bazel_rules.rb && git diff --quiet --exit-code -- Sources/BUILD.bazel
   macOS-extended:
     name: macOS
     needs: changes
@@ -320,9 +326,9 @@ jobs:
 
         if ! echo "$NEEDS" | jq -e --argjson core "$CORE" --argjson extended "$EXTENDED" \
           --arg code "$CODE" --arg profile "$PROFILE" '
-          def expected(job):
-            if job == "changes" then "success"
-            elif ($core | index(job)) != null then
+          def expected($job):
+            if $job == "changes" then "success"
+            elif ($core | index($job)) != null then
               (if $code == "true" then "success" else "skipped" end)
             else
               (if $code == "true" and $profile != "pr" then "success" else "skipped" end)

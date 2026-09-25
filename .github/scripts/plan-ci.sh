@@ -6,11 +6,15 @@
 #   pr       pull requests: the newest stable toolchain per platform, so a PR queues
 #            three macOS jobs instead of eight against the five-slot macOS limit
 #   master   pushes to master: every stable toolchain
-#   nightly  schedule and manual runs: the stable matrix plus main-snapshot toolchains
+#   nightly  schedule and manual runs: the stable matrix plus main-snapshot toolchains,
+#            which are informational and therefore never run on pushes or pull requests
 #
 # `code` is false only when every changed file is documentation (`*.md` or `docs/`),
 # in which case the build jobs are skipped and the required gate passes on their
-# skipped results. Whenever the diff cannot be determined, everything runs.
+# skipped results. The diff runs straight from the previous push tip (or the pull
+# request's base) to HEAD without rename detection, so a rewritten push or a source file
+# renamed into documentation still counts as code. Whenever the diff cannot be
+# determined, everything runs.
 #
 # Inputs (environment): GITHUB_EVENT_NAME, and per event PR_BASE_SHA (pull_request),
 # PUSH_BEFORE_SHA (push) or INPUT_PROFILE (workflow_dispatch). Requires full history.
@@ -51,9 +55,8 @@ esac
 
 code=true
 if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] \
-    && git cat-file -e "$base^{commit}" 2> /dev/null \
-    && merge_base="$(git merge-base "$base" HEAD 2> /dev/null)"; then
-    changed="$(git diff --name-only "$merge_base" HEAD)"
+    && git cat-file -e "$base^{commit}" 2> /dev/null; then
+    changed="$(git diff --name-only --no-renames "$base" HEAD)"
     if [ -n "$changed" ]; then
         code=false
         while IFS= read -r file; do
@@ -63,7 +66,7 @@ if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] \
             fi
         done <<< "$changed"
     fi
-    echo "changed files since $merge_base:"
+    echo "changed files from $base to HEAD:"
     printf '  %s\n' $changed
 elif [ -n "$base" ]; then
     echo "base commit $base is unavailable; running every job"
