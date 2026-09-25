@@ -66,7 +66,7 @@ use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphe
 
 `lethen scan --setup` prints this snippet for your installed version, and `lethen scan --bazel` warns when `MODULE.bazel` has no source override for `periphery`.
 
-See the [historical upstream guide](docs/UPSTREAM-README.md) for analysis options and concepts. Its installation, release, and support links describe upstream Periphery, not lethen; substitute `lethen` for CLI invocations.
+See the [user guide](docs/guide.md) for scanning each project type, what every result means and why declarations are retained, comment commands, baselines, output formats, and continuous integration. The [historical upstream guide](docs/UPSTREAM-README.md) is kept for reference.
 
 ## Development
 
