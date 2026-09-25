@@ -37,7 +37,7 @@ public enum PeripheryError: Error, LocalizedError, CustomStringConvertible {
         case let .sourceGraphIntegrityError(message):
             return message
         case let .guidedSetupError(message):
-            return "\(message). Please refer to the documentation for instructions on configuring Periphery manually - https://github.com/peripheryapp/periphery/blob/master/README.md"
+            return "\(message). Please refer to the documentation for instructions on configuring lethen manually - https://github.com/albovsky/lethen#readme"
         case let .updateCheckError(message):
             return message
         case .xcodebuildNotConfigured:
@@ -51,7 +51,7 @@ public enum PeripheryError: Error, LocalizedError, CustomStringConvertible {
         case let .swiftVersionParseError(fullVersion):
             return "Failed to parse Swift version from: \(fullVersion)"
         case let .swiftVersionUnsupportedError(version, minimumVersion):
-            return "This version of Periphery only supports Swift >= \(minimumVersion), you're using \(version)."
+            return "This version of lethen only supports Swift >= \(minimumVersion), you're using \(version)."
         case let .jsonDeserializationError(error, json):
             return "JSON deserialization failed: \(describe(error))\nJSON:\n\(json)"
         case let .indexStoreNotFound(derivedDataPath):

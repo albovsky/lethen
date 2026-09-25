@@ -16,7 +16,7 @@ If you are reporting an incorrect result, please provide a sample Xcode or Swift
 **Environment**
 Copy the output from running:
 ```
-periphery version
+lethen version
 swift -version
 xcodebuild -version
 ```

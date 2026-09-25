@@ -5,8 +5,8 @@ set -euo pipefail
 source "$(dirname "$0")/scripts/helpers.sh"
 
 export DOCKER_CLI_HINTS=false
-docker build -t periphery -f docker/Dockerfile-Linux .
-docker run --name periphery_write_baseline -t periphery scan "$@" --write-baseline /baseline.json
-docker cp periphery_write_baseline:baseline.json ./baselines/linux.json
-docker rm periphery_write_baseline
+docker build -t lethen -f docker/Dockerfile-Linux .
+docker run --name lethen_write_baseline -t lethen scan "$@" --write-baseline /baseline.json
+docker cp lethen_write_baseline:baseline.json ./baselines/linux.json
+docker rm lethen_write_baseline
 format_baseline baselines/linux.json
