@@ -29,6 +29,7 @@ swift_library(
         "SyntaxAnalysis/MultiplexingSyntaxVisitor.swift",
         "SyntaxAnalysis/SourceLOCCounter.swift",
         "SyntaxAnalysis/SourceLocationBuilder.swift",
+        "SyntaxAnalysis/TopLevelStatementLocator.swift",
         "SyntaxAnalysis/TypeSyntaxInspector.swift",
         "SyntaxAnalysis/UnusedParameterAnalyzer.swift",
         "SyntaxAnalysis/UnusedParameterParser.swift",
