@@ -33,6 +33,13 @@ var projectDriverDependencies: [PackageDescription.Target.Dependency] = [
 
 var targets: [PackageDescription.Target] = [
     .executableTarget(
+        name: "LethenCLI",
+        dependencies: [
+            .target(name: "Frontend"),
+            .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        ]
+    ),
+    .target(
         name: "Frontend",
         dependencies: [
             .target(name: "Shared"),
@@ -131,6 +138,8 @@ var targets: [PackageDescription.Target] = [
         dependencies: [
             .target(name: "TestShared"),
             .target(name: "PeripheryKit"),
+            .target(name: "Frontend"),
+            .product(name: "ArgumentParser", package: "swift-argument-parser"),
         ]
     ),
     .testTarget(
@@ -179,7 +188,7 @@ let package = Package(
     name: "Lethen",
     platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "lethen", targets: ["Frontend"]),
+        .executable(name: "lethen", targets: ["LethenCLI"]),
         .library(name: "PeripheryKit", targets: ["PeripheryKit"]),
     ],
     dependencies: dependencies,
