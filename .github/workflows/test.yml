@@ -69,20 +69,20 @@ jobs:
       # products this exact dependency set and fixture set produced under this toolchain,
       # or from nothing. The strict self-scan still performs its own managed clean build.
       - name: Cache resolved dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .build
             Package.resolved
           key: ${{ runner.os }}-27.0-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-spm-deps-${{ hashFiles('Package.swift', 'Package.resolved') }}
       - name: Cache Xcode fixture builds
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/Library/Caches/com.github.peripheryapp
           key: ${{ runner.os }}-27.0-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-xcode-fixtures-${{ hashFiles('Tests/XcodeTests/**', 'Sources/XcodeSupport/**') }}
       - name: Verify baseline
         run: bash .github/scripts/verify-swift-6.4.sh
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: swift-6.4-evidence
@@ -98,12 +98,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: bazel-contrib/setup-bazel@0.15.0
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-version: 1.x
           bazelisk-cache: true
           repository-cache: true
-      - uses: jdx/mise-action@v3
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           cache: false
       - run: mise run lint-ci
@@ -134,7 +134,7 @@ jobs:
       CC: ${{ matrix.cc }}
     steps: &bazel-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: bazel-contrib/setup-bazel@0.15.0
+      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-version: 1.x
           bazelisk-cache: true
@@ -202,7 +202,7 @@ jobs:
       shell: bash
     - name: Cache resolved dependencies
       id: cache-resolved-dependencies
-      uses: actions/cache@v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           .build
@@ -218,7 +218,7 @@ jobs:
       # lethen cache directory. The exact key has no fallback, so any fixture or Xcode
       # change rebuilds from scratch and a restored build is always the one these sources
       # produced.
-      uses: actions/cache@v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/Library/Caches/com.github.peripheryapp
         key: ${{ runner.os }}-${{ matrix.xcode }}-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-xcode-fixtures-${{ hashFiles('Tests/XcodeTests/**', 'Sources/XcodeSupport/**') }}
@@ -261,7 +261,7 @@ jobs:
       shell: bash
     - name: Cache resolved dependencies
       id: cache-resolved-dependencies
-      uses: actions/cache@v4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           .build
