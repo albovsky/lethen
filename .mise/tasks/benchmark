@@ -10,8 +10,8 @@ if [ "$usage_bazel" = "true" ]; then
     bazel build //:periphery
     cmd='bazel-bin/Sources/Frontend_opt scan --config /var/tmp/periphery_bazel/periphery.yml --generic-project-config bazel-bin/external/+generated+periphery_generated/rule/project_config.json'
 else
-    mise r build --arch arm64
-    cmd='./.build/release/lethen scan --quiet --skip-build'
+    executable="$(mise r build --arch arm64)"
+    printf -v cmd '%q scan --quiet --skip-build' "$executable"
 fi
 
 echo $cmd
