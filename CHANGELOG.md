@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- `lethen scan --stats` prints the time spent in each scan phase, the number of Swift files, lines of code, and declarations scanned, and the indexing and analysis throughput. The report goes to standard error, so `json` and `csv` results on standard output stay valid. Lines of code are now counted only for `--stats`; scans without it no longer walk every token to count them and discard the result.
 
 ##### Bug Fixes
 
