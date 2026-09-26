@@ -174,70 +174,7 @@ struct ScanCommand: ParsableCommand {
     private static let defaultConfiguration = Configuration()
 
     func run() throws {
-        if !FileManager.default.changeCurrentDirectoryPath(projectRoot.string) {
-            throw LethenError.changeCurrentDirectoryFailed(projectRoot)
-        }
-
-        let configuration = Configuration()
-
-        if !setup {
-            try configuration.load(from: config)
-        }
-
-        configuration.guidedSetup = setup
-        configuration.projectRoot = projectRoot
-        configuration.apply(\.$project, project)
-        configuration.apply(\.$schemes, schemes)
-        configuration.apply(\.$indexExclude, indexExclude)
-        configuration.apply(\.$reportExclude, reportExclude)
-        configuration.apply(\.$reportInclude, reportInclude)
-        configuration.apply(\.$outputFormat, format)
-        configuration.apply(\.$retainFiles, retainFiles)
-        configuration.apply(\.$retainPublic, retainPublic)
-        configuration.apply(\.$noRetainSPI, noRetainSPI)
-        configuration.apply(\.$retainAssignOnlyProperties, retainAssignOnlyProperties)
-        configuration.apply(\.$retainAssignOnlyPropertyTypes, retainAssignOnlyPropertyTypes)
-        configuration.apply(\.$retainObjcAccessible, retainObjcAccessible)
-        configuration.apply(\.$retainObjcAnnotated, retainObjcAnnotated)
-        configuration.apply(\.$retainUnusedProtocolFuncParams, retainUnusedProtocolFuncParams)
-        configuration.apply(\.$retainSwiftUIPreviews, retainSwiftUIPreviews)
-        configuration.apply(\.$disableRedundantPublicAnalysis, disableRedundantPublicAnalysis)
-        configuration.apply(\.$disableUnusedImportAnalysis, disableUnusedImportAnalysis)
-        configuration.apply(\.$superfluousIgnoreComments, superfluousIgnoreComments)
-        configuration.apply(\.$retainUnusedImportedModules, retainUnusedImportedModules)
-        configuration.apply(\.$externalEncodableProtocols, externalEncodableProtocols)
-        configuration.apply(\.$externalCodableProtocols, externalCodableProtocols)
-        configuration.apply(\.$externalTestCaseClasses, externalTestCaseClasses)
-        configuration.apply(\.$verbose, verbose)
-        configuration.apply(\.$quiet, quiet)
-        configuration.apply(\.$color, noColor ? .never : color)
-        configuration.apply(\.$disableUpdateCheck, disableUpdateCheck)
-        configuration.apply(\.$strict, strict)
-        configuration.apply(\.$indexStorePath, indexStorePath)
-        configuration.apply(\.$skipBuild, skipBuild)
-        configuration.apply(\.$excludeTests, excludeTests)
-        configuration.apply(\.$excludeTargets, excludeTargets)
-        configuration.apply(\.$skipSchemesValidation, skipSchemesValidation)
-        configuration.apply(\.$cleanBuild, cleanBuild)
-        configuration.apply(\.$buildArguments, buildArguments)
-        configuration.apply(\.$relativeResults, relativeResults)
-        configuration.apply(\.$retainCodableProperties, retainCodableProperties)
-        configuration.apply(\.$retainEncodableProperties, retainEncodableProperties)
-        configuration.apply(\.$retainEquatableProperties, retainEquatableProperties)
-        configuration.apply(\.$retainHashableProperties, retainHashableProperties)
-        configuration.apply(\.$jsonPackageManifestPath, jsonPackageManifestPath)
-        configuration.apply(\.$baseline, baseline)
-        configuration.apply(\.$writeBaseline, writeBaseline)
-        configuration.apply(\.$writeResults, writeResults)
-        configuration.apply(\.$genericProjectConfig, genericProjectConfig)
-        configuration.apply(\.$bazel, bazel)
-        configuration.apply(\.$bazelFilter, bazelFilter)
-        configuration.apply(\.$bazelQuery, bazelQuery)
-        configuration.apply(\.$bazelIndexStore, bazelIndexStore)
-        configuration.apply(\.$bazelCheckVisibility, bazelCheckVisibility)
-
-        configuration.buildFilenameMatchers()
-
+        let configuration = try makeConfiguration()
         let logger = Logger(configuration: configuration)
         logger.contextualized(with: "version").debug(LethenVersion)
         let shell = ShellImpl(logger: logger) {
@@ -319,6 +256,76 @@ struct ScanCommand: ParsableCommand {
         if !filteredResults.isEmpty, configuration.strict {
             throw LethenError.foundIssues(count: filteredResults.count)
         }
+    }
+
+    /// Changes into the project root and builds the configuration from the configuration file and the
+    /// command-line options, which take precedence.
+    func makeConfiguration() throws -> Configuration {
+        if !FileManager.default.changeCurrentDirectoryPath(projectRoot.string) {
+            throw LethenError.changeCurrentDirectoryFailed(projectRoot)
+        }
+
+        let configuration = Configuration()
+
+        if !setup {
+            try configuration.load(from: config)
+        }
+
+        configuration.guidedSetup = setup
+        configuration.projectRoot = projectRoot
+        configuration.apply(\.$project, project)
+        configuration.apply(\.$schemes, schemes)
+        configuration.apply(\.$indexExclude, indexExclude)
+        configuration.apply(\.$reportExclude, reportExclude)
+        configuration.apply(\.$reportInclude, reportInclude)
+        configuration.apply(\.$outputFormat, format)
+        configuration.apply(\.$retainFiles, retainFiles)
+        configuration.apply(\.$retainPublic, retainPublic)
+        configuration.apply(\.$noRetainSPI, noRetainSPI)
+        configuration.apply(\.$retainAssignOnlyProperties, retainAssignOnlyProperties)
+        configuration.apply(\.$retainAssignOnlyPropertyTypes, retainAssignOnlyPropertyTypes)
+        configuration.apply(\.$retainObjcAccessible, retainObjcAccessible)
+        configuration.apply(\.$retainObjcAnnotated, retainObjcAnnotated)
+        configuration.apply(\.$retainUnusedProtocolFuncParams, retainUnusedProtocolFuncParams)
+        configuration.apply(\.$retainSwiftUIPreviews, retainSwiftUIPreviews)
+        configuration.apply(\.$disableRedundantPublicAnalysis, disableRedundantPublicAnalysis)
+        configuration.apply(\.$disableUnusedImportAnalysis, disableUnusedImportAnalysis)
+        configuration.apply(\.$superfluousIgnoreComments, superfluousIgnoreComments)
+        configuration.apply(\.$retainUnusedImportedModules, retainUnusedImportedModules)
+        configuration.apply(\.$externalEncodableProtocols, externalEncodableProtocols)
+        configuration.apply(\.$externalCodableProtocols, externalCodableProtocols)
+        configuration.apply(\.$externalTestCaseClasses, externalTestCaseClasses)
+        configuration.apply(\.$verbose, verbose)
+        configuration.apply(\.$quiet, quiet)
+        configuration.apply(\.$color, noColor ? .never : color)
+        configuration.apply(\.$disableUpdateCheck, disableUpdateCheck)
+        configuration.apply(\.$strict, strict)
+        configuration.apply(\.$indexStorePath, indexStorePath)
+        configuration.apply(\.$skipBuild, skipBuild)
+        configuration.apply(\.$excludeTests, excludeTests)
+        configuration.apply(\.$excludeTargets, excludeTargets)
+        configuration.apply(\.$skipSchemesValidation, skipSchemesValidation)
+        configuration.apply(\.$cleanBuild, cleanBuild)
+        configuration.apply(\.$buildArguments, buildArguments)
+        configuration.apply(\.$relativeResults, relativeResults)
+        configuration.apply(\.$retainCodableProperties, retainCodableProperties)
+        configuration.apply(\.$retainEncodableProperties, retainEncodableProperties)
+        configuration.apply(\.$retainEquatableProperties, retainEquatableProperties)
+        configuration.apply(\.$retainHashableProperties, retainHashableProperties)
+        configuration.apply(\.$jsonPackageManifestPath, jsonPackageManifestPath)
+        configuration.apply(\.$baseline, baseline)
+        configuration.apply(\.$writeBaseline, writeBaseline)
+        configuration.apply(\.$writeResults, writeResults)
+        configuration.apply(\.$genericProjectConfig, genericProjectConfig)
+        configuration.apply(\.$bazel, bazel)
+        configuration.apply(\.$bazelFilter, bazelFilter)
+        configuration.apply(\.$bazelQuery, bazelQuery)
+        configuration.apply(\.$bazelIndexStore, bazelIndexStore)
+        configuration.apply(\.$bazelCheckVisibility, bazelCheckVisibility)
+
+        configuration.buildFilenameMatchers()
+
+        return configuration
     }
 
     // MARK: - Private
