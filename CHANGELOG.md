@@ -3,6 +3,7 @@
 ##### Breaking
 
 - The minimum supported Swift version is now 6.3 (Xcode 26.4). Lethen supports the current Xcode major and the final release of the previous major.
+- macOS release binaries and the Homebrew formula are Apple silicon only; the universal macOS binaries provided by upstream Periphery are not provided by lethen. Intel users must build from source within the [supported Xcode 26 window](CONTRIBUTING.md#supported-platforms).
 
 ##### Enhancements
 
@@ -11,7 +12,7 @@
 
 ##### Bug Fixes
 
-- None.
+- The mise build task no longer attempts Intel or universal builds; `--arch release` produces a stripped arm64 binary. The benchmark runs the executable path returned by the build task instead of assuming `.build/release/lethen`. The build uses standard release optimization to avoid ArgumentParser linker failures with explicit cross-module optimization on Xcode 27.
 
 ## 3.8.1 (2026-09-25)
 

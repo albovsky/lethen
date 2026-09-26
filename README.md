@@ -18,6 +18,8 @@ The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passi
 
 ## Install
 
+macOS release binaries and Homebrew are Apple silicon only. See [Supported platforms](CONTRIBUTING.md#supported-platforms) for the Intel source-build support window.
+
 On Apple silicon Macs running macOS 15 or later, install the signed and notarized binary with Homebrew:
 
 ```sh
@@ -26,6 +28,21 @@ lethen version
 ```
 
 Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. The same binary is attached to each [release](https://github.com/albovsky/lethen/releases) as `lethen-<version>-macos-arm64.zip`, with a `SHA256SUMS` file.
+
+### Download the macOS zip
+
+Download [lethen-3.8.1-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.8.1/lethen-3.8.1-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.8.1/SHA256SUMS) into the same directory, then run there:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+ditto -x -k lethen-3.8.1-macos-arm64.zip lethen-3.8.1
+mkdir -p "$HOME/.local/bin"
+install -m 755 lethen-3.8.1/lethen "$HOME/.local/bin/lethen"
+export PATH="$HOME/.local/bin:$PATH"
+lethen version
+```
+
+Keep the PATH export in your shell profile.
 
 ### Linux
 
@@ -75,7 +92,7 @@ Install prerelease tags manually. The optional update checker offers development
 | Swift 6.3 and 6.4 | SwiftPM default/native | Linux x86_64, official Swift containers | `Linux` job of the [Test workflow](.github/workflows/test.yml), required on every pull request |
 | 3.8.1 release binary, built with Xcode 26.4 | Generated SwiftPM package (smoke scan) | arm64 macOS 26 runner (`macos-26-arm64` 20260907); arm64 macOS 27.0 with Xcode 27.0 via Homebrew | [release run](https://github.com/albovsky/lethen/actions/runs/36205533865) |
 
-These checks establish specific combinations, not every Swift 6.x or macOS 15+ environment. Intel macOS, running a Swift 6.4-built binary on macOS 15, and running the release binary on macOS 15 are unverified. Bazel's existing macOS/Linux build-and-scan jobs pass; independent Bazel distribution is not configured. The minimum toolchain is Swift 6.3 (Xcode 26.4): lethen supports the current Xcode major and the final release of the previous major, the Swift toolchains they ship, and the same Swift minors on Linux through the official containers. Intel macOS and running a Swift 6.4-built binary on macOS 15 are unverified. Bazel's existing macOS/Linux build-and-scan jobs pass; independent Bazel distribution is not configured.
+These checks establish specific combinations, not every Swift 6.x or macOS 15+ environment. The minimum toolchain is Swift 6.3 (Xcode 26.4): lethen supports the current Xcode major and the final release of the previous major, the Swift toolchains they ship, and the same Swift minors on Linux through the official containers. See [Supported platforms](CONTRIBUTING.md#supported-platforms) for the Intel source-build policy. Running either a Swift 6.4-built binary or the release binary on macOS 15 is unverified. Bazel's existing macOS/Linux build-and-scan jobs pass; independent Bazel distribution is not configured.
 
 Existing `.periphery.yml` configuration files, `// periphery:ignore` comments, and the `PeripheryKit` library name remain supported. The executable is `lethen`. The inherited Bazel module and target names remain `periphery` for now; independent Bazel distribution is not yet configured.
 

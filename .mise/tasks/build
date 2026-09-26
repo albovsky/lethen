@@ -1,37 +1,30 @@
 #!/bin/bash
-#USAGE flag "--arch <arch>" help="Build architecture (x86_64, arm64, release)"
+#USAGE flag "--arch <arch>" help="Build arm64, or release for a stripped arm64 binary"
 
 set -eo pipefail
 
-SWIFT_BUILD_FLAGS="--product lethen --configuration release -Xswiftc -cross-module-optimization --disable-sandbox --scratch-path .build"
-EXECUTABLE_X86_64="$(swift build ${SWIFT_BUILD_FLAGS} --arch x86_64 --show-bin-path)/lethen"
-EXECUTABLE_ARM64="$(swift build ${SWIFT_BUILD_FLAGS} --arch arm64 --show-bin-path)/lethen"
+case "${usage_arch:-}" in
+    arm64 | release) ;;
+    *)
+        echo "Invalid architecture. Use --arch arm64 or --arch release" >&2
+        exit 1
+        ;;
+esac
 
-build_x86_64() {
-    swift build ${SWIFT_BUILD_FLAGS} --arch x86_64
-}
+# Match the release workflow's optimization settings. Explicit cross-module
+# optimization fails to link ArgumentParser with Xcode 27.
+SWIFT_BUILD_FLAGS=(--product lethen --configuration release --disable-sandbox --scratch-path .build --arch arm64)
 
-build_arm64() {
-    swift build ${SWIFT_BUILD_FLAGS} --arch arm64
-}
+echo "Building for $usage_arch (arm64)" >&2
+swift build "${SWIFT_BUILD_FLAGS[@]}" >&2
+EXECUTABLE="$(swift build "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)/lethen"
 
-if [ "$usage_arch" = "x86_64" ]; then
-    echo "Building for x86_64"
-    build_x86_64
-    echo ${EXECUTABLE_X86_64}
-elif [ "$usage_arch" = "arm64" ]; then
-    echo "Building for arm64"
-    build_arm64
-    echo ${EXECUTABLE_ARM64}
-elif [ "$usage_arch" = "release" ]; then
-    echo "Building for release"
-    build_x86_64
-    build_arm64
+if [ "$usage_arch" = "release" ]; then
     mkdir -p .release
-	lipo -create -output .release/lethen ${EXECUTABLE_X86_64} ${EXECUTABLE_ARM64}
-	strip -rSTX .release/lethen
-    echo "$(realpath .release/lethen)"
-else
-    echo "Invalid architecture. Use --arch <arch> where <arch> is x86_64, arm64 or release"
-    exit 1
+    cp "$EXECUTABLE" .release/lethen
+    strip -rSTX .release/lethen
+    EXECUTABLE="$(realpath .release/lethen)"
 fi
+
+# Keep stdout machine-readable for callers such as the benchmark task.
+printf '%s\n' "$EXECUTABLE"
