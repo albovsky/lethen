@@ -11,10 +11,11 @@ final class GuidedSetup: SetupGuideHelpers {
     private let configuration: Configuration
     private let shell: Shell
 
-    required init(configuration: Configuration, shell: Shell, logger: Logger) {
+    required init(configuration: Configuration, shell: Shell, logger: Logger, readInput: @escaping () -> String?) {
         self.configuration = configuration
         self.shell = shell
         super.init(logger: logger)
+        self.readInput = readInput
     }
 
     func perform() throws -> Project {
@@ -23,17 +24,21 @@ final class GuidedSetup: SetupGuideHelpers {
 
         var projectGuides: [SetupGuide] = []
 
+        // Every guide reads from the same input as this one.
         if let guide = SPMProjectSetupGuide.detect(logger: logger) {
+            guide.readInput = readInput
             projectGuides.append(guide)
         }
 
         #if canImport(XcodeSupport)
             if let guide = XcodeProjectSetupGuide(configuration: configuration, shell: shell, logger: logger) {
+                guide.readInput = readInput
                 projectGuides.append(guide)
             }
         #endif
 
         if let guide = BazelProjectSetupGuide.detect(logger: logger) {
+            guide.readInput = readInput
             projectGuides.append(guide)
         }
 
@@ -59,6 +64,7 @@ final class GuidedSetup: SetupGuideHelpers {
         let project = Project(kind: kind, configuration: configuration, shell: shell, logger: logger)
 
         let commonGuide = CommonSetupGuide(configuration: configuration, logger: logger)
+        commonGuide.readInput = readInput
         try commonGuide.perform()
 
         let options = projectGuide.commandLineOptions + commonGuide.commandLineOptions
