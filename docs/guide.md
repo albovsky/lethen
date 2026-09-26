@@ -10,7 +10,16 @@ Only code that was compiled is indexed. If a class is referenced only from a fil
 
 ## Installation
 
-Lethen is distributed from source. On macOS, select a full Xcode installation, for example:
+On Apple silicon Macs running macOS 15 or later, install the signed and notarized binary with Homebrew:
+
+```sh
+brew install albovsky/tap/lethen
+lethen version
+```
+
+Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. Upgrade with `brew upgrade lethen`.
+
+Intel Macs and Linux build Lethen from source. On macOS, select a full Xcode installation, for example:
 
 ```sh
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer

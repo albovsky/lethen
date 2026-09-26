@@ -8,17 +8,28 @@ Intended website: **lethen.sh**. This repository is the project home while the w
 
 ## Status
 
-[3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1) is the first lethen release, distributed from source. It makes scanning reliable on Swift 6.4 / Xcode 27, fixes analysis defects reproduced during a private-project audit, and turns the remaining crash paths into reported errors. It is the last release that supports Swift 6.1 and 6.2; 3.9.0 requires Swift 6.3 (Xcode 26.4).
+[3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1) is the first Lethen release. Apple silicon Macs can install it with Homebrew; Intel Macs and Linux build it from source. It makes scanning reliable on Swift 6.4 / Xcode 27, fixes analysis defects reproduced during a private-project audit, and turns the remaining crash paths into reported errors. It is the last release that supports Swift 6.1 and 6.2; 3.9.0 requires Swift 6.3 (Xcode 26.4).
 
 Managed SwiftPM scans clean and rebuild existing products to guarantee a fresh index. This is deliberate and it has a real cost: **a managed SwiftPM scan is always a full rebuild, never an incremental one.** SwiftPM does not treat `--enable-index-store` as a change that invalidates already-compiled tasks, so a build tree produced by a plain `swift build` yields a stale or partial index and silently wrong results. Cleaning is the only way we can currently rule that out.
 
 To keep incremental builds, build the index yourself and scan it with `--skip-build --index-store-path <path>`. Use `--skip-build` only with an index you know is current.
 
-The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. Signed binaries, Homebrew, and a hosted installer are separate work.
+The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. Linux binaries and a hosted installer are separate work.
 
-## Install from source
+## Install
 
-On macOS, select a full Xcode installation, for example with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. The local source-install baseline is Xcode 27.0 with Apple Swift 6.4 on arm64 macOS 27.
+On Apple silicon Macs running macOS 15 or later, install the signed and notarized binary with Homebrew:
+
+```sh
+brew install albovsky/tap/lethen
+lethen version
+```
+
+Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. The same binary is attached to each [release](https://github.com/albovsky/lethen/releases) as `lethen-<version>-macos-arm64.zip`, with a `SHA256SUMS` file.
+
+### From source
+
+Intel Macs and Linux build Lethen from source. On macOS, select a full Xcode installation, for example with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. The local source-install baseline is Xcode 27.0 with Apple Swift 6.4 on arm64 macOS 27.
 
 ```sh
 git clone --branch 3.8.1 --depth 1 https://github.com/albovsky/lethen.git
@@ -45,8 +56,9 @@ Install prerelease tags manually. The optional update checker offers development
 | Swift 6.2.4 / Xcode 26.3.0 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543962) |
 | Swift 6.3.1 / Xcode 26.4 | SwiftPM default/native; Xcode fixtures | arm64 macOS 26.6.2 | [CI passed](https://github.com/albovsky/lethen/actions/runs/35466081905/job/105958543959) |
 | Swift 6.1.3 / 6.2.4 / 6.3.3 | SwiftPM default/native | Linux x86_64, official Swift containers | [CI details](docs/validation/swift-6.4-xcode-27.md#verified-combinations) |
+| 3.8.1 release binary, built with Xcode 26.4 | Generated SwiftPM package (smoke scan) | arm64 macOS 26 runner (`macos-26-arm64` 20260907); arm64 macOS 27.0 with Xcode 27.0 via Homebrew | [release run](https://github.com/albovsky/lethen/actions/runs/36205533865) |
 
-These checks establish specific combinations, not every Swift 6.x or macOS 15+ environment. Intel macOS and running a Swift 6.4-built binary on macOS 15 are unverified. Bazel's existing macOS/Linux build-and-scan jobs pass; independent Bazel distribution is not configured.
+These checks establish specific combinations, not every Swift 6.x or macOS 15+ environment. Intel macOS, running a Swift 6.4-built binary on macOS 15, and running the release binary on macOS 15 are unverified. Bazel's existing macOS/Linux build-and-scan jobs pass; independent Bazel distribution is not configured.
 
 Existing `.periphery.yml` configuration files, `// periphery:ignore` comments, and the `PeripheryKit` library name remain supported. The executable is `lethen`. The inherited Bazel module and target names remain `periphery` for now; independent Bazel distribution is not yet configured.
 
