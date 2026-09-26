@@ -101,14 +101,17 @@ jobs:
           setup=""
           if [ "$TOOLCHAIN" = swiftly ]; then
             image=ubuntu:24.04
-            # swiftly's documented system packages for Ubuntu 24.04. The expressions
-            # expand inside the container.
+            # swiftly writes the system packages the toolchain still needs to a
+            # post-install script, so the list follows swiftly rather than going stale
+            # here. The expressions expand inside the container.
             # shellcheck disable=SC2016
-            setup='DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl gnupg2 ca-certificates binutils git libc6-dev libcurl4-openssl-dev libedit2 libgcc-13-dev libncurses-dev libpython3-dev libsqlite3-0 libstdc++-13-dev libxml2-dev libz3-dev pkg-config tzdata unzip zlib1g-dev > /dev/null
+            setup='DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl gnupg2 ca-certificates > /dev/null
               curl -fsSL "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz" | tar -C /tmp -xz
               /tmp/swiftly init --quiet-shell-followup --assume-yes --skip-install > /dev/null
               . "$HOME/.local/share/swiftly/env.sh"
-              swiftly install 6.3 --use --assume-yes > /dev/null
+              swiftly install 6.3 --use --assume-yes --post-install-file /tmp/swiftly-post-install.sh > /dev/null
+              if [ -s /tmp/swiftly-post-install.sh ]; then DEBIAN_FRONTEND=noninteractive bash /tmp/swiftly-post-install.sh > /dev/null; fi
+              hash -r
               test ! -e /usr/lib/libIndexStore.so'
           fi
           docker run --rm -v "$PWD:/w" -w /w "$image" bash -ec "
