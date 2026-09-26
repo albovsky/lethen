@@ -3,6 +3,7 @@ import Foundation
 import Logger
 @testable import ProjectDrivers
 import Shared
+import Synchronization
 import SystemPackage
 import XCTest
 
@@ -64,6 +65,21 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
             responses: [query: binary, build: ""]
         ), logger: logger)
         try pkg.build(additionalArguments: arguments)
+    }
+
+    func testManagedBuildStreamsOnlyTheBuildCommand() throws {
+        let binary = "/tmp/lethen-unbuilt-\(UUID().uuidString)/debug"
+        let query = ["swift", "build", "--show-bin-path", "--enable-index-store"]
+        let build = ["swift", "build", "--build-tests", "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(binary)/index/store'"]
+        let shell = StreamingShell(responses: [query: binary, build: "[1/1] Compiling A a.swift\n"])
+        let lines = Mutex<[String]>([])
+        let pkg = SPM.Package(configuration: Configuration(), shell: shell, logger: logger)
+
+        try pkg.build(additionalArguments: []) { line in lines.withLock { $0.append(line) } }
+
+        XCTAssertEqual(shell.captured, [query])
+        XCTAssertEqual(shell.streamed, [build])
+        XCTAssertEqual(lines.withLock { $0 }, ["[1/1] Compiling A a.swift"])
     }
 
     func testManagedBuildRejectsDisabledIndexingBeforeInvokingShell() {
@@ -137,5 +153,48 @@ private struct ExpectedCommandShell: Shell {
     func execStatus(_ args: [String]) throws -> Int32 {
         _ = try exec(args)
         return 0
+    }
+}
+
+/// Records which commands are captured and which are streamed, and streams each line of a streamed response.
+private final class StreamingShell: Shell {
+    private let responses: [[String]: String]
+    private let commands = Mutex<(captured: [[String]], streamed: [[String]])>(([], []))
+
+    var captured: [[String]] {
+        commands.withLock { $0.captured }
+    }
+
+    var streamed: [[String]] {
+        commands.withLock { $0.streamed }
+    }
+
+    init(responses: [[String]: String]) {
+        self.responses = responses
+    }
+
+    func exec(_ args: [String]) throws -> String {
+        commands.withLock { $0.captured.append(args) }
+        return try response(to: args)
+    }
+
+    func exec(_ args: [String], onOutputLine: @escaping @Sendable (String) -> Void) throws -> String {
+        commands.withLock { $0.streamed.append(args) }
+        let output = try response(to: args)
+        output.split(separator: "\n").forEach { onOutputLine(String($0)) }
+        return output
+    }
+
+    func execStatus(_ args: [String]) throws -> Int32 {
+        _ = try exec(args)
+        return 0
+    }
+
+    private func response(to args: [String]) throws -> String {
+        guard let output = responses[args] else {
+            throw LethenError.packageError(message: "Unexpected subprocess: \(args)")
+        }
+
+        return output
     }
 }

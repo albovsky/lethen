@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- Managed `xcodebuild` and `swift build` runs show that they are still working. The default output prints `Still building (Ns elapsed, step n/m)` to standard error every 15 seconds, `--verbose` streams the full build output to standard error, and `--quiet` and machine-readable formats print nothing, so results on standard output stay valid.
 
 ##### Bug Fixes
 

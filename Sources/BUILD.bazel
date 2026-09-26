@@ -112,6 +112,7 @@ swift_library(
     name = "Shared",
     srcs = [
         "Shared/Benchmark.swift",
+        "Shared/BuildProgress.swift",
         "Shared/Constants.swift",
         "Shared/JobPool.swift",
         "Shared/LethenError.swift",

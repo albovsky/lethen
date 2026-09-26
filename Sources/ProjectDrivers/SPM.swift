@@ -41,7 +41,8 @@ public enum SPM {
             try shell.exec(["swift", "package", "clean"] + scratchArguments)
         }
 
-        public func build(additionalArguments: [String]) throws {
+        /// Builds the package with indexing enabled, passing each line of build output to `onOutputLine`.
+        public func build(additionalArguments: [String], onOutputLine: @escaping @Sendable (String) -> Void = { _ in }) throws {
             guard !additionalArguments.contains("--disable-index-store") else {
                 throw LethenError.usageError("--disable-index-store conflicts with scanning a managed build. Remove it, or use --skip-build with --index-store-path for an externally built index.")
             }
@@ -62,7 +63,7 @@ public enum SPM {
                 let quotedStore = "'" + store.string.replacingOccurrences(of: "'", with: "'\\''") + "'"
                 arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
             }
-            try shell.exec(arguments)
+            try shell.exec(arguments, onOutputLine: onOutputLine)
         }
 
         public func indexStorePath(additionalArguments: [String]) throws -> FilePath {
