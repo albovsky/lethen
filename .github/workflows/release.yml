@@ -1,9 +1,10 @@
 name: Release
 # Pushing a version tag releases it: the tag is checked against the source version, its
 # commit must be on master and have passed Required checks, and the Apple silicon macOS
-# binary is built and smoke-tested before the `release` environment's reviewer approves
-# signing. The approved job signs and notarizes the binary, tests it again, publishes the
-# GitHub release, and, for stable versions only, updates the Homebrew tap. Running the workflow by hand with an existing tag builds and
+# binary and the Linux tarballs (release-linux.yml) are built and smoke-tested before the
+# `release` environment's reviewer approves signing. The approved job signs and notarizes
+# the macOS binary, tests it again, publishes the GitHub release with every asset, and,
+# for stable versions only, updates the Homebrew tap. Running the workflow by hand with an existing tag builds and
 # publishes binaries for it with the current release tooling, which backfills older tags
 # and retries failed releases; the environment must allow the branch it runs from.
 on:
@@ -89,9 +90,18 @@ jobs:
           path: build/lethen
           if-no-files-found: error
           retention-days: 7
+  build-linux:
+    name: Linux
+    needs: prepare
+    uses: ./.github/workflows/release-linux.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+      version: ${{ needs.prepare.outputs.tag }}
+    permissions:
+      contents: read
   release:
     name: Sign and publish
-    needs: [prepare, build-macos]
+    needs: [prepare, build-macos, build-linux]
     runs-on: macos-26
     timeout-minutes: 90
     environment: release
@@ -122,20 +132,33 @@ jobs:
         with:
           name: lethen-macos
           path: build
-      # A rerun or backfill must not replace a zip that may already be pinned by the
-      # Homebrew formula, so an already published zip is reused instead of re-signed.
-      - name: Reuse published binary
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lethen-linux-*
+          path: linux
+          merge-multiple: true
+      # A rerun or backfill must not replace an asset that users or the Homebrew formula
+      # may already rely on, so every asset that is already published is reused: the
+      # macOS zip is not re-signed and a rebuilt Linux tarball is discarded.
+      - name: Collect assets
         id: published
         run: |
           mkdir -p dist
-          zip="lethen-$TAG-macos-arm64.zip"
-          if gh release view "$TAG" --json assets --jq '.assets[].name' 2> /dev/null | grep -qxF "$zip"; then
-            gh release download "$TAG" --pattern "$zip" --dir dist
-            echo "reuse=true" >> "$GITHUB_OUTPUT"
-            echo "Reusing the published $zip"
-          fi
+          cp linux/*.tar.gz dist/
+          published="$(gh release view "$TAG" --json assets --jq '.assets[].name' 2> /dev/null || true)"
+          for name in "lethen-$TAG-macos-arm64.zip" "lethen-$TAG-linux-x86_64.tar.gz" "lethen-$TAG-linux-aarch64.tar.gz"; do
+            if grep -qxF "$name" <<< "$published"; then
+              rm -f "dist/$name"
+              gh release download "$TAG" --pattern "$name" --dir dist
+              echo "Reusing the published $name"
+              if [ "$name" = "lethen-$TAG-macos-arm64.zip" ]; then
+                echo "reuse_macos=true" >> "$GITHUB_OUTPUT"
+              fi
+            fi
+          done
+          ls -la dist
       - name: Sign and notarize
-        if: steps.published.outputs.reuse != 'true'
+        if: steps.published.outputs.reuse_macos != 'true'
         env:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -154,7 +177,7 @@ jobs:
           bash tools/.github/scripts/release-smoke-test.sh released/lethen "$TAG"
       - name: Checksums
         working-directory: dist
-        run: shasum -a 256 -- *.zip | tee SHA256SUMS
+        run: shasum -a 256 -- *.zip *.tar.gz | tee SHA256SUMS
       - name: Publish GitHub release
         run: bash tools/.github/scripts/release-publish.sh "$TAG" "$PRERELEASE" "source/docs/releases/$TAG.md" dist/*
       - name: Update Homebrew tap
