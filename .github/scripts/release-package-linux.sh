@@ -24,9 +24,12 @@ case "$arch" in
         exit 1
         ;;
 esac
-if ! readelf -h "$executable" | grep -q "Machine: *$machine"; then
+# Captured first: `grep -q` stops reading early, and pipefail would then report
+# readelf's broken pipe as a mismatch.
+header="$(readelf -h "$executable" 2> /dev/null)"
+if ! grep -q "Machine: *$machine" <<< "$header"; then
     echo "::error::$executable is not a $arch executable" >&2
-    readelf -h "$executable" >&2
+    echo "$header" >&2
     exit 1
 fi
 
