@@ -12,7 +12,15 @@ final class UpdateChecker {
     private struct Status {
         var didStart = false
         var didFinish = false
+        var didInvalidate = false
     }
+
+    /// Checkers that started a request live until the process exits. Their session is invalidated once
+    /// the request has settled, but invalidation completes asynchronously on the session's own queues, and
+    /// deallocating a session while that teardown is still running aborts on Swift 6.4 (FoundationNetworking)
+    /// and crashed intermittently on older Linux toolchains. A checker that never made a request has nothing
+    /// to tear down and is released normally.
+    private static let retainedUntilExit = Mutex<[UpdateChecker]>([])
 
     private let logger: Logger
     private let debugLogger: ContextualLogger
@@ -40,17 +48,6 @@ final class UpdateChecker {
             URL(string: "https://api.github.com/repos/albovsky/lethen/releases/latest")!
         }
         semaphore = DispatchSemaphore(value: 0)
-    }
-
-    deinit {
-        // Invalidating while a request is still in flight is unsafe, so only tear down a
-        // session we know has settled. On Linux, invalidating a settled session still crashed
-        // intermittently on Swift 6.1; that toolchain is no longer supported, and the
-        // 15-scan teardown check in CI guards the remaining ones.
-        let status = status.withLock { $0 }
-        guard !status.didStart || status.didFinish else { return }
-
-        urlSession.invalidateAndCancel()
     }
 
     private func finish() {
@@ -104,21 +101,38 @@ final class UpdateChecker {
         }
 
         status.withLock { $0.didStart = true }
+        Self.retainedUntilExit.withLock { $0.append(self) }
         task.resume()
+    }
+
+    /// Invalidates the session once, after its request has settled or been given up on. Cancelling an
+    /// in-flight request here is safe; the session itself is kept alive until exit (see `retainedUntilExit`).
+    private func invalidateSession() {
+        let shouldInvalidate = status.withLock { status in
+            guard status.didStart, !status.didInvalidate else { return false }
+
+            status.didInvalidate = true
+            return true
+        }
+
+        if shouldInvalidate {
+            urlSession.invalidateAndCancel()
+        }
     }
 
     /// Waits for an in-flight update check to settle.
     ///
     /// The check is started before the scan and almost always completes long before the scan
     /// does, so this returns immediately in practice. It matters when it doesn't: reading
-    /// `latestVersion` without waiting races the session's callback, and letting the session
-    /// deallocate mid-transfer crashes on Linux.
+    /// `latestVersion` without waiting races the session's callback.
     func waitForCompletion(timeout: TimeInterval = 5) {
         guard status.withLock({ $0.didStart }) else { return }
 
         if semaphore.wait(timeout: .now() + timeout) == .timedOut {
             debugLogger.debug("timed out after \(timeout)s waiting for the update check")
         }
+
+        invalidateSession()
     }
 
     func notifyIfAvailable() {
@@ -141,6 +155,7 @@ final class UpdateChecker {
     /// Waits for the check to finish, returning the latest applicable release, or nil when none is published.
     func wait() -> Result<ReleaseVersion?, PeripheryError> {
         let waitResult = semaphore.wait(timeout: .now() + 60)
+        invalidateSession()
 
         if let error = error as? PeripheryError {
             return .failure(error)
