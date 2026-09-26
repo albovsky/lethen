@@ -29,7 +29,7 @@ final class BazelProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphery_generated")
         """, .lightGray))
         print(logger.colorize("\nEnter to continue when ready ", .bold), terminator: "")
-        _ = readLine()
+        _ = readInput()
 
         return .bazel
     }

@@ -174,6 +174,15 @@ struct ScanCommand: ParsableCommand {
     private static let defaultConfiguration = Configuration()
 
     func run() throws {
+        try run(scanning: Scan.self, readInput: { readLine(strippingNewline: true) })
+    }
+
+    /// Runs the command with `scanType` building, indexing, and analyzing the project, and `readInput`
+    /// answering the guided setup. The working directory is restored when the command returns or throws.
+    func run(scanning scanType: ScanRunning.Type, readInput: @escaping () -> String?) throws {
+        let originalDirectory = FilePath.current
+        defer { _ = FileManager.default.changeCurrentDirectoryPath(originalDirectory.string) }
+
         let configuration = try makeConfiguration()
         let logger = Logger(configuration: configuration)
         logger.contextualized(with: "version").debug(LethenVersion)
@@ -188,7 +197,7 @@ struct ScanCommand: ParsableCommand {
         try swiftVersion.validateVersion()
 
         let project: Project = if configuration.guidedSetup {
-            try GuidedSetup(configuration: configuration, shell: shell, logger: logger).perform()
+            try GuidedSetup(configuration: configuration, shell: shell, logger: logger, readInput: readInput).perform()
         } else {
             try Project(configuration: configuration, shell: shell, logger: logger)
         }
@@ -196,7 +205,7 @@ struct ScanCommand: ParsableCommand {
         let updateChecker = UpdateChecker(logger: logger, configuration: configuration)
         updateChecker.run()
 
-        let scanOutput = try Scan(
+        let scanOutput = try scanType.init(
             configuration: configuration,
             logger: logger,
             swiftVersion: swiftVersion

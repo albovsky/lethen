@@ -20,7 +20,7 @@ final class UpdateChecker {
     /// deallocating a session while that teardown is still running aborts on Swift 6.4 (FoundationNetworking)
     /// and crashed intermittently on older Linux toolchains. A checker that never made a request has nothing
     /// to tear down and is released normally.
-    private static let retainedUntilExit = Mutex<[UpdateChecker]>([])
+    static let retainedUntilExit = Mutex<[UpdateChecker]>([])
 
     private let logger: Logger
     private let debugLogger: ContextualLogger
@@ -55,11 +55,14 @@ final class UpdateChecker {
         semaphore.signal()
     }
 
+    /// Whether `run()` makes a request. We only perform the update check with xcode format because it
+    /// may interfere with parsing json and csv.
+    var isEnabled: Bool {
+        !configuration.disableUpdateCheck && configuration.outputFormat.supportsAuxiliaryOutput
+    }
+
     func run() {
-        // We only perform the update check with xcode format because it may interfere with
-        // parsing json and csv.
-        guard !configuration.disableUpdateCheck,
-              configuration.outputFormat.supportsAuxiliaryOutput else { return }
+        guard isEnabled else { return }
 
         var urlRequest = URLRequest(url: releasesURL)
         urlRequest.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
