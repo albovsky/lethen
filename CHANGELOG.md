@@ -6,7 +6,8 @@
 
 ##### Enhancements
 
-- None.
+- Pushing a version tag publishes a signed, notarized Apple silicon macOS binary on the GitHub release after smoke tests, and stable versions update the `albovsky/tap/lethen` Homebrew formula. Intel Macs build from source.
+- Releases include Linux tarballs for x86_64 and aarch64, for glibc 2.35 or later and Swift 6.3 or newer. The tarball's `bin/lethen` finds the indexing library of the active toolchain, including swiftly installs.
 
 ##### Bug Fixes
 

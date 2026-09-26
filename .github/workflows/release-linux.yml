@@ -1,0 +1,123 @@
+name: Release Linux
+# Builds and tests the Linux release tarballs; it never publishes. The Release workflow
+# calls it for a tag, and the Test workflow calls it for every code change as part of
+# Required checks, so a change that breaks the tarballs cannot merge and be found only
+# after tagging.
+#
+# The executable is built with the oldest supported Swift (6.3) on Ubuntu 22.04 and the
+# static Swift standard library, so it runs with glibc 2.35 or later. It links the user's
+# libIndexStore.so, whose symbols are versioned by LLVM major: Swift 6.3, 6.4, and the
+# 6.5 development snapshots ship LLVM_21, while 6.1 and 6.2 ship LLVM_17 and cannot load
+# it. A toolchain with a newer LLVM needs a Lethen release built against it.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build
+        required: true
+        type: string
+      version:
+        description: Version the binary must report; defaults to PeripheryVersion in the source
+        required: false
+        type: string
+        default: ""
+permissions: {}
+jobs:
+  build:
+    name: Build Linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: swift:6.3-jammy
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      # Release tooling comes from the workflow's commit; the binary is built from `ref`.
+      - name: Check out release tooling
+        uses: actions/checkout@v4
+        with:
+          path: tools
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          path: source
+      - name: Build
+        working-directory: source
+        run: swift build -c release --product lethen --static-swift-stdlib
+      - name: Package
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          version="${VERSION:-$(sed -n 's/^let PeripheryVersion = "\(.*\)"$/\1/p' source/Sources/Frontend/Version.swift)}"
+          bin_dir="$(cd source && swift build -c release --product lethen --static-swift-stdlib --show-bin-path)"
+          bash tools/.github/scripts/release-package-linux.sh "$bin_dir/lethen" source/LICENSE.md "$version" "${{ matrix.arch }}" dist
+          echo "$version" > dist/VERSION
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lethen-linux-${{ matrix.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/VERSION
+          if-no-files-found: error
+          retention-days: 7
+  test:
+    name: Test Linux
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+        # The oldest and newest supported official images, and a swiftly install whose
+        # toolchain is outside /usr, which only the launcher can find.
+        toolchain: ["swift:6.3-jammy", "swift:6.4-noble", swiftly]
+    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: lethen-linux-${{ matrix.arch }}
+          path: dist
+      - name: Smoke test with ${{ matrix.toolchain }}
+        env:
+          TOOLCHAIN: ${{ matrix.toolchain }}
+        run: |
+          version="$(cat dist/VERSION)"
+          mkdir -p unpacked
+          tar -C unpacked -xzf dist/lethen-*-linux-${{ matrix.arch }}.tar.gz
+          image="$TOOLCHAIN"
+          setup=""
+          if [ "$TOOLCHAIN" = swiftly ]; then
+            image=ubuntu:24.04
+            # swiftly writes the system packages the toolchain still needs to a
+            # post-install script, so the list follows swiftly rather than going stale
+            # here. The expressions expand inside the container.
+            # shellcheck disable=SC2016
+            setup='DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl gnupg2 ca-certificates > /dev/null
+              curl -fsSL "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz" | tar -C /tmp -xz
+              /tmp/swiftly init --quiet-shell-followup --assume-yes --skip-install > /dev/null
+              . "$HOME/.local/share/swiftly/env.sh"
+              swiftly install 6.3 --use --assume-yes --post-install-file /tmp/swiftly-post-install.sh > /dev/null
+              if [ -s /tmp/swiftly-post-install.sh ]; then DEBIAN_FRONTEND=noninteractive bash /tmp/swiftly-post-install.sh > /dev/null; fi
+              hash -r
+              test ! -e /usr/lib/libIndexStore.so'
+          fi
+          docker run --rm -v "$PWD:/w" -w /w "$image" bash -ec "
+            apt-get update -qq
+            $setup
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq jq > /dev/null
+            swiftc --version
+            bash .github/scripts/release-smoke-test.sh unpacked/lethen-$version-linux-${{ matrix.arch }}/bin/lethen $version
+          "
