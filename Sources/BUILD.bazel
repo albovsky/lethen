@@ -114,7 +114,7 @@ swift_library(
         "Shared/Benchmark.swift",
         "Shared/Constants.swift",
         "Shared/JobPool.swift",
-        "Shared/PeripheryError.swift",
+        "Shared/LethenError.swift",
         "Shared/ProjectKind.swift",
         "Shared/PropertyTypeSanitizer.swift",
         "Shared/ReleaseVersion.swift",

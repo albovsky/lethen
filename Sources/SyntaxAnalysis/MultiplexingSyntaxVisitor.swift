@@ -5,7 +5,7 @@ import SwiftParser
 import SwiftSyntax
 import SystemPackage
 
-public protocol PeripherySyntaxVisitor {
+public protocol LethenSyntaxVisitor {
     init(sourceLocationBuilder: SourceLocationBuilder, swiftVersion: SwiftVersion)
 
     func visit(_ node: ActorDeclSyntax)
@@ -49,7 +49,7 @@ public protocol PeripherySyntaxVisitor {
     func visitPost(_ node: FunctionCallExprSyntax)
 }
 
-public extension PeripherySyntaxVisitor {
+public extension LethenSyntaxVisitor {
     func visit(_: ActorDeclSyntax) {}
     func visit(_: ClassDeclSyntax) {}
     func visit(_: ProtocolDeclSyntax) {}
@@ -98,7 +98,7 @@ public final class MultiplexingSyntaxVisitor: SyntaxVisitor {
     let sourceLocationBuilder: SourceLocationBuilder
     let swiftVersion: SwiftVersion
 
-    private var visitors: [PeripherySyntaxVisitor] = []
+    private var visitors: [LethenSyntaxVisitor] = []
 
     public required init(file: SourceFile, swiftVersion: SwiftVersion) throws {
         sourceFile = file
@@ -110,7 +110,7 @@ public final class MultiplexingSyntaxVisitor: SyntaxVisitor {
         super.init(viewMode: .sourceAccurate)
     }
 
-    public func add<T: PeripherySyntaxVisitor>(_ visitorType: T.Type) -> T {
+    public func add<T: LethenSyntaxVisitor>(_ visitorType: T.Type) -> T {
         let visitor = visitorType.init(sourceLocationBuilder: sourceLocationBuilder, swiftVersion: swiftVersion)
         visitors.append(visitor)
         return visitor

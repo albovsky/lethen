@@ -9,7 +9,7 @@ enum SwiftVersionParser {
               let rawVersion = components.last?.trimmed.split(separator: " ").first,
               rawVersion.first?.isNumber == true
         else {
-            throw PeripheryError.swiftVersionParseError(fullVersion: fullVersion)
+            throw LethenError.swiftVersionParseError(fullVersion: fullVersion)
         }
 
         let version = rawVersion.split(separator: "-").first ?? rawVersion

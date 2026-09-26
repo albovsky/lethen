@@ -8,6 +8,6 @@ struct VersionCommand: ParsableCommand {
     )
 
     func run() throws {
-        print(PeripheryVersion)
+        print(LethenVersion)
     }
 }

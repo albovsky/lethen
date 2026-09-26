@@ -175,7 +175,7 @@ struct ScanCommand: ParsableCommand {
 
     func run() throws {
         if !FileManager.default.changeCurrentDirectoryPath(projectRoot.string) {
-            throw PeripheryError.changeCurrentDirectoryFailed(projectRoot)
+            throw LethenError.changeCurrentDirectoryFailed(projectRoot)
         }
 
         let configuration = Configuration()
@@ -239,7 +239,7 @@ struct ScanCommand: ParsableCommand {
         configuration.buildFilenameMatchers()
 
         let logger = Logger(configuration: configuration)
-        logger.contextualized(with: "version").debug(PeripheryVersion)
+        logger.contextualized(with: "version").debug(LethenVersion)
         let shell = ShellImpl(logger: logger) {
             logger.warn(
                 "Termination can result in a corrupt index. Try the '--clean-build' flag if you get erroneous results such as false-positives and incorrect source file locations.",
@@ -317,7 +317,7 @@ struct ScanCommand: ParsableCommand {
         updateChecker.notifyIfAvailable()
 
         if !filteredResults.isEmpty, configuration.strict {
-            throw PeripheryError.foundIssues(count: filteredResults.count)
+            throw LethenError.foundIssues(count: filteredResults.count)
         }
     }
 

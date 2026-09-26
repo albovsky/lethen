@@ -23,7 +23,7 @@ final class GenericProjectDriverTest: XCTestCase {
 
     func testMissingConfigIsReported() {
         XCTAssertThrowsError(try GenericProjectDriver(genericProjectConfig: directory.appending("missing.json"), configuration: Configuration())) { error in
-            guard let error = error as? PeripheryError, case .pathDoesNotExist = error else {
+            guard let error = error as? LethenError, case .pathDoesNotExist = error else {
                 return XCTFail("Expected a missing path error, got: \(error)")
             }
         }

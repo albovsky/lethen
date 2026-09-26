@@ -7,7 +7,7 @@ final class SwiftVersionTest: XCTestCase {
 
         func exec(_ args: [String]) throws -> String {
             guard let output else {
-                throw PeripheryError.shellCommandFailed(cmd: args, status: 127, output: "swift: command not found")
+                throw LethenError.shellCommandFailed(cmd: args, status: 127, output: "swift: command not found")
             }
 
             return output
@@ -26,7 +26,7 @@ final class SwiftVersionTest: XCTestCase {
 
     func testThrowsWhenTheShellCommandFails() {
         XCTAssertThrowsError(try SwiftVersion(shell: StubShell(output: nil))) { error in
-            guard let error = error as? PeripheryError, case .shellCommandFailed = error else {
+            guard let error = error as? LethenError, case .shellCommandFailed = error else {
                 return XCTFail("Expected the shell error, got: \(error)")
             }
         }
@@ -34,7 +34,7 @@ final class SwiftVersionTest: XCTestCase {
 
     func testThrowsWhenTheOutputIsUnparseable() {
         XCTAssertThrowsError(try SwiftVersion(shell: StubShell(output: "not a swift toolchain"))) { error in
-            guard let error = error as? PeripheryError, case .swiftVersionParseError = error else {
+            guard let error = error as? LethenError, case .swiftVersionParseError = error else {
                 return XCTFail("Expected a parse error, got: \(error)")
             }
         }
@@ -43,7 +43,7 @@ final class SwiftVersionTest: XCTestCase {
     func testRejectsVersionsBelowTheMinimum() throws {
         let version = try SwiftVersion(shell: StubShell(output: "Apple Swift version 5.9 (swiftlang-5.9.0.128.108 clang-1500.0.40.1)\nTarget: arm64-apple-macosx14.0"))
         XCTAssertThrowsError(try version.validateVersion()) { error in
-            guard let error = error as? PeripheryError, case .swiftVersionUnsupportedError = error else {
+            guard let error = error as? LethenError, case .swiftVersionUnsupportedError = error else {
                 return XCTFail("Expected an unsupported version error, got: \(error)")
             }
         }

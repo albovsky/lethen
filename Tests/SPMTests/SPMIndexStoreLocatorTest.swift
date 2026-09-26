@@ -128,7 +128,7 @@ private struct ExpectedCommandShell: Shell {
 
     func exec(_ args: [String]) throws -> String {
         guard let output = responses[args] else {
-            throw PeripheryError.packageError(message: "Unexpected subprocess: \(args)")
+            throw LethenError.packageError(message: "Unexpected subprocess: \(args)")
         }
 
         return output

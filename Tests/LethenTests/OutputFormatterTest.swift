@@ -70,7 +70,7 @@ final class OutputFormatterTest: XCTestCase {
     func testGitHubActionsFormatRequiresRelativeResults() {
         let formatter = OutputFormat.githubActions.formatter.init(configuration: Configuration(), logger: logger)
         XCTAssertThrowsError(try formatter.format([unusedClass()], colored: false)) { error in
-            guard let error = error as? PeripheryError, case .usageError = error else {
+            guard let error = error as? LethenError, case .usageError = error else {
                 return XCTFail("Expected a usage error, got: \(error)")
             }
         }

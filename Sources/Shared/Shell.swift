@@ -56,7 +56,7 @@ public final class ShellImpl: Shell {
             return stdout
         }
 
-        throw PeripheryError.shellCommandFailed(
+        throw LethenError.shellCommandFailed(
             cmd: args,
             status: status,
             output: [stdout, stderr].filter { !$0.isEmpty }.joined(separator: "\n").trimmed
@@ -101,7 +101,7 @@ public final class ShellImpl: Shell {
             guard let stdoutStr = String(data: stdoutData, encoding: .utf8)
             else {
                 store.remove(process)
-                throw PeripheryError.shellOutputEncodingFailed(
+                throw LethenError.shellOutputEncodingFailed(
                     cmd: cmd,
                     encoding: .utf8
                 )
@@ -114,7 +114,7 @@ public final class ShellImpl: Shell {
             guard let stderrStr = String(data: stderrData, encoding: .utf8)
             else {
                 store.remove(process)
-                throw PeripheryError.shellOutputEncodingFailed(
+                throw LethenError.shellOutputEncodingFailed(
                     cmd: cmd,
                     encoding: .utf8
                 )

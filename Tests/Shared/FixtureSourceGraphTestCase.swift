@@ -55,7 +55,7 @@ class FixtureSourceGraphTestCase: SPMSourceGraphTestCase {
         configuration.buildFilenameMatchers()
 
         if !testFixturePath.exists {
-            throw PeripheryError.packageError(message: "Test fixture \(testFixturePath.string) does not exist")
+            throw LethenError.packageError(message: "Test fixture \(testFixturePath.string) does not exist")
         }
 
         try Self.index(sourceFiles: [testFixturePath] + additionalFilesToIndex, configuration: configuration)

@@ -3,7 +3,7 @@ import Shared
 import SourceGraph
 import SwiftSyntax
 
-public final class DeclarationSyntaxVisitor: PeripherySyntaxVisitor {
+public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
     public typealias Result = (
         location: Location,
         accessibility: Accessibility?,

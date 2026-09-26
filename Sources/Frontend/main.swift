@@ -11,7 +11,7 @@ if (info.st_mode & S_IFMT) == S_IFIFO {
     setlinebuf(stderr)
 }
 
-struct PeripheryCommand: ParsableCommand {
+struct LethenCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "lethen",
         subcommands: [
@@ -24,8 +24,8 @@ struct PeripheryCommand: ParsableCommand {
 }
 
 do {
-    var command = try PeripheryCommand.parseAsRoot()
+    var command = try LethenCommand.parseAsRoot()
     try command.run()
 } catch {
-    PeripheryCommand.exit(withError: error)
+    LethenCommand.exit(withError: error)
 }

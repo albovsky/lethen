@@ -2,7 +2,7 @@
 # Decides whether a tag may be released, before anything is built or signed.
 #
 # A tag is releasable when it names a version (`3.9.0`, or `3.9.0-dev.1` for a
-# prerelease), matches `PeripheryVersion` in the tagged source, points at a commit on
+# prerelease), matches `LethenVersion` in the tagged source, points at a commit on
 # master, and that commit passed the `Required checks` gate. The gate usually still runs
 # when a tag is pushed right after a merge, so this waits for it instead of failing; a
 # completed gate with any result other than success fails at once.
@@ -29,9 +29,9 @@ if ! sha="$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}")"; then
     fail "Tag '$tag' does not exist."
 fi
 
-source_version="$(git show "$sha:Sources/Frontend/Version.swift" | sed -n 's/^let PeripheryVersion = "\(.*\)"$/\1/p')"
+source_version="$(git show "$sha:Sources/Frontend/Version.swift" | sed -n 's/^let LethenVersion = "\(.*\)"$/\1/p')"
 if [ "$source_version" != "$tag" ]; then
-    fail "Tag '$tag' does not match PeripheryVersion '$source_version' in Sources/Frontend/Version.swift."
+    fail "Tag '$tag' does not match LethenVersion '$source_version' in Sources/Frontend/Version.swift."
 fi
 
 git fetch --quiet origin master

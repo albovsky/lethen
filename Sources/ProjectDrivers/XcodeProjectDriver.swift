@@ -29,7 +29,7 @@
             let xcodebuild = Xcodebuild(shell: shell, logger: logger)
 
             guard !configuration.schemes.isEmpty else {
-                throw PeripheryError.usageError("The '--schemes' option is required.")
+                throw LethenError.usageError("The '--schemes' option is required.")
             }
 
             try xcodebuild.ensureConfigured()
@@ -66,7 +66,7 @@
                 let validSchemeNames = schemes.mapSet { $0 }
 
                 if let scheme = Set(configuration.schemes).subtracting(validSchemeNames).first {
-                    throw PeripheryError.invalidScheme(name: scheme, project: project.path.lastComponent?.string ?? "")
+                    throw LethenError.invalidScheme(name: scheme, project: project.path.lastComponent?.string ?? "")
                 }
             }
 

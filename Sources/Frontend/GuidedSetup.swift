@@ -50,7 +50,7 @@ final class GuidedSetup: SetupGuideHelpers {
         }
 
         guard let projectGuide = projectGuide_ else {
-            throw PeripheryError.guidedSetupError(message: "Failed to identify a project in the current directory: no Package.swift, Xcode project or workspace, or Bazel module was found")
+            throw LethenError.guidedSetupError(message: "Failed to identify a project in the current directory: no Package.swift, Xcode project or workspace, or Bazel module was found")
         }
 
         print(logger.colorize("*", .boldGreen) + " Inspecting project...")

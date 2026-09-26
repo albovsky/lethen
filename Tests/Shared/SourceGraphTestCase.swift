@@ -61,7 +61,7 @@ open class SourceGraphTestCase: XCTestCase {
         allIndexedDeclarations = []
         graph = SourceGraph(configuration: configuration, logger: logger)
         guard let plan else {
-            throw PeripheryError.packageError(message: "Test index plan is unavailable; fixture setup did not complete.")
+            throw LethenError.packageError(message: "Test index plan is unavailable; fixture setup did not complete.")
         }
 
         var newPlan = plan

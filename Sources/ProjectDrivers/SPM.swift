@@ -30,7 +30,7 @@ public enum SPM {
             while let argument = arguments.next() {
                 if argument == "--scratch-path" {
                     guard let path = arguments.next(), !path.hasPrefix("-") else {
-                        throw PeripheryError.usageError("--scratch-path requires a path.")
+                        throw LethenError.usageError("--scratch-path requires a path.")
                     }
 
                     scratchArguments += [argument, path]
@@ -43,7 +43,7 @@ public enum SPM {
 
         public func build(additionalArguments: [String]) throws {
             guard !additionalArguments.contains("--disable-index-store") else {
-                throw PeripheryError.usageError("--disable-index-store conflicts with scanning a managed build. Remove it, or use --skip-build with --index-store-path for an externally built index.")
+                throw LethenError.usageError("--disable-index-store conflicts with scanning a managed build. Remove it, or use --skip-build with --index-store-path for an externally built index.")
             }
 
             var arguments = ["swift", "build", "--build-tests"] + additionalArguments + ["--enable-index-store"]
@@ -70,7 +70,7 @@ public enum SPM {
             let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)
             var isDirectory: ObjCBool = false
             guard FileManager.default.fileExists(atPath: store.string, isDirectory: &isDirectory), isDirectory.boolValue else {
-                throw PeripheryError.packageError(message: "Index store does not exist at \(store.string) (resolved by 'swift build --show-bin-path \(additionalArguments.joined(separator: " ")) --enable-index-store'). Build the selected configuration with indexing enabled, or use --index-store-path for an externally built index.")
+                throw LethenError.packageError(message: "Index store does not exist at \(store.string) (resolved by 'swift build --show-bin-path \(additionalArguments.joined(separator: " ")) --enable-index-store'). Build the selected configuration with indexing enabled, or use --index-store-path for an externally built index.")
             }
 
             return store
@@ -83,7 +83,7 @@ public enum SPM {
             guard !path.isEmpty, !path.contains(where: \.isNewline),
                   !path.contains("\0"), FilePath(path).isAbsolute
             else {
-                throw PeripheryError.packageError(message: "Expected one absolute binary directory from '\(query.joined(separator: " "))', received: \(output)")
+                throw LethenError.packageError(message: "Expected one absolute binary directory from '\(query.joined(separator: " "))', received: \(output)")
             }
 
             return FilePath(path)
@@ -100,7 +100,7 @@ public enum SPM {
                 let jsonString = try shell.exec(["swift", "package", "describe", "--type", "json"])
 
                 guard let data = jsonString.data(using: .utf8) else {
-                    throw PeripheryError.packageError(message: "Failed to read swift package description.")
+                    throw LethenError.packageError(message: "Failed to read swift package description.")
                 }
 
                 jsonData = data

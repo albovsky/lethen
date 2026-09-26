@@ -90,7 +90,7 @@ final class UpdateChecker {
                 }
 
                 let message = "Failed to identify latest release tag in: \(json)"
-                self.error = PeripheryError.updateCheckError(message: message)
+                self.error = LethenError.updateCheckError(message: message)
                 debugLogger.debug(message)
                 finish()
                 return
@@ -144,7 +144,7 @@ final class UpdateChecker {
 
         logger.info(logger.colorize("\nUpdate Available!", .boldGreen))
         let boldLatestVersion = logger.colorize(latestVersion.tag, .bold)
-        let boldLocalVersion = logger.colorize(PeripheryVersion, .bold)
+        let boldLocalVersion = logger.colorize(LethenVersion, .bold)
         logger.info("Version \(boldLatestVersion) is now available, you are using version \(boldLocalVersion).")
         logger.info("Release notes: " + logger.colorize("https://github.com/albovsky/lethen/releases/tag/\(latestVersion)", .bold))
         let boldOption = logger.colorize("--disable-update-check", .bold)
@@ -153,11 +153,11 @@ final class UpdateChecker {
     }
 
     /// Waits for the check to finish, returning the latest applicable release, or nil when none is published.
-    func wait() -> Result<ReleaseVersion?, PeripheryError> {
+    func wait() -> Result<ReleaseVersion?, LethenError> {
         let waitResult = semaphore.wait(timeout: .now() + 60)
         invalidateSession()
 
-        if let error = error as? PeripheryError {
+        if let error = error as? LethenError {
             return .failure(error)
         }
 
@@ -166,13 +166,13 @@ final class UpdateChecker {
         }
 
         if waitResult == .timedOut {
-            return .failure(PeripheryError.updateCheckError(message: "Timed out while checking for update."))
+            return .failure(LethenError.updateCheckError(message: "Timed out while checking for update."))
         }
 
         return .success(latestVersion)
     }
 
-    static let localVersion = ReleaseVersion(PeripheryVersion)
+    static let localVersion = ReleaseVersion(LethenVersion)
 
     /// A development build is offered newer development releases; a stable build is offered only stable releases.
     static let isDevelopmentBuild = localVersion?.isPrerelease ?? true

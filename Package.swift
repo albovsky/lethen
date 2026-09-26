@@ -127,7 +127,7 @@ var targets: [PackageDescription.Target] = [
         path: "Tests/Shared"
     ),
     .testTarget(
-        name: "PeripheryTests",
+        name: "LethenTests",
         dependencies: [
             .target(name: "TestShared"),
             .target(name: "PeripheryKit"),

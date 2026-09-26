@@ -15,7 +15,7 @@ struct CheckUpdateCommand: ParsableCommand {
         let logger = Logger(configuration: configuration)
         let checker = UpdateChecker(logger: logger, configuration: configuration)
         DispatchQueue.global().async { checker.run() }
-        let boldLocalVersion = logger.colorize(PeripheryVersion, .bold)
+        let boldLocalVersion = logger.colorize(LethenVersion, .bold)
 
         guard let latestVersion = try checker.wait().get() else {
             let kind = UpdateChecker.isDevelopmentBuild ? "" : "stable "
