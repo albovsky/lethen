@@ -117,7 +117,7 @@ open class SetupGuideHelpers {
     private func readRequiredInput() throws -> String {
         guard let input = readInput() else {
             print("")
-            throw PeripheryError.guidedSetupError(message: "Input ended before a choice was made; the guided setup needs an interactive terminal")
+            throw LethenError.guidedSetupError(message: "Input ended before a choice was made; the guided setup needs an interactive terminal")
         }
 
         return input.trimmed

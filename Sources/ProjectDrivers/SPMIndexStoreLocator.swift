@@ -7,7 +7,7 @@ import SystemPackage
 enum SPMIndexStoreLocator {
     static func indexStorePath(binPath: FilePath) throws -> FilePath {
         guard binPath.isAbsolute else {
-            throw PeripheryError.packageError(message: "SwiftPM binary directory must be absolute: \(binPath)")
+            throw LethenError.packageError(message: "SwiftPM binary directory must be absolute: \(binPath)")
         }
 
         return binPath.appending("index/store")

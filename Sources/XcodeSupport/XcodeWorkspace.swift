@@ -27,7 +27,7 @@ public final class XcodeWorkspace: XcodeProjectlike {
         do {
             xcworkspace = try XCWorkspace(pathString: self.path.string)
         } catch {
-            throw PeripheryError.underlyingError(error)
+            throw LethenError.underlyingError(error)
         }
 
         let projectPaths = collectProjectPaths(in: xcworkspace.data.children)

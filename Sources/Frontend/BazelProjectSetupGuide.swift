@@ -24,7 +24,7 @@ final class BazelProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         git_override(
             module_name = "periphery",
             remote = "https://github.com/albovsky/lethen.git",
-            tag = "\(PeripheryVersion)",
+            tag = "\(LethenVersion)",
         )
         use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphery_generated")
         """, .lightGray))

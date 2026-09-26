@@ -55,7 +55,7 @@ public final class XcodeProject: XcodeProjectlike {
         do {
             xcodeProject = try XcodeProj(pathString: self.path.lexicallyNormalized().string)
         } catch {
-            throw PeripheryError.underlyingError(error)
+            throw LethenError.underlyingError(error)
         }
 
         var subProjects: [XcodeProject] = []

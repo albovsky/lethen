@@ -28,7 +28,7 @@ public final class Xcodebuild {
         do {
             try logger.debug(version())
         } catch {
-            throw PeripheryError.xcodebuildNotConfigured
+            throw LethenError.xcodebuildNotConfigured
         }
     }
 
@@ -64,7 +64,7 @@ public final class Xcodebuild {
         let pathsToTry = ["Index.noindex/DataStore", "Index/DataStore"]
             .map { derivedDataPath.appending($0) }
         guard let path = pathsToTry.first(where: { $0.exists }) else {
-            throw PeripheryError.indexStoreNotFound(derivedDataPath: derivedDataPath.string)
+            throw LethenError.indexStoreNotFound(derivedDataPath: derivedDataPath.string)
         }
 
         return path
@@ -115,7 +115,7 @@ public final class Xcodebuild {
 
             return try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any]
         } catch {
-            throw PeripheryError.jsonDeserializationError(error: error, json: jsonString)
+            throw LethenError.jsonDeserializationError(error: error, json: jsonString)
         }
     }
 

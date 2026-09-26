@@ -246,7 +246,7 @@ public final class Configuration {
     private func configurationPath(withUserProvided path: FilePath?) throws -> FilePath? {
         if let path {
             if !path.exists {
-                throw PeripheryError.pathDoesNotExist(path: path.lexicallyNormalized().string)
+                throw LethenError.pathDoesNotExist(path: path.lexicallyNormalized().string)
             }
 
             return path

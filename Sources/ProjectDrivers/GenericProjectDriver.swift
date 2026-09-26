@@ -26,7 +26,7 @@ public final class GenericProjectDriver {
 
     public convenience init(genericProjectConfig: FilePath, configuration: Configuration) throws {
         guard genericProjectConfig.exists else {
-            throw PeripheryError.pathDoesNotExist(path: genericProjectConfig.string)
+            throw LethenError.pathDoesNotExist(path: genericProjectConfig.string)
         }
 
         let decoder = JSONDecoder()

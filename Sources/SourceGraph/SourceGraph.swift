@@ -324,7 +324,7 @@ public final class SourceGraph {
 
     func extendedDeclarationReference(forExtension extensionDeclaration: Declaration) throws -> Reference? {
         guard let extendedKind = extensionDeclaration.kind.extendedKind else {
-            throw PeripheryError.sourceGraphIntegrityError(message: "Unknown extended reference kind for extension '\(extensionDeclaration.kind.rawValue)'")
+            throw LethenError.sourceGraphIntegrityError(message: "Unknown extended reference kind for extension '\(extensionDeclaration.kind.rawValue)'")
         }
 
         return extensionDeclaration.references

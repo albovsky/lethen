@@ -61,7 +61,7 @@ final class SetupGuideHelpersTest: XCTestCase {
     }
 
     private func assertGuidedSetupError(_ error: Error, file: StaticString = #filePath, line: UInt = #line) {
-        guard let error = error as? PeripheryError, case .guidedSetupError = error else {
+        guard let error = error as? LethenError, case .guidedSetupError = error else {
             return XCTFail("Expected a guided setup error, got: \(error)", file: file, line: line)
         }
     }

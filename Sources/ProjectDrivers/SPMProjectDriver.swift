@@ -13,7 +13,7 @@ public final class SPMProjectDriver {
 
     public convenience init(configuration: Configuration, shell: Shell, logger: Logger) throws {
         if !configuration.schemes.isEmpty {
-            throw PeripheryError.usageError("The --schemes option has no effect with Swift Package Manager projects.")
+            throw LethenError.usageError("The --schemes option has no effect with Swift Package Manager projects.")
         }
 
         let pkg = SPM.Package(configuration: configuration, shell: shell, logger: logger)

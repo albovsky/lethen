@@ -17,7 +17,7 @@ final class GitHubActionsFormatter: OutputFormatter {
 
     func format(_ results: [ScanResult], colored: Bool) throws -> String? {
         guard !results.isEmpty else { return nil }
-        guard configuration.relativeResults else { throw PeripheryError.usageError("`lethen scan` must be ran with `--relative-results` when using the GitHub Actions formatter") }
+        guard configuration.relativeResults else { throw LethenError.usageError("`lethen scan` must be ran with `--relative-results` when using the GitHub Actions formatter") }
 
         return results.flatMap { result in
             describe(result, colored: colored).map { location, description in

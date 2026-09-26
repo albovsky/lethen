@@ -30,7 +30,7 @@ final class Project {
         }
 
         guard let kind else {
-            throw PeripheryError.usageError("Failed to identify project in the current directory. For Xcode projects use the '--project' option, and for SPM projects change to the directory containing the Package.swift.")
+            throw LethenError.usageError("Failed to identify project in the current directory. For Xcode projects use the '--project' option, and for SPM projects change to the directory containing the Package.swift.")
         }
 
         self.init(kind: kind, configuration: configuration, shell: shell, logger: logger)
@@ -59,7 +59,7 @@ final class Project {
                     logger: logger
                 )
             #else
-                throw PeripheryError.usageError("Xcode projects are only supported on macOS. On this platform, scan a Swift package, or use '--bazel' or '--generic-project-config'.")
+                throw LethenError.usageError("Xcode projects are only supported on macOS. On this platform, scan a Swift package, or use '--bazel' or '--generic-project-config'.")
             #endif
         case .spm:
             return try SPMProjectDriver(configuration: configuration, shell: shell, logger: logger)

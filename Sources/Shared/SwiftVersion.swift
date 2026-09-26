@@ -14,7 +14,7 @@ public struct SwiftVersion {
 
     public func validateVersion() throws {
         if version.isVersion(lessThan: Self.minimumVersion) {
-            throw PeripheryError.swiftVersionUnsupportedError(
+            throw LethenError.swiftVersionUnsupportedError(
                 version: fullVersion,
                 minimumVersion: Self.minimumVersion
             )

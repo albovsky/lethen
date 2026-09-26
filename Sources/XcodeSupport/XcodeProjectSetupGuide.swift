@@ -77,7 +77,7 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         }
 
         guard let project else {
-            throw PeripheryError.guidedSetupError(message: "Failed to find .xcworkspace or .xcodeproj in current directory")
+            throw LethenError.guidedSetupError(message: "Failed to find .xcworkspace or .xcodeproj in current directory")
         }
 
         let schemes = try filter(

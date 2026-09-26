@@ -1,7 +1,7 @@
 import Foundation
 import SystemPackage
 
-public enum PeripheryError: Error, LocalizedError, CustomStringConvertible {
+public enum LethenError: Error, LocalizedError, CustomStringConvertible {
     case shellCommandFailed(cmd: [String], status: Int32, output: String)
     case shellOutputEncodingFailed(cmd: [String], encoding: String.Encoding)
     case usageError(String)

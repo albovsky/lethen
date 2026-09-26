@@ -3,7 +3,7 @@ import Shared
 import SourceGraph
 import SwiftSyntax
 
-public final class ImportSyntaxVisitor: PeripherySyntaxVisitor {
+public final class ImportSyntaxVisitor: LethenSyntaxVisitor {
     public var importStatements: [ImportStatement] = []
 
     private let sourceLocationBuilder: SourceLocationBuilder
