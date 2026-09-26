@@ -56,3 +56,16 @@ instructions and existing signing evidence. The mise scripts are identical to th
 validated versions above; shell checks and the temporary command-stub harness
 were rerun on the isolated branch. The full Swift baseline was not repeated for
 this documentation-only integration; its exact tested commit is recorded above.
+
+## Rebase onto the Swift 6.3 minimum
+
+The branch was then rebased onto `f8afaff` (`master` after the Swift 6.3 minimum,
+the Bazel image entrypoint, the formatter tests, and the Lethen identifier rename).
+Only `CHANGELOG.md`, `CONTRIBUTING.md`, and `README.md` conflicted; the resolution
+keeps both Breaking entries, the current CI profile text, one copy of the
+toolchain-policy sentence, and states that Intel source builds need Xcode 26.4 or a
+later Xcode 26 release. On the rebased commit, with the same host and toolchain as
+above, `bash .github/scripts/verify-swift-6.4.sh` passed (379 tests, empty
+clean/warm and default/native fixture diffs, no unused code in the strict
+self-scan), `mise r build --arch release` produced an arm64-only binary reporting
+`3.8.1`, and `mise r build --arch x86_64` exited 1 before building.
