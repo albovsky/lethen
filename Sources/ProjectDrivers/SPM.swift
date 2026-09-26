@@ -47,22 +47,103 @@ public enum SPM {
             }
 
             var arguments = ["swift", "build", "--build-tests"] + additionalArguments + ["--enable-index-store"]
-            if configuration.indexStorePath.isEmpty {
-                let binary = try binaryDirectory(additionalArguments: additionalArguments)
-                let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)
-                // Indexing flags do not invalidate all Swiftbuild compilation tasks.
-                // Even an existing store can be stale after an unindexed build.
-                // Rebuild managed products; callers that verify an external index
-                // can opt into reuse with --skip-build.
-                if binary.exists {
-                    try clean(additionalArguments: additionalArguments)
-                }
-                // In swiftbuild Release builds, --enable-index-store alone does
-                // not put indexing flags on the Swift compiler invocation.
-                let quotedStore = "'" + store.string.replacingOccurrences(of: "'", with: "'\\''") + "'"
-                arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
+            guard configuration.indexStorePath.isEmpty else {
+                try shell.exec(arguments)
+                return
+            }
+
+            let binary = try binaryDirectory(additionalArguments: additionalArguments)
+            let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)
+            // In swiftbuild Release builds, --enable-index-store alone does
+            // not put indexing flags on the Swift compiler invocation.
+            let quotedStore = "'" + store.string.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
+
+            if configuration.experimentalReuseIndex {
+                try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store)
+                return
+            }
+
+            // Indexing flags do not invalidate all Swiftbuild compilation tasks.
+            // Even an existing store can be stale after an unindexed build.
+            // Rebuild managed products; callers that verify an external index
+            // can opt into reuse with --skip-build.
+            if binary.exists {
+                try clean(additionalArguments: additionalArguments)
             }
             try shell.exec(arguments)
+        }
+
+        /// Builds incrementally when SPMIndexFreshness can prove the store matches the build, and cleans
+        /// otherwise. The stamp is removed before any build it does not describe.
+        private func buildReusingIndex(arguments: [String], additionalArguments: [String], binary: FilePath, store: FilePath) throws {
+            let logger = logger.contextualized(with: "spm:index-reuse")
+            // swiftbuild keeps objects beside Products (.build/out), the native build system beside the triple.
+            let freshness = SPMIndexFreshness(storePath: store, buildRoot: binary.removingLastComponent().removingLastComponent())
+            let stamp = try SPMIndexFreshness.Stamp(
+                swiftVersion: SwiftVersion(shell: shell).fullVersion,
+                buildArguments: additionalArguments
+            )
+            let sources = try packageSources()
+
+            if binary.exists, store.exists, let previous = freshness.readStamp(), previous.stamp == stamp {
+                switch try freshness.prepare(sources: sources, stampDate: previous.date) {
+                case let .clean(reason):
+                    logger.debug("Index store not reusable, cleaning: \(reason)")
+                case let .recompile(objects, modules):
+                    try freshness.removeStamp()
+                    for object in objects {
+                        try FileManager.default.removeItem(atPath: object.string)
+                    }
+
+                    let start = Date()
+                    try shell.exec(arguments)
+                    let issues = try freshness.verify(sources: sources, buildStart: start)
+                    if issues.isEmpty {
+                        logger.debug("Reused the index store; recompiled \(modules.count) modules (\(objects.count) objects): \(modules.sorted().joined(separator: ", "))")
+                        try freshness.writeStamp(stamp)
+                        return
+                    }
+
+                    logger.debug("Index store not reusable (\(issues.count) issues), cleaning: \(issues.prefix(3).map(\.description).joined(separator: "; "))")
+                }
+            } else {
+                logger.debug("No matching build stamp, cleaning.")
+            }
+
+            try freshness.removeStamp()
+            if binary.exists {
+                try clean(additionalArguments: additionalArguments)
+            }
+            let start = Date()
+            try shell.exec(arguments)
+            let issues = try freshness.verify(sources: sources, buildStart: start)
+            guard issues.isEmpty else {
+                // Leave no stamp, so the next scan cleans again; the scan itself proceeds as it does today.
+                logger.debug("Clean build did not index every source (\(issues.count) issues): \(issues.prefix(3).map(\.description).joined(separator: "; "))")
+                return
+            }
+            try freshness.writeStamp(stamp)
+        }
+
+        func packageSources() throws -> Set<SPMIndexFreshness.Source> {
+            let description = try load()
+            // Plugin scripts are compiled outside the build, so they never have units.
+            return Set(description.targets.filter { $0.type != "plugin" }.flatMap { target in
+                let module = Self.c99Name(target.name)
+                return (target.sources ?? [])
+                    .filter { $0.hasSuffix(".swift") }
+                    .map { SPMIndexFreshness.Source(path: path.appending(target.path).appending($0), module: module) }
+            })
+        }
+
+        /// SwiftPM's module name for a target: characters outside a C identifier become underscores.
+        static func c99Name(_ name: String) -> String {
+            var result = String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" })
+            if let first = result.first, first.isNumber {
+                result = "_" + result
+            }
+            return result
         }
 
         public func indexStorePath(additionalArguments: [String]) throws -> FilePath {
@@ -121,6 +202,7 @@ public struct Target: Decodable {
     public let name: String
     public let type: String
     public let path: String
+    public let sources: [String]?
     public let resources: [Resource]?
 
     public var isTestTarget: Bool {
