@@ -28,9 +28,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Hosts are pinned like the containers so an image migration is a deliberate change.
         include:
           - arch: x86_64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
           - arch: aarch64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
@@ -41,11 +42,11 @@ jobs:
     steps:
       # Release tooling comes from the workflow's commit; the binary is built from `ref`.
       - name: Check out release tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
       - name: Check out release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
           path: source
@@ -78,12 +79,12 @@ jobs:
         # The oldest and newest supported official images, and a swiftly install whose
         # toolchain is outside /usr, which only the launcher can find.
         toolchain: ["swift:6.3-jammy", "swift:6.4-noble", swiftly]
-    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-latest' || 'ubuntu-24.04-arm' }}
+    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: .github/scripts
       - uses: actions/download-artifact@v4

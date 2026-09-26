@@ -31,7 +31,7 @@ env:
 jobs:
   prepare:
     name: Prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 150
     permissions:
       checks: read
@@ -41,7 +41,7 @@ jobs:
       sha: ${{ steps.prepare.outputs.sha }}
       prerelease: ${{ steps.prepare.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - id: prepare
@@ -60,11 +60,11 @@ jobs:
     steps:
       # Release tooling comes from the workflow's commit; the binary is built from the tag.
       - name: Check out release tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
       - name: Check out release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           path: source
@@ -114,11 +114,11 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Check out release tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
       - name: Check out release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           path: source
