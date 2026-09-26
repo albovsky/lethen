@@ -1,0 +1,164 @@
+name: Release
+# Pushing a version tag releases it: the tag is checked against the source version, its
+# commit must be on master and have passed Required checks, and the Apple silicon macOS
+# binary is built and smoke-tested before the `release` environment's reviewer approves
+# signing. The approved job signs and notarizes the binary, tests it again, publishes the
+# GitHub release, and, for stable versions only, updates the Homebrew tap. Running the workflow by hand with an existing tag builds and
+# publishes binaries for it with the current release tooling, which backfills older tags
+# and retries failed releases; the environment must allow the branch it runs from.
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build, sign, and publish binaries for
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+env:
+  # Release binaries are built with the oldest supported Xcode; the result runs on
+  # macOS 15 and later and loads libIndexStore from the user's Xcode or Command Line Tools.
+  # Binaries are Apple silicon only: Xcode 27's libIndexStore has no x86_64 slice, and
+  # Intel Macs build from source.
+  XCODE: "26.4"
+  HOMEBREW_TAP: albovsky/homebrew-tap
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      checks: read
+      contents: read
+    outputs:
+      tag: ${{ steps.prepare.outputs.tag }}
+      sha: ${{ steps.prepare.outputs.sha }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: prepare
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/release-prepare.sh
+  build-macos:
+    name: Build macOS
+    needs: prepare
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      # Release tooling comes from the workflow's commit; the binary is built from the tag.
+      - name: Check out release tooling
+        uses: actions/checkout@v4
+        with:
+          path: tools
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: source
+      - name: Select Xcode
+        run: sudo xcode-select -s "/Applications/Xcode_${XCODE}.app"
+      # The same build as the documented source installation, so the binary matches what
+      # users build themselves. Cross-module optimization is left off: with Xcode 27 it
+      # fails to link ArgumentParser conformances.
+      - name: Build
+        working-directory: source
+        run: |
+          swift build -c release --product lethen --arch arm64
+          mkdir -p ../build
+          cp "$(swift build -c release --product lethen --arch arm64 --show-bin-path)/lethen" ../build/lethen
+          strip -rSTX ../build/lethen
+      - name: Relocate library search paths
+        run: bash tools/.github/scripts/release-relocate-rpaths.sh build/lethen
+      - name: Smoke test
+        run: bash tools/.github/scripts/release-smoke-test.sh build/lethen "${{ needs.prepare.outputs.tag }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lethen-macos
+          path: build/lethen
+          if-no-files-found: error
+          retention-days: 7
+  release:
+    name: Sign and publish
+    needs: [prepare, build-macos]
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: release
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@v4
+        with:
+          path: tools
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: source
+          sparse-checkout: |
+            LICENSE.md
+            docs/releases
+          sparse-checkout-cone-mode: false
+      - name: Select Xcode
+        run: sudo xcode-select -s "/Applications/Xcode_${XCODE}.app"
+      - uses: actions/download-artifact@v4
+        with:
+          name: lethen-macos
+          path: build
+      # A rerun or backfill must not replace a zip that may already be pinned by the
+      # Homebrew formula, so an already published zip is reused instead of re-signed.
+      - name: Reuse published binary
+        id: published
+        run: |
+          mkdir -p dist
+          zip="lethen-$TAG-macos-arm64.zip"
+          if gh release view "$TAG" --json assets --jq '.assets[].name' 2> /dev/null | grep -qxF "$zip"; then
+            gh release download "$TAG" --pattern "$zip" --dir dist
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+            echo "Reusing the published $zip"
+          fi
+      - name: Sign and notarize
+        if: steps.published.outputs.reuse != 'true'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          chmod +x build/lethen
+          bash tools/.github/scripts/release-sign-macos.sh build/lethen source/LICENSE.md "dist/lethen-$TAG-macos-arm64.zip"
+      # Tests the binary inside the zip that is published, whether new or reused.
+      - name: Smoke test released binary
+        run: |
+          ditto -x -k "dist/lethen-$TAG-macos-arm64.zip" released
+          codesign --verify --strict --verbose=2 released/lethen
+          bash tools/.github/scripts/release-smoke-test.sh released/lethen "$TAG"
+      - name: Checksums
+        working-directory: dist
+        run: shasum -a 256 -- *.zip | tee SHA256SUMS
+      - name: Publish GitHub release
+        run: bash tools/.github/scripts/release-publish.sh "$TAG" "$PRERELEASE" "source/docs/releases/$TAG.md" dist/*
+      - name: Update Homebrew tap
+        if: needs.prepare.outputs.prerelease == 'false'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: bash tools/.github/scripts/release-homebrew.sh "$TAG" "dist/lethen-$TAG-macos-arm64.zip"

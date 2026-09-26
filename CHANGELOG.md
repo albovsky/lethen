@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- Pushing a version tag publishes a signed, notarized Apple silicon macOS binary on the GitHub release after smoke tests, and stable versions update the `albovsky/tap/lethen` Homebrew formula. Intel Macs and Linux build from source.
 
 ##### Bug Fixes
 
