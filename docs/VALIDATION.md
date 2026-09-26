@@ -24,7 +24,7 @@ These paths were not changed during the fork setup. They need reproducible compa
 
 ## Distribution
 
-Lethen releases are source-only: the development prerelease 3.8.1-dev.1 and the stable release 3.8.1 (see `releases/`). The inherited publisher and original maintainer's signing/notarization script are disabled. SwiftPM and Docker executable paths use lethen; legacy configuration, library, cache, and Bazel names remain for compatibility. The commercial plan suggestion client is removed. Optional update checking points to `albovsky/lethen`; until a release exists, explicit `check-update` cannot find a latest release.
+The development prerelease 3.8.1-dev.1 and the stable release 3.8.1 (see `releases/`) were distributed from source. Signed, notarized macOS binaries and the `albovsky/homebrew-tap` formula are published by the `Release` workflow described in `CONTRIBUTING.md`; they are unvalidated until its first run. The inherited publisher and the original maintainer's signing/notarization script remain disabled. SwiftPM and Docker executable paths use lethen; legacy configuration, library, cache, and Bazel names remain for compatibility. The commercial plan suggestion client is removed. Optional update checking points to `albovsky/lethen`; until a release exists, explicit `check-update` cannot find a latest release.
 
 The intended domain is lethen.sh; repository setup does not register the domain or deploy a website.
 

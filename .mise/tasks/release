@@ -1,4 +1,4 @@
 #!/bin/bash
 set -euo pipefail
-echo "Lethen releases are not configured yet. See CONTRIBUTING.md." >&2
+echo "Lethen releases are published by the Release workflow when a version tag is pushed. See CONTRIBUTING.md." >&2
 exit 1

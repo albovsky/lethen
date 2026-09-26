@@ -19,9 +19,10 @@ major features, dependencies, CI, release, and distribution changes first.
   compilation alone as correctness evidence.
 - Validate affected tests and the full suite; record the exact toolchain, commit,
   and build configuration behind compatibility claims.
-- Keep inherited release automation disabled. Do not use upstream credentials or
-  publish to upstream registries. Tags through 3.8.0 are upstream history, not
-  lethen releases.
+- Publish binaries only through `.github/workflows/release.yml`, with lethen's
+  own credentials in the approval-gated `release` environment. Do not use upstream
+  credentials or publish to upstream registries. Tags through 3.8.0 are upstream
+  history, not lethen releases.
 
 For reviews, report `Standards` and `Spec` separately. Cite documented
 standards, distinguish hard violations from judgment-call smells, and flag
