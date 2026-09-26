@@ -8,7 +8,7 @@ Intended website: **lethen.sh**. This repository is the project home while the w
 
 ## Status
 
-[3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1) is the first Lethen release. Apple silicon Macs can install it with Homebrew; Intel Macs and Linux build it from source. It makes scanning reliable on Swift 6.4 / Xcode 27, fixes analysis defects reproduced during a private-project audit, and turns the remaining crash paths into reported errors. It is the last release that supports Swift 6.1 and 6.2; 3.9.0 requires Swift 6.3 (Xcode 26.4).
+[3.9.0](https://github.com/albovsky/lethen/releases/tag/3.9.0) is the current Lethen release and requires Swift 6.3 (Xcode 26.4) or later. Apple silicon Macs can install it with Homebrew, Linux x86_64 and aarch64 can install a release tarball, and Intel Macs build it from source. It fixes the Linux update-check crash on Swift 6.4, keeps one DerivedData directory for multi-scheme Xcode scans, and makes `csv` and `json` output well-formed and stable. [3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1), the first Lethen release, is the last that supports Swift 6.1 and 6.2.
 
 Managed SwiftPM scans clean and rebuild existing products to guarantee a fresh index. This is deliberate and it has a real cost: **a managed SwiftPM scan is always a full rebuild, never an incremental one.** SwiftPM does not treat `--enable-index-store` as a change that invalidates already-compiled tasks, so a build tree produced by a plain `swift build` yields a stale or partial index and silently wrong results. Cleaning is the only way we can currently rule that out.
 
@@ -31,13 +31,13 @@ Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `
 
 ### Download the macOS zip
 
-Download [lethen-3.8.1-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.8.1/lethen-3.8.1-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.8.1/SHA256SUMS) into the same directory, then run there:
+Download [lethen-3.9.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.9.0/lethen-3.9.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.9.0/SHA256SUMS) into the same directory, then run there:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
-ditto -x -k lethen-3.8.1-macos-arm64.zip lethen-3.8.1
+ditto -x -k lethen-3.9.0-macos-arm64.zip lethen-3.9.0
 mkdir -p "$HOME/.local/bin"
-install -m 755 lethen-3.8.1/lethen "$HOME/.local/bin/lethen"
+install -m 755 lethen-3.9.0/lethen "$HOME/.local/bin/lethen"
 export PATH="$HOME/.local/bin:$PATH"
 lethen version
 ```
@@ -46,7 +46,7 @@ Keep the PATH export in your shell profile.
 
 ### Linux
 
-Releases after 3.8.1 include `lethen-<version>-linux-x86_64.tar.gz` and `lethen-<version>-linux-aarch64.tar.gz`. They need glibc 2.35 or later (Ubuntu 22.04, Debian 12, or newer) and a Swift 6.3 or newer toolchain, which Lethen uses to build and index your project:
+Releases from 3.9.0 include `lethen-<version>-linux-x86_64.tar.gz` and `lethen-<version>-linux-aarch64.tar.gz`. They need glibc 2.35 or later (Ubuntu 22.04, Debian 12, or newer) and a Swift 6.3 or newer toolchain, which Lethen uses to build and index your project:
 
 ```sh
 version=<version>
@@ -68,7 +68,7 @@ Add the `export PATH` line to your shell profile if `~/.local/bin` is not alread
 Intel Macs build Lethen from source, and so can any Linux system with a supported toolchain. On macOS, select a full Xcode installation, for example with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. The local source-install baseline is Xcode 27.0 with Apple Swift 6.4 on arm64 macOS 27.
 
 ```sh
-git clone --branch 3.8.1 --depth 1 https://github.com/albovsky/lethen.git
+git clone --branch 3.9.0 --depth 1 https://github.com/albovsky/lethen.git
 cd lethen
 swift build -c release --product lethen
 lethen_bin_dir="$(swift build -c release --show-bin-path)"
@@ -105,7 +105,7 @@ bazel_dep(name = "periphery", dev_dependency = True)
 git_override(
     module_name = "periphery",
     remote = "https://github.com/albovsky/lethen.git",
-    tag = "3.8.1",
+    tag = "3.9.0",
 )
 use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphery_generated")
 ```

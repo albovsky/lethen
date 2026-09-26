@@ -2,6 +2,22 @@
 
 ##### Breaking
 
+- None.
+
+##### Enhancements
+
+- None.
+
+##### Bug Fixes
+
+- None.
+
+## 3.9.0 (2026-09-25)
+
+Lethen now requires Swift 6.3 (Xcode 26.4) and publishes Linux release tarballs alongside the Apple silicon macOS binary and Homebrew formula.
+
+##### Breaking
+
 - The minimum supported Swift version is now 6.3 (Xcode 26.4). Lethen supports the current Xcode major and the final release of the previous major.
 - macOS release binaries and the Homebrew formula are Apple silicon only; the universal macOS binaries provided by upstream Periphery are not provided by lethen. Intel users must build from source within the [supported Xcode 26 window](CONTRIBUTING.md#supported-platforms).
 
@@ -15,6 +31,8 @@
 - The mise build task no longer attempts Intel or universal builds; `--arch release` produces a stripped arm64 binary. The benchmark runs the executable path returned by the build task instead of assuming `.build/release/lethen`. The build uses standard release optimization to avoid ArgumentParser linker failures with explicit cross-module optimization on Xcode 27.
 - The `csv` format quotes fields that contain commas, quotes, or line breaks, such as `@available` attributes with arguments and redundant-conformance hints naming several protocols, so every row keeps eight columns.
 - The `json`, `codeclimate`, and `gitlab-codequality` formats write object keys in sorted order, so identical scans produce byte-identical output.
+- Xcode scans of two or more schemes reuse one DerivedData directory instead of creating a new one on most runs, because the schemes are sorted before the directory name is hashed. Builds are incremental again and orphaned directories no longer accumulate; caches left under the old names are not migrated, and `lethen clear-cache` removes them.
+- The update check no longer crashes the process on Linux with Swift 6.4. Its session is invalidated once the request settles or is abandoned, and it stays alive until the process exits.
 
 ## 3.8.1 (2026-09-25)
 
