@@ -122,7 +122,20 @@ jobs:
         with:
           name: lethen-macos
           path: build
+      # A rerun or backfill must not replace a zip that may already be pinned by the
+      # Homebrew formula, so an already published zip is reused instead of re-signed.
+      - name: Reuse published binary
+        id: published
+        run: |
+          mkdir -p dist
+          zip="lethen-$TAG-macos-arm64.zip"
+          if gh release view "$TAG" --json assets --jq '.assets[].name' 2> /dev/null | grep -qxF "$zip"; then
+            gh release download "$TAG" --pattern "$zip" --dir dist
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+            echo "Reusing the published $zip"
+          fi
       - name: Sign and notarize
+        if: steps.published.outputs.reuse != 'true'
         env:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -132,10 +145,13 @@ jobs:
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
           chmod +x build/lethen
-          mkdir -p dist
           bash tools/.github/scripts/release-sign-macos.sh build/lethen source/LICENSE.md "dist/lethen-$TAG-macos-arm64.zip"
-      - name: Smoke test signed binary
-        run: bash tools/.github/scripts/release-smoke-test.sh build/lethen "$TAG"
+      # Tests the binary inside the zip that is published, whether new or reused.
+      - name: Smoke test released binary
+        run: |
+          ditto -x -k "dist/lethen-$TAG-macos-arm64.zip" released
+          codesign --verify --strict --verbose=2 released/lethen
+          bash tools/.github/scripts/release-smoke-test.sh released/lethen "$TAG"
       - name: Checksums
         working-directory: dist
         run: shasum -a 256 -- *.zip | tee SHA256SUMS
