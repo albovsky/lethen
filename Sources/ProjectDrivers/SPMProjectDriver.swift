@@ -57,6 +57,8 @@ extension SPMProjectDriver: ProjectDriver {
         let collector = SourceFileCollector(
             indexStorePaths: indexStorePaths,
             excludedTestTargets: excludedTestTargets,
+            // A store lethen did not just build may predate edits; an explicit path stays authoritative.
+            requireFreshUnits: configuration.skipBuild && configuration.indexStorePath.isEmpty,
             logger: logger,
             configuration: configuration
         )

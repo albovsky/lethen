@@ -4,6 +4,7 @@ load("//bazel/internal:opt.bzl", "optimized_swift_binary")  # buildifier: disabl
 swift_library(
     name = "XcodeSupport",
     srcs = [
+        "XcodeSupport/XcodeDerivedDataLocator.swift",
         "XcodeSupport/XcodeProject.swift",
         "XcodeSupport/XcodeProjectSetupGuide.swift",
         "XcodeSupport/XcodeProjectlike.swift",

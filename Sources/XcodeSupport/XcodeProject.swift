@@ -14,6 +14,26 @@ public final class XcodeProject: XcodeProjectlike {
     let xcodeProject: XcodeProj
 
     private let xcodebuild: Xcodebuild
+    private var synchronizedRootGroupFiles: Set<FilePath>?
+
+    /// Every file in the project's file system synchronized groups. Each target reads the same groups,
+    /// so the tree is walked once per project rather than once per target.
+    func fileSystemSynchronizedFiles() throws -> Set<FilePath> {
+        if let synchronizedRootGroupFiles {
+            return synchronizedRootGroupFiles
+        }
+
+        let root = sourceRoot.lexicallyNormalized()
+        let files = try xcodeProject.pbxproj.fileSystemSynchronizedRootGroups.flatMapSet {
+            if let stringPath = try $0.fullPath(sourceRoot: root.string) {
+                return FilePath.glob(FilePath(stringPath).appending("**/*").string)
+            }
+
+            return []
+        }
+        synchronizedRootGroupFiles = files
+        return files
+    }
 
     convenience init?(
         path: FilePath,

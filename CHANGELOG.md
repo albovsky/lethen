@@ -6,7 +6,8 @@
 
 ##### Enhancements
 
-- None.
+- `--skip-build` without `--index-store-path` also finds the index Xcode keeps for the project in its DerivedData and uses whichever index was written most recently, so a project Xcode has indexed can be scanned without an `xcodebuild` build. Such an index is checked first: units older than their source file are ignored, and a source file newer than every unit for it stops the scan with a stale-index error instead of producing results from outdated code. The same check now applies to SwiftPM `--skip-build` scans without an explicit path.
+- Xcode projects that use file system synchronized groups are parsed faster: the group tree is walked once per project instead of three times per target.
 
 ##### Bug Fixes
 

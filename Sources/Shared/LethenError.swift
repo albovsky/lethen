@@ -18,6 +18,7 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
     case swiftVersionUnsupportedError(version: String, minimumVersion: String)
     case jsonDeserializationError(error: Error, json: String)
     case indexStoreNotFound(derivedDataPath: String)
+    case staleIndexStore(path: String, staleFiles: [String])
     case changeCurrentDirectoryFailed(FilePath)
 
     public var errorDescription: String? {
@@ -56,6 +57,9 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
             return "JSON deserialization failed: \(describe(error))\nJSON:\n\(json)"
         case let .indexStoreNotFound(derivedDataPath):
             return "Failed to find index datastore at path: \(derivedDataPath)"
+        case let .staleIndexStore(path, staleFiles):
+            let examples = staleFiles.prefix(3).joined(separator: ", ")
+            return "The index store at \(path) is stale: \(staleFiles.count) source files are newer than every index unit for them (\(examples)). Build the project again, or scan without --skip-build."
         case let .changeCurrentDirectoryFailed(path):
             return "Failed to change current directory to: \(path)"
         }

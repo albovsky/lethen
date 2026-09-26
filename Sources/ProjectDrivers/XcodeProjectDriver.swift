@@ -14,6 +14,7 @@
         private let xcodebuild: Xcodebuild
         private let project: XcodeProjectlike
         private let schemes: Set<String>
+        private let derivedDataLocator: XcodeDerivedDataLocator
 
         public convenience init(
             projectPath: FilePath,
@@ -84,13 +85,15 @@
             configuration: Configuration,
             xcodebuild: Xcodebuild,
             project: XcodeProjectlike,
-            schemes: Set<String>
+            schemes: Set<String>,
+            derivedDataLocator: XcodeDerivedDataLocator = XcodeDerivedDataLocator()
         ) {
             self.logger = logger
             self.configuration = configuration
             self.xcodebuild = xcodebuild
             self.project = project
             self.schemes = schemes
+            self.derivedDataLocator = derivedDataLocator
         }
     }
 
@@ -118,6 +121,8 @@
         public func plan(logger: ContextualLogger) throws -> IndexPlan {
             let indexStorePaths: Set<FilePath> = if !configuration.indexStorePath.isEmpty {
                 Set(configuration.indexStorePath)
+            } else if configuration.skipBuild {
+                try [skipBuildIndexStore()]
             } else {
                 try [xcodebuild.indexStorePath(project: project, schemes: Array(schemes))]
             }
@@ -128,6 +133,8 @@
             let collector = SourceFileCollector(
                 indexStorePaths: indexStorePaths,
                 excludedTestTargets: excludedTestTargets,
+                // A store lethen did not just build may predate edits; an explicit path stays authoritative.
+                requireFreshUnits: configuration.skipBuild && configuration.indexStorePath.isEmpty,
                 logger: logger,
                 configuration: configuration
             )
@@ -144,6 +151,26 @@
                 xcDataModelPaths: xcDataModelPaths,
                 xcMappingModelPaths: xcMappingModelPaths
             )
+        }
+
+        // MARK: - Private
+
+        /// Without a build, the index is either lethen's own from an earlier scan or the one Xcode keeps
+        /// for this project in its DerivedData; the most recently written one is used, and named.
+        private func skipBuildIndexStore() throws -> FilePath {
+            let own = try? xcodebuild.indexStorePath(project: project, schemes: Array(schemes))
+            let candidates = ([own].compactMap(\.self) + derivedDataLocator.indexStores(for: project.path))
+                .map { ($0, XcodeDerivedDataLocator.lastWritten($0)) }
+            guard let (store, date) = candidates.max(by: { $0.1 < $1.1 }) else {
+                throw LethenError.usageError("--skip-build found no index for \(project.path). Build the project in Xcode, scan once without --skip-build, or pass --index-store-path.")
+            }
+
+            if configuration.outputFormat.supportsAuxiliaryOutput {
+                let source = store == own ? "lethen's previous build" : "Xcode's DerivedData"
+                logger.info("Using the index from \(source) at \(store), last written \(date.formatted(.iso8601)).")
+            }
+
+            return store
         }
     }
 #endif
