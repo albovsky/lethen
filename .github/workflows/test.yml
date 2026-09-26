@@ -33,14 +33,14 @@ jobs:
   # build jobs entirely.
   changes:
     name: Plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
       profile: ${{ steps.plan.outputs.profile }}
       code: ${{ steps.plan.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - id: plan
@@ -57,7 +57,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Get Swift Version
@@ -95,9 +95,9 @@ jobs:
     # Formatting, SwiftLint and buildifier need no Apple toolchain, so this runs on
     # Linux and stays out of the macOS queue. The generated Bazel rules are checked in
     # the macOS job because the generator needs the macOS package manifest.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: bazel-contrib/setup-bazel@0.15.0
         with:
           bazelisk-version: 1.x
@@ -123,7 +123,7 @@ jobs:
             runs-on: macos-26
             baseline: bazel.json
           - os: Linux
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-24.04
             container: swift:latest
             cc: clang
             baseline: linux-bazel.json
@@ -133,7 +133,7 @@ jobs:
       USE_BAZEL_VERSION: ${{ matrix.bazel }}
       CC: ${{ matrix.cc }}
     steps: &bazel-steps
-      - uses: actions/checkout@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: bazel-contrib/setup-bazel@0.15.0
         with:
           bazelisk-version: 1.x
@@ -171,7 +171,7 @@ jobs:
             macos: "macos-26"
     runs-on: ${{ matrix.macos }}
     steps: &macos-steps
-    - uses: actions/checkout@master
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Select Xcode version
       run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
     - name: Install Swiftly
@@ -248,10 +248,10 @@ jobs:
             container: "swift:6.4"
           - swift: "6.3"
             container: "swift:6.3"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ${{ matrix.container }}
     steps: &linux-steps
-    - uses: actions/checkout@master
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Get Swift Version
       id: get-swift-version
       run: |
@@ -311,7 +311,7 @@ jobs:
         include:
           - swift: "main-snapshot"
             container: "swiftlang/swift:nightly-main"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: ${{ matrix.container }}
     continue-on-error: true
     steps: *linux-steps
@@ -323,13 +323,13 @@ jobs:
     # on manual runs so it can be exercised from a branch.
     name: Prune caches
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: write
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: bash .github/scripts/prune-caches.sh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -353,7 +353,7 @@ jobs:
     name: Required checks
     if: always()
     needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, linux, linux-release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions: {}
     steps:
     - name: Verify job results
