@@ -15,7 +15,7 @@ PRODUCTS = {
 }
 
 VISIBILITY = {
-    "Frontend" => "@@+generated+periphery_generated//:__pkg__",
+    "LethenCLI" => "@@+generated+periphery_generated//:__pkg__",
 }
 
 MACOS_DEPS = [
