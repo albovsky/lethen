@@ -154,8 +154,11 @@ final class SPMIndexReuseTest: XCTestCase {
                 return XCTFail("Expected a recompile, got \(preparation)")
             }
 
-            XCTAssertEqual(modules, ["TargetA", "MainTarget"], "The changed module and its importer, but not the module TargetA imports")
-            XCTAssertTrue(objects.contains { $0.lastComponent?.string == "main.o" }, "\(objects)")
+            // The native build system tracks compiler flags, so its unindexed build recompiles, and dirties,
+            // every module; swiftbuild recompiles only TargetA. Either way the importer must be included.
+            XCTAssertTrue(modules.isSuperset(of: ["TargetA", "MainTarget"]), "\(modules)")
+            // swiftbuild names objects main.o, the native build system main.swift.o.
+            XCTAssertTrue(objects.contains { $0.lastComponent?.string.hasPrefix("main.") == true }, "\(objects)")
         }
     }
 
@@ -178,10 +181,58 @@ final class SPMIndexReuseTest: XCTestCase {
         }
     }
 
-    func testModuleNamesFollowSwiftPM() {
-        XCTAssertEqual(SPM.Package.c99Name("MainTarget"), "MainTarget")
-        XCTAssertEqual(SPM.Package.c99Name("my-target.v2"), "my_target_v2")
-        XCTAssertEqual(SPM.Package.c99Name("2D"), "_2D")
+    /// A unit for a file the package no longer builds would still be analyzed, because the file exists.
+    /// swiftbuild deletes the excluded file's object, so its unit no longer resolves; the native build
+    /// system leaves the object and unit in place, so only the package source check catches it.
+    func testSourceExcludedFromThePackageIsNotReused() throws {
+        for (index, buildSystem) in [[], ["--build-system", "native"]].enumerated() {
+            if index > 0 {
+                // Each build system starts from a fresh copy of the fixture.
+                try tearDownWithError()
+                try setUpWithError()
+            }
+            try root.chdir {
+                try "func reuseProbeExcluded() {}\n".write(to: root.appending("Sources/MainTarget/Added.swift").url, atomically: true, encoding: .utf8)
+                try build(arguments: buildSystem)
+                XCTAssertTrue(try symbols(in: "Sources/MainTarget/Added.swift", arguments: buildSystem).contains("reuseProbeExcluded()"))
+                try replace(
+                    #".executableTarget(name: "MainTarget", dependencies: ["TargetA"])"#,
+                    with: #".executableTarget(name: "MainTarget", dependencies: ["TargetA"], exclude: ["Added.swift"])"#,
+                    in: "Package.swift"
+                )
+                shell.reset()
+
+                try build(arguments: buildSystem)
+
+                XCTAssertTrue(shell.cleaned, "\(buildSystem): a unit for an excluded source must not be reused")
+                XCTAssertTrue(try symbols(in: "Sources/MainTarget/Added.swift", arguments: buildSystem).isEmpty, "\(buildSystem): the excluded source must have no unit")
+                XCTAssertTrue(try symbols(in: "Sources/MainTarget/main.swift", arguments: buildSystem).contains("PublicEnumWithAssociatedValue"), "\(buildSystem): current sources stay indexed")
+            }
+        }
+    }
+
+    func testUnreadableStoreFallsBackToCleaning() throws {
+        try root.chdir {
+            try build()
+            let store = try freshness().storePath
+            for entry in try FileManager.default.contentsOfDirectory(atPath: store.string) {
+                try FileManager.default.removeItem(atPath: store.appending(entry).string)
+            }
+            shell.reset()
+
+            try build()
+
+            XCTAssertTrue(shell.cleaned)
+            XCTAssertTrue(try symbols(in: "Sources/MainTarget/main.swift").contains("PublicEnumWithAssociatedValue"))
+        }
+    }
+
+    func testModuleNamesComeFromThePackageDescription() throws {
+        try root.chdir {
+            let modules = try Set(package().packageSources().map(\.module))
+
+            XCTAssertEqual(modules, ["ExternalTarget", "TargetA", "MainTarget"])
+        }
     }
 
     // MARK: - Private
@@ -196,22 +247,26 @@ final class SPMIndexReuseTest: XCTestCase {
         return SPM.Package(configuration: configuration, shell: shell, logger: logger)
     }
 
-    private func freshness() throws -> SPMIndexFreshness {
-        let binary = try FilePath(ShellImpl(logger: logger).exec(["swift", "build", "--show-bin-path", "--enable-index-store"]).trimmingCharacters(in: .whitespacesAndNewlines))
-        return try SPMIndexFreshness(storePath: SPMIndexStoreLocator.indexStorePath(binPath: binary), buildRoot: binary.removingLastComponent().removingLastComponent())
+    private func freshness(arguments: [String] = []) throws -> SPMIndexFreshness {
+        let binary = try FilePath(ShellImpl(logger: logger).exec(["swift", "build", "--show-bin-path"] + arguments + ["--enable-index-store"]).trimmingCharacters(in: .whitespacesAndNewlines))
+        return try SPMIndexFreshness(
+            storePath: SPMIndexStoreLocator.indexStorePath(binPath: binary),
+            buildRoot: binary.removingLastComponent().removingLastComponent(),
+            packageRoot: root
+        )
     }
 
     /// Symbol names in the records the store's units currently point at for the file.
-    private func symbols(in relativePath: String) throws -> Set<String> {
-        try Set(currentSymbols(in: relativePath).map(\.name))
+    private func symbols(in relativePath: String, arguments: [String] = []) throws -> Set<String> {
+        try Set(currentSymbols(in: relativePath, arguments: arguments).map(\.name))
     }
 
     private func usrs(named name: String, in relativePath: String) throws -> Set<String> {
         try Set(currentSymbols(in: relativePath).filter { $0.name == name }.map(\.usr))
     }
 
-    private func currentSymbols(in relativePath: String) throws -> [(name: String, usr: String)] {
-        let store = try IndexStore(path: freshness().storePath.string)
+    private func currentSymbols(in relativePath: String, arguments: [String] = []) throws -> [(name: String, usr: String)] {
+        let store = try IndexStore(path: freshness(arguments: arguments).storePath.string)
         let file = root.appending(relativePath).url.resolvingSymlinksInPath()
         var result: [(name: String, usr: String)] = []
         for unit in store.units where URL(fileURLWithPath: unit.mainFile).resolvingSymlinksInPath() == file {

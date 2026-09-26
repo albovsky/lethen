@@ -50,6 +50,7 @@ struct SPMIndexFreshness {
         case unexpectedModule(FilePath, expected: String, found: String)
         case unresolvedObject(FilePath, recorded: String)
         case importerNotRecompiled(module: String, importer: String)
+        case notAPackageSource(FilePath)
 
         var description: String {
             switch self {
@@ -65,20 +66,28 @@ struct SPMIndexFreshness {
                 "object \(recorded) for \(path) matches no single object file in the build"
             case let .importerNotRecompiled(module, importer):
                 "\(module) was recompiled but \(importer), which imports it, was not"
+            case let .notAPackageSource(path):
+                "\(path) has a unit but is no longer a source of the package"
             }
         }
     }
 
     let storePath: FilePath
     let buildRoot: FilePath
+    let packageRoot: FilePath
     let stampPath: FilePath
 
-    /// - Parameter buildRoot: the directory holding the build's object files. swiftbuild keeps them under
-    ///   `Intermediates.noindex` and records relocatable object paths in units; the native build system
-    ///   keeps them beside the products and records real paths.
-    init(storePath: FilePath, buildRoot: FilePath) {
+    /// - Parameters:
+    ///   - buildRoot: the directory holding the build's object files. swiftbuild keeps them under
+    ///     `Intermediates.noindex` and records relocatable object paths in units; the native build system
+    ///     keeps them beside the products and records real paths.
+    ///   - packageRoot: the root package's directory. A unit for a file under it that is not a current
+    ///     source, such as one whose target was removed or which a target now excludes, would still be
+    ///     analyzed, so it cannot be reused.
+    init(storePath: FilePath, buildRoot: FilePath, packageRoot: FilePath) {
         self.storePath = storePath
         self.buildRoot = buildRoot
+        self.packageRoot = packageRoot
         stampPath = storePath.removingLastComponent().appending("lethen-build-stamp.json")
     }
 
@@ -111,6 +120,9 @@ struct SPMIndexFreshness {
         let units = try sourceUnits()
         if let unresolved = units.first(where: { $0.object == nil }) {
             return .clean(reason: "object \(unresolved.recordedObject) matches no single object file")
+        }
+        if let removed = unitsOutsidePackageSources(units, sources: sources).first {
+            return .clean(reason: "\(removed) has a unit but is no longer a source of the package")
         }
 
         let modulesByDirectory = moduleObjectDirectories(units)
@@ -153,7 +165,7 @@ struct SPMIndexFreshness {
     func verify(sources: Set<Source>, buildStart: Date) throws -> [Issue] {
         let units = try sourceUnits()
         let unitsByFile = Dictionary(grouping: units, by: \.mainFile)
-        var issues: [Issue] = []
+        var issues: [Issue] = unitsOutsidePackageSources(units, sources: sources).map { .notAPackageSource($0) }
 
         for source in sources.sorted(by: { $0.path.string < $1.path.string }) {
             let path = Self.resolved(source.path)
@@ -247,6 +259,20 @@ struct SPMIndexFreshness {
                 date: date
             )
         }
+    }
+
+    /// Files under the package root, outside the build's scratch directory where generated sources live,
+    /// that have units but are not current package sources.
+    private func unitsOutsidePackageSources(_ units: [SourceUnit], sources: Set<Source>) -> [FilePath] {
+        let current = Set(sources.map { Self.resolved($0.path) })
+        let package = Self.resolved(packageRoot)
+        // swiftbuild's build root is <scratch>/out; the native build system's is the scratch directory.
+        let intermediates = buildRoot.appending("Intermediates.noindex")
+        let scratch = Self.resolved(FileManager.default.fileExists(atPath: intermediates.string) ? buildRoot.removingLastComponent() : buildRoot)
+
+        return Set(units.map(\.mainFile))
+            .filter { $0.starts(with: package) && !$0.starts(with: scratch) && !current.contains($0) }
+            .sorted()
     }
 
     /// Every object directory an indexed module compiles into, with symlinks resolved.

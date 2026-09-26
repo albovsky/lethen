@@ -79,7 +79,7 @@ public enum SPM {
         private func buildReusingIndex(arguments: [String], additionalArguments: [String], binary: FilePath, store: FilePath) throws {
             let logger = logger.contextualized(with: "spm:index-reuse")
             // swiftbuild keeps objects beside Products (.build/out), the native build system beside the triple.
-            let freshness = SPMIndexFreshness(storePath: store, buildRoot: binary.removingLastComponent().removingLastComponent())
+            let freshness = SPMIndexFreshness(storePath: store, buildRoot: binary.removingLastComponent().removingLastComponent(), packageRoot: path)
             let stamp = try SPMIndexFreshness.Stamp(
                 swiftVersion: SwiftVersion(shell: shell).fullVersion,
                 buildArguments: additionalArguments
@@ -87,7 +87,15 @@ public enum SPM {
             let sources = try packageSources()
 
             if binary.exists, store.exists, let previous = freshness.readStamp(), previous.stamp == stamp {
-                switch try freshness.prepare(sources: sources, stampDate: previous.date) {
+                // Only failures to read or verify the store fall back to cleaning; a failing build still throws.
+                let preparation: SPMIndexFreshness.Preparation
+                do {
+                    preparation = try freshness.prepare(sources: sources, stampDate: previous.date)
+                } catch {
+                    preparation = .clean(reason: "the store could not be read: \(error)")
+                }
+
+                switch preparation {
                 case let .clean(reason):
                     logger.debug("Index store not reusable, cleaning: \(reason)")
                 case let .recompile(objects, modules):
@@ -98,14 +106,14 @@ public enum SPM {
 
                     let start = Date()
                     try shell.exec(arguments)
-                    let issues = try freshness.verify(sources: sources, buildStart: start)
+                    let issues = verify(freshness, sources: sources, buildStart: start)
                     if issues.isEmpty {
                         logger.debug("Reused the index store; recompiled \(modules.count) modules (\(objects.count) objects): \(modules.sorted().joined(separator: ", "))")
                         try freshness.writeStamp(stamp)
                         return
                     }
 
-                    logger.debug("Index store not reusable (\(issues.count) issues), cleaning: \(issues.prefix(3).map(\.description).joined(separator: "; "))")
+                    logger.debug("Index store not reusable (\(issues.count) issues), cleaning: \(issues.prefix(3).joined(separator: "; "))")
                 }
             } else {
                 logger.debug("No matching build stamp, cleaning.")
@@ -117,33 +125,34 @@ public enum SPM {
             }
             let start = Date()
             try shell.exec(arguments)
-            let issues = try freshness.verify(sources: sources, buildStart: start)
+            let issues = verify(freshness, sources: sources, buildStart: start)
             guard issues.isEmpty else {
                 // Leave no stamp, so the next scan cleans again; the scan itself proceeds as it does today.
-                logger.debug("Clean build did not index every source (\(issues.count) issues): \(issues.prefix(3).map(\.description).joined(separator: "; "))")
+                logger.debug("Clean build did not index every source (\(issues.count) issues): \(issues.prefix(3).joined(separator: "; "))")
                 return
             }
+
             try freshness.writeStamp(stamp)
+        }
+
+        /// Verification issues, with a store that cannot be read reported as one.
+        private func verify(_ freshness: SPMIndexFreshness, sources: Set<SPMIndexFreshness.Source>, buildStart: Date) -> [String] {
+            do {
+                return try freshness.verify(sources: sources, buildStart: buildStart).map(\.description)
+            } catch {
+                return ["the store could not be read: \(error)"]
+            }
         }
 
         func packageSources() throws -> Set<SPMIndexFreshness.Source> {
             let description = try load()
             // Plugin scripts are compiled outside the build, so they never have units.
             return Set(description.targets.filter { $0.type != "plugin" }.flatMap { target in
-                let module = Self.c99Name(target.name)
+                let module = target.c99name ?? target.name
                 return (target.sources ?? [])
                     .filter { $0.hasSuffix(".swift") }
                     .map { SPMIndexFreshness.Source(path: path.appending(target.path).appending($0), module: module) }
             })
-        }
-
-        /// SwiftPM's module name for a target: characters outside a C identifier become underscores.
-        static func c99Name(_ name: String) -> String {
-            var result = String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" })
-            if let first = result.first, first.isNumber {
-                result = "_" + result
-            }
-            return result
         }
 
         public func indexStorePath(additionalArguments: [String]) throws -> FilePath {
@@ -202,6 +211,8 @@ public struct Target: Decodable {
     public let name: String
     public let type: String
     public let path: String
+    /// The target's module name, as SwiftPM derives it.
+    public let c99name: String?
     public let sources: [String]?
     public let resources: [Resource]?
 
