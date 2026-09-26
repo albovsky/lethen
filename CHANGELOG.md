@@ -13,6 +13,8 @@
 ##### Bug Fixes
 
 - The mise build task no longer attempts Intel or universal builds; `--arch release` produces a stripped arm64 binary. The benchmark runs the executable path returned by the build task instead of assuming `.build/release/lethen`. The build uses standard release optimization to avoid ArgumentParser linker failures with explicit cross-module optimization on Xcode 27.
+- The `csv` format quotes fields that contain commas, quotes, or line breaks, such as `@available` attributes with arguments and redundant-conformance hints naming several protocols, so every row keeps eight columns.
+- The `json`, `codeclimate`, and `gitlab-codequality` formats write object keys in sorted order, so identical scans produce byte-identical output.
 
 ## 3.8.1 (2026-09-25)
 
