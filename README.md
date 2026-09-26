@@ -38,8 +38,11 @@ curl -fsSLO "https://github.com/albovsky/lethen/releases/download/$version/$arch
 mkdir -p "$HOME/.local/share" "$HOME/.local/bin"
 tar -xzf "$archive.tar.gz" -C "$HOME/.local/share"
 ln -sf "$HOME/.local/share/$archive/bin/lethen" "$HOME/.local/bin/lethen"
+export PATH="$HOME/.local/bin:$PATH"
 lethen version
 ```
+
+Add the `export PATH` line to your shell profile if `~/.local/bin` is not already on your `PATH`.
 
 `bin/lethen` loads the indexing library of the `swiftc` on your `PATH`, so toolchains installed with swiftly work. Swift 6.1 and 6.2 ship an older indexing library that the binary cannot load; use a source build of 3.8.1 with them. A future Swift that moves to a newer LLVM needs a newer Lethen release.
 

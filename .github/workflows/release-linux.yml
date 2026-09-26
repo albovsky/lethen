@@ -1,7 +1,8 @@
 name: Release Linux
 # Builds and tests the Linux release tarballs; it never publishes. The Release workflow
-# calls it for a tag, and pull requests that change the Linux release tooling run it too,
-# so the packaging is proven before a release depends on it.
+# calls it for a tag, and the Test workflow calls it for every code change as part of
+# Required checks, so a change that breaks the tarballs cannot merge and be found only
+# after tagging.
 #
 # The executable is built with the oldest supported Swift (6.3) on Ubuntu 22.04 and the
 # static Swift standard library, so it runs with glibc 2.35 or later. It links the user's
@@ -16,15 +17,10 @@ on:
         required: true
         type: string
       version:
-        description: Version the binary must report
-        required: true
+        description: Version the binary must report; defaults to PeripheryVersion in the source
+        required: false
         type: string
-  pull_request:
-    paths:
-      - .github/workflows/release-linux.yml
-      - .github/scripts/release-linux-launcher.sh
-      - .github/scripts/release-package-linux.sh
-      - .github/scripts/release-smoke-test.sh
+        default: ""
 permissions: {}
 jobs:
   build:
@@ -51,7 +47,7 @@ jobs:
       - name: Check out release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.event.pull_request.head.sha }}
+          ref: ${{ inputs.ref }}
           path: source
       - name: Build
         working-directory: source
