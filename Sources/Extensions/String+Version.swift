@@ -32,5 +32,4 @@ public extension VersionString {
     func isVersion(greaterThan targetVersion: String) -> Bool { compare(toVersion: targetVersion) == .orderedDescending }
     func isVersion(greaterThanOrEqualTo targetVersion: String) -> Bool { compare(toVersion: targetVersion) != .orderedAscending }
     func isVersion(lessThan targetVersion: String) -> Bool { compare(toVersion: targetVersion) == .orderedAscending }
-    func isVersion(lessThanOrEqualTo targetVersion: String) -> Bool { compare(toVersion: targetVersion) != .orderedDescending }
 }

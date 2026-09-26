@@ -5,7 +5,6 @@ import XCTest
 #if os(macOS)
     final class ObjcAccessibleRetentionTest: FixtureSourceGraphTestCase {
         func testRetainsOptionalProtocolMethodImplementedInSubclass() throws {
-            try XCTSkipIf(Self.swiftVersion.version.isVersion(lessThan: "6.3"), "Requires Swift >= 6.3")
             try analyze(retainPublic: true) {
                 assertReferenced(.class("FixtureClass125Base"))
                 assertReferenced(.class("FixtureClass125")) {
