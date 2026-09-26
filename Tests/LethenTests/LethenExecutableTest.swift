@@ -23,6 +23,14 @@ final class LethenExecutableTest: XCTestCase {
 
     // MARK: - Private
 
+    private struct ExecutableNotFound: Error, CustomStringConvertible {
+        let path: String
+
+        var description: String {
+            "The lethen executable is not built at \(path); 'swift test' builds it next to the test products."
+        }
+    }
+
     /// The executable sits next to the test products in the build directory.
     private func executableURL() throws -> URL {
         #if os(macOS)
@@ -32,8 +40,9 @@ final class LethenExecutableTest: XCTestCase {
         #endif
         let url = productsURL.appendingPathComponent("lethen")
 
+        // A missing executable is a failure, not a skip: these tests exist to catch exactly that.
         guard FileManager.default.isExecutableFile(atPath: url.path) else {
-            throw XCTSkip("The lethen executable is not built at \(url.path); run 'swift build' first.")
+            throw ExecutableNotFound(path: url.path)
         }
 
         return url
