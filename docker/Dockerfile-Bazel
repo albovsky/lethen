@@ -15,7 +15,7 @@ COPY . /workspace
 ENV CC=clang
 RUN bazel build //:periphery
 
-COPY docker/bazel-entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint-bazel.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

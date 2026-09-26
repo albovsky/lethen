@@ -4,4 +4,4 @@
 .release/
 bazel-*
 docker/
-!docker/bazel-entrypoint.sh
+!docker/entrypoint-bazel.sh
