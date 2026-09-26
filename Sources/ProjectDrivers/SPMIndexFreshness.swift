@@ -129,7 +129,8 @@ struct SPMIndexFreshness {
         let objects = objectFiles()
         var resolvedDirectories: [FilePath: FilePath] = [:]
         func module(of object: ObjectFile) -> String? {
-            let directory = object.path.removingLastComponent()
+            guard let directory = Self.targetBuildDirectory(of: object.path) else { return nil }
+
             if resolvedDirectories[directory] == nil {
                 resolvedDirectories[directory] = Self.resolved(directory)
             }
@@ -275,16 +276,33 @@ struct SPMIndexFreshness {
             .sorted()
     }
 
-    /// Every object directory an indexed module compiles into, with symlinks resolved.
+    /// The `<Target>.build` directory each indexed module compiles into, with symlinks resolved. Objects are
+    /// matched to modules by it rather than by their own directory, because a build also writes objects no
+    /// unit names below it, such as the module-wrap object swiftbuild writes on Linux in `Modules/`.
     private func moduleObjectDirectories(_ units: [SourceUnit]) -> [FilePath: String] {
         var result: [FilePath: String] = [:]
         var seen: Set<FilePath> = []
         for unit in units {
-            guard let directory = unit.object?.removingLastComponent(), seen.insert(directory).inserted else { continue }
+            guard let object = unit.object, let directory = Self.targetBuildDirectory(of: object),
+                  seen.insert(directory).inserted
+            else { continue }
 
             result[Self.resolved(directory)] = unit.module
         }
         return result
+    }
+
+    /// The nearest enclosing directory named like `<Target>.build` (native) or `<Target>-<kind>.build`
+    /// (swiftbuild).
+    private static func targetBuildDirectory(of object: FilePath) -> FilePath? {
+        var directory = object.removingLastComponent()
+        while let name = directory.lastComponent?.string {
+            if name.hasSuffix(".build"), name != ".build" {
+                return directory
+            }
+            directory = directory.removingLastComponent()
+        }
+        return nil
     }
 
     /// Object files of target builds, which both build systems keep in a `<Target>.build` directory.
