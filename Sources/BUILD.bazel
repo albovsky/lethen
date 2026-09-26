@@ -197,6 +197,26 @@ swift_library(
     module_name = "Logger",
 )
 
+swift_binary(
+    name = "LethenCLI",
+    srcs = ["LethenCLI/main.swift"],
+    module_name = "LethenCLI",
+    visibility = ["@@+generated+periphery_generated//:__pkg__"],
+    deps = [
+        "//Sources:Frontend",
+        "@swift_argument_parser//:ArgumentParser",
+    ],
+)
+
+optimized_swift_binary(
+    name = "LethenCLI_opt",
+    target = ":LethenCLI",
+    visibility = [
+        "//:__pkg__",
+        "@@+generated+periphery_generated//:__pkg__",
+    ],
+)
+
 swift_library(
     name = "Indexer",
     srcs = [
@@ -223,12 +243,13 @@ swift_library(
     ],
 )
 
-swift_binary(
+swift_library(
     name = "Frontend",
     srcs = [
         "Frontend/BazelProjectSetupGuide.swift",
         "Frontend/Commands/CheckUpdateCommand.swift",
         "Frontend/Commands/ClearCacheCommand.swift",
+        "Frontend/Commands/LethenCommand.swift",
         "Frontend/Commands/ScanCommand.swift",
         "Frontend/Commands/VersionCommand.swift",
         "Frontend/CommonSetupGuide.swift",
@@ -239,10 +260,8 @@ swift_binary(
         "Frontend/Scan.swift",
         "Frontend/UpdateChecker.swift",
         "Frontend/Version.swift",
-        "Frontend/main.swift",
     ],
     module_name = "Frontend",
-    visibility = ["@@+generated+periphery_generated//:__pkg__"],
     deps = [
         "//Sources:Configuration",
         "//Sources:PeripheryKit",
@@ -251,15 +270,6 @@ swift_binary(
         "//Sources:SourceGraph",
         "@swift-filename-matcher//:FilenameMatcher",
         "@swift_argument_parser//:ArgumentParser",
-    ],
-)
-
-optimized_swift_binary(
-    name = "Frontend_opt",
-    target = ":Frontend",
-    visibility = [
-        "//:__pkg__",
-        "@@+generated+periphery_generated//:__pkg__",
     ],
 )
 
