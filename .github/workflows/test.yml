@@ -242,8 +242,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        swift: ["6.3"]
+        swift: ["6.4", "6.3"]
         include:
+          - swift: "6.4"
+            container: "swift:6.4"
           - swift: "6.3"
             container: "swift:6.3"
     runs-on: ubuntu-latest
