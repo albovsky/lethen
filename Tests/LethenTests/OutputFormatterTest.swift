@@ -33,6 +33,18 @@ final class OutputFormatterTest: XCTestCase {
         ])
     }
 
+    func testXcodeFormatOrdersRedundantConformancesByLocation() throws {
+        let output = try format(.xcode, [redundantProtocolWithShuffledConformances()], relativeResults: true)
+        XCTAssertEqual(output.components(separatedBy: "\n"), [
+            "Sources/A.swift:3:5: warning: Redundant protocol 'P' (never used as an existential type)",
+            "Sources/B.swift:9:2: warning: Redundant protocol conformance 'P' (replace with 'Q')",
+            "Sources/B.swift:9:2: warning: Redundant protocol conformance 'P' (replace with 'Q')",
+            "Sources/B.swift:9:11: warning: Redundant protocol conformance 'P' (replace with 'Q')",
+            "Sources/B.swift:10:1: warning: Redundant protocol conformance 'P' (replace with 'Q')",
+            "Sources/C.swift:1:1: warning: Redundant protocol conformance 'P' (replace with 'Q')",
+        ])
+    }
+
     func testXcodeFormatWithNoResults() throws {
         XCTAssertEqual(try format(.xcode, []), "* No unused code detected.")
     }
@@ -58,6 +70,19 @@ final class OutputFormatterTest: XCTestCase {
         XCTAssertEqual(objects[1]["hints"] as? [String], ["redundantConformance(replace with: 'Q')"])
         XCTAssertEqual(objects[1]["ids"] as? [String], ["s:Conformance"])
         XCTAssertEqual(objects[1]["location"] as? String, "\(root.string)/Sources/B.swift:9:1")
+    }
+
+    func testJsonFormatOrdersRedundantConformancesByLocation() throws {
+        let objects = try json(format(.json, [redundantProtocolWithShuffledConformances()], relativeResults: true))
+        XCTAssertEqual(objects.map { $0["location"] as? String }, [
+            "Sources/A.swift:3:5",
+            "Sources/B.swift:9:2",
+            "Sources/B.swift:9:2",
+            "Sources/B.swift:9:11",
+            "Sources/B.swift:10:1",
+            "Sources/C.swift:1:1",
+        ])
+        XCTAssertEqual(objects.map { $0["ids"] as? [String] }, [["s:P"], ["s:A"], ["s:P"], ["s:P"], ["s:P"], ["s:P"]])
     }
 
     func testJsonFormatsWriteKeysInSortedOrder() throws {
@@ -178,5 +203,23 @@ final class OutputFormatterTest: XCTestCase {
         let conformance = Reference(name: "P", kind: .related, declarationKind: .protocol, usr: "s:Conformance", location: location("Sources/B.swift", line: 9, column: 1))
         let protocolDeclaration = Declaration(name: "P", kind: .protocol, usrs: ["s:P"], location: location())
         return ScanResult(declaration: protocolDeclaration, annotation: .redundantProtocol(references: [conformance], inherited: inherited))
+    }
+
+    /// Conformances inserted out of order, including numerically ordered lines and columns that
+    /// sort differently as strings, and two references at one location separated only by USR.
+    private func redundantProtocolWithShuffledConformances() -> ScanResult {
+        let conformances: Set<Reference> = [
+            conformance(usr: "s:P", "Sources/C.swift", line: 1, column: 1),
+            conformance(usr: "s:P", "Sources/B.swift", line: 10, column: 1),
+            conformance(usr: "s:P", "Sources/B.swift", line: 9, column: 11),
+            conformance(usr: "s:P", "Sources/B.swift", line: 9, column: 2),
+            conformance(usr: "s:A", "Sources/B.swift", line: 9, column: 2),
+        ]
+        let protocolDeclaration = Declaration(name: "P", kind: .protocol, usrs: ["s:P"], location: location())
+        return ScanResult(declaration: protocolDeclaration, annotation: .redundantProtocol(references: conformances, inherited: ["Q"]))
+    }
+
+    private func conformance(usr: String, _ relativePath: String, line: Int, column: Int) -> Reference {
+        Reference(name: "P", kind: .related, declarationKind: .protocol, usr: usr, location: location(relativePath, line: line, column: column))
     }
 }
