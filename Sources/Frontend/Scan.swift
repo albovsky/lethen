@@ -7,7 +7,13 @@ import ProjectDrivers
 import Shared
 import SourceGraph
 
-final class Scan {
+/// Builds, indexes, and analyzes a project. `Scan` does the work; tests substitute the results.
+protocol ScanRunning {
+    init(configuration: Configuration, logger: Logger, swiftVersion: SwiftVersion)
+    func perform(project: Project) throws -> Scan.Output
+}
+
+final class Scan: ScanRunning {
     private let configuration: Configuration
     private let logger: Logger
     private let graph: SourceGraph
