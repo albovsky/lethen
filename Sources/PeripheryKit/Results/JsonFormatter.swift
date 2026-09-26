@@ -33,7 +33,7 @@ final class JsonFormatter: OutputFormatter {
 
             switch result.annotation {
             case let .redundantProtocol(references, inherited):
-                for ref in references {
+                for ref in orderedConformances(references) {
                     let object: [AnyHashable: Any] = [
                         "kind": ref.declarationKind.rawValue,
                         "name": ref.name,

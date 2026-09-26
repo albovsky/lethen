@@ -32,7 +32,7 @@ final class CsvFormatter: OutputFormatter {
 
             switch result.annotation {
             case let .redundantProtocol(references, inherited):
-                for ref in references {
+                for ref in orderedConformances(references) {
                     let line = format(
                         kind: ref.declarationKind.rawValue,
                         name: ref.name,
