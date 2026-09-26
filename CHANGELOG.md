@@ -10,7 +10,7 @@
 
 ##### Bug Fixes
 
-- None.
+- Redundant protocol conformance locations are listed in file, line, and column order in every output format. They previously followed per-process hash order, so identical scans of a protocol with several conformances could produce different output, contrary to the byte-identical output claimed in 3.9.0.
 
 ## 3.9.0 (2026-09-25)
 

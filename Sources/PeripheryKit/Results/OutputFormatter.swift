@@ -23,6 +23,12 @@ extension OutputFormatter {
         return msg
     }
 
+    /// Conformance references ordered by file, line, column, then USR. `Set` iteration order
+    /// varies between processes, so formatters must not iterate the references directly.
+    func orderedConformances(_ references: Set<Reference>) -> [Reference] {
+        references.sorted()
+    }
+
     func describe(_ annotation: ScanResult.Annotation) -> String {
         switch annotation {
         case .unused:
@@ -52,7 +58,7 @@ extension OutputFormatter {
             description += "Assign-only \(kindDisplayName) '\(name)' is assigned, but never used"
         case let .redundantProtocol(references, inherited):
             description += "Redundant protocol '\(name)' (never used as an existential type)"
-            secondaryResults = references.map {
+            secondaryResults = orderedConformances(references).map {
                 var msg = "Redundant protocol conformance '\(name)'"
 
                 if !inherited.isEmpty {
