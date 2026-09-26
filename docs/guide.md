@@ -23,13 +23,13 @@ Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `
 
 ### Download the macOS zip
 
-Download [lethen-3.8.1-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.8.1/lethen-3.8.1-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.8.1/SHA256SUMS) into the same directory, then run there:
+Download [lethen-3.9.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.9.0/lethen-3.9.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.9.0/SHA256SUMS) into the same directory, then run there:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
-ditto -x -k lethen-3.8.1-macos-arm64.zip lethen-3.8.1
+ditto -x -k lethen-3.9.0-macos-arm64.zip lethen-3.9.0
 mkdir -p "$HOME/.local/bin"
-install -m 755 lethen-3.8.1/lethen "$HOME/.local/bin/lethen"
+install -m 755 lethen-3.9.0/lethen "$HOME/.local/bin/lethen"
 export PATH="$HOME/.local/bin:$PATH"
 lethen version
 ```
@@ -38,7 +38,7 @@ Keep the PATH export in your shell profile.
 
 ### Linux
 
-On Linux, releases after 3.8.1 include tarballs for x86_64 and aarch64. They need glibc 2.35 or later and a Swift 6.3 or newer toolchain; the README's Linux section shows how to install one. The tarball's `bin/lethen` uses the indexing library of the `swiftc` on your `PATH`, so swiftly toolchains work. Swift 6.1 and 6.2 cannot load it; use a source build of 3.8.1 with them.
+On Linux, releases from 3.9.0 include tarballs for x86_64 and aarch64. They need glibc 2.35 or later and a Swift 6.3 or newer toolchain; the README's Linux section shows how to install one. The tarball's `bin/lethen` uses the indexing library of the `swiftc` on your `PATH`, so swiftly toolchains work. Swift 6.1 and 6.2 cannot load it; use a source build of 3.8.1 with them.
 
 ### Build from source
 
@@ -51,7 +51,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 Then build the tag you want:
 
 ```sh
-git clone --branch 3.8.1 --depth 1 https://github.com/albovsky/lethen.git
+git clone --branch 3.9.0 --depth 1 https://github.com/albovsky/lethen.git
 cd lethen
 swift build -c release --product lethen
 lethen_bin_dir="$(swift build -c release --show-bin-path)"
