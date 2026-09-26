@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 @testable import Frontend
+import Shared
 import XCTest
 
 final class LethenCommandTest: XCTestCase {
@@ -13,8 +14,14 @@ final class LethenCommandTest: XCTestCase {
 
     func testVersionCommandPrintsVersion() throws {
         var command = try LethenCommand.parseAsRoot(["version"])
-        let output = try captureStandardOutput { try command.run() }
+        let output = try captureOutput(of: STDOUT_FILENO) { try command.run() }
         XCTAssertEqual(output, "\(LethenVersion)\n")
+    }
+
+    func testFoundIssuesExitsWithFailure() {
+        let error = LethenError.foundIssues(count: 2)
+        XCTAssertEqual(LethenCommand.exitCode(for: error), .failure)
+        XCTAssertEqual(LethenCommand.message(for: error), "Found 2 issues.")
     }
 
     func testUnknownSubcommandIsAParseError() {
@@ -22,29 +29,4 @@ final class LethenCommandTest: XCTestCase {
             XCTAssertNotEqual(LethenCommand.exitCode(for: error), .success)
         }
     }
-}
-
-/// Runs `body` with standard output redirected to a pipe and returns what it printed.
-func captureStandardOutput(_ body: () throws -> Void) throws -> String {
-    fflush(stdout)
-    let pipe = Pipe()
-    let savedDescriptor = dup(STDOUT_FILENO)
-    dup2(pipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
-
-    func restore() {
-        fflush(stdout)
-        dup2(savedDescriptor, STDOUT_FILENO)
-        close(savedDescriptor)
-    }
-
-    do {
-        try body()
-    } catch {
-        restore()
-        throw error
-    }
-
-    restore()
-    try pipe.fileHandleForWriting.close()
-    return try XCTUnwrap(String(bytes: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8))
 }

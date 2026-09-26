@@ -258,6 +258,7 @@ swift_library(
         "Frontend/Project.swift",
         "Frontend/SPMProjectSetupGuide.swift",
         "Frontend/Scan.swift",
+        "Frontend/ScanReport.swift",
         "Frontend/UpdateChecker.swift",
         "Frontend/Version.swift",
     ],
