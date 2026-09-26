@@ -355,6 +355,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+  linux-release:
+    # The Linux release tarballs, built and smoke-tested exactly as the Release workflow
+    # builds them, so a change that breaks them fails here rather than after a tag.
+    name: Linux release
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/release-linux.yml
+    with:
+      ref: ${{ github.sha }}
+    permissions:
+      contents: read
   required:
     # The single check branch protection requires. `needs` holds each dependency's latest
     # result, including across partial reruns, and a matrix job succeeds only if all of its
@@ -362,7 +373,7 @@ jobs:
     # profile calls for: success when it was meant to run, skipped when it was not.
     name: Required checks
     if: always()
-    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, macOS-extended, linux]
+    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, macOS-extended, linux, linux-release]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -372,7 +383,7 @@ jobs:
         PROFILE: ${{ needs.changes.outputs.profile }}
         CODE: ${{ needs.changes.outputs.code }}
         # Keep in sync with `needs` above; a mismatch fails the gate.
-        CORE: '["changes", "swift-6-4", "lint", "bazel", "macOS", "linux"]'
+        CORE: '["changes", "swift-6-4", "lint", "bazel", "macOS", "linux", "linux-release"]'
         EXTENDED: '["bazel-extended", "macOS-extended"]'
       run: |
         echo "profile=$PROFILE code=$CODE"

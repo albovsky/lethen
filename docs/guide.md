@@ -19,7 +19,9 @@ lethen version
 
 Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. Upgrade with `brew upgrade lethen`.
 
-Intel Macs and Linux build Lethen from source. On macOS, select a full Xcode installation, for example:
+On Linux, releases after 3.8.1 include tarballs for x86_64 and aarch64. They need glibc 2.35 or later and a Swift 6.3 or newer toolchain; the README's Linux section shows how to install one. The tarball's `bin/lethen` uses the indexing library of the `swiftc` on your `PATH`, so swiftly toolchains work. Swift 6.1 and 6.2 cannot load it; use a source build of 3.8.1 with them.
+
+Intel Macs build Lethen from source, and so can any Linux system with a supported toolchain. On macOS, select a full Xcode installation, for example:
 
 ```sh
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer

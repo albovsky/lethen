@@ -14,7 +14,7 @@ Managed SwiftPM scans clean and rebuild existing products to guarantee a fresh i
 
 To keep incremental builds, build the index yourself and scan it with `--skip-build --index-store-path <path>`. Use `--skip-build` only with an index you know is current.
 
-The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. Linux binaries and a hosted installer are separate work.
+The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. A hosted installer is separate work.
 
 ## Install
 
@@ -27,9 +27,28 @@ lethen version
 
 Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. The same binary is attached to each [release](https://github.com/albovsky/lethen/releases) as `lethen-<version>-macos-arm64.zip`, with a `SHA256SUMS` file.
 
+### Linux
+
+Releases after 3.8.1 include `lethen-<version>-linux-x86_64.tar.gz` and `lethen-<version>-linux-aarch64.tar.gz`. They need glibc 2.35 or later (Ubuntu 22.04, Debian 12, or newer) and a Swift 6.3 or newer toolchain, which Lethen uses to build and index your project:
+
+```sh
+version=<version>
+archive="lethen-$version-linux-$(uname -m)"
+curl -fsSLO "https://github.com/albovsky/lethen/releases/download/$version/$archive.tar.gz"
+mkdir -p "$HOME/.local/share" "$HOME/.local/bin"
+tar -xzf "$archive.tar.gz" -C "$HOME/.local/share"
+ln -sf "$HOME/.local/share/$archive/bin/lethen" "$HOME/.local/bin/lethen"
+export PATH="$HOME/.local/bin:$PATH"
+lethen version
+```
+
+Add the `export PATH` line to your shell profile if `~/.local/bin` is not already on your `PATH`.
+
+`bin/lethen` loads the indexing library of the `swiftc` on your `PATH`, so toolchains installed with swiftly work. Swift 6.1 and 6.2 ship an older indexing library that the binary cannot load; use a source build of 3.8.1 with them. A future Swift that moves to a newer LLVM needs a newer Lethen release.
+
 ### From source
 
-Intel Macs and Linux build Lethen from source. On macOS, select a full Xcode installation, for example with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. The local source-install baseline is Xcode 27.0 with Apple Swift 6.4 on arm64 macOS 27.
+Intel Macs build Lethen from source, and so can any Linux system with a supported toolchain. On macOS, select a full Xcode installation, for example with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. The local source-install baseline is Xcode 27.0 with Apple Swift 6.4 on arm64 macOS 27.
 
 ```sh
 git clone --branch 3.8.1 --depth 1 https://github.com/albovsky/lethen.git
