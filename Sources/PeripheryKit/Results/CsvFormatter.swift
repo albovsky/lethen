@@ -69,6 +69,15 @@ final class CsvFormatter: OutputFormatter {
         let joinedAttributes = attributes.sorted().joined(separator: "|")
         let joinedUsrs = usrs.sorted().joined(separator: "|")
         let path = locationDescription(location)
-        return "\(kind),\(name),\(joinedModifiers),\(joinedAttributes),\(accessibility ?? ""),\(joinedUsrs),\(path),\(hint ?? "")"
+        return [kind, name, joinedModifiers, joinedAttributes, accessibility ?? "", joinedUsrs, path, hint ?? ""]
+            .map(escape)
+            .joined(separator: ",")
+    }
+
+    /// Quotes a field per RFC 4180 when it contains a delimiter, quote, or line break.
+    private func escape(_ field: String) -> String {
+        guard field.contains(where: { $0 == "," || $0 == "\"" || $0.isNewline }) else { return field }
+
+        return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 }

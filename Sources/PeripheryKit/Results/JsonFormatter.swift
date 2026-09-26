@@ -51,7 +51,7 @@ final class JsonFormatter: OutputFormatter {
             }
         }
 
-        let data = try JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .withoutEscapingSlashes])
+        let data = try JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         return String(bytes: data, encoding: .utf8)
     }
 }

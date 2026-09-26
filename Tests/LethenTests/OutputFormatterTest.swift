@@ -60,11 +60,29 @@ final class OutputFormatterTest: XCTestCase {
         XCTAssertEqual(objects[1]["location"] as? String, "\(root.string)/Sources/B.swift:9:1")
     }
 
+    func testJsonFormatsWriteKeysInSortedOrder() throws {
+        XCTAssertEqual(try keys(format(.json, [unusedClass()])), ["accessibility", "attributes", "hints", "ids", "kind", "location", "modifiers", "modules", "name"])
+        XCTAssertEqual(try keys(format(.gitlabCodeQuality, [unusedClass()], relativeResults: true)), ["check_name", "description", "fingerprint", "location", "lines", "begin", "path", "severity"])
+        XCTAssertEqual(try keys(format(.codeclimate, [unusedClass()], relativeResults: true)), ["description", "fingerprint", "location", "lines", "begin", "path", "severity"])
+    }
+
     func testCsvFormatWritesColumnsInHeaderOrder() throws {
         let lines = try format(.csv, [unusedClass()]).components(separatedBy: "\n")
         XCTAssertEqual(lines.count, 2)
         XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints")
         XCTAssertEqual(lines[1], "class,Foo,final,,public,s:Foo,\(root.string)/Sources/A.swift:3:5,unused")
+    }
+
+    func testCsvFormatQuotesFieldsContainingDelimitersAndQuotes() throws {
+        let deprecated = unusedClass()
+        deprecated.declaration.attributes = [DeclarationAttribute(name: "available", arguments: "*, deprecated, message: \"Use Bar\"")]
+        let lines = try format(.csv, [deprecated, redundantProtocol(inherited: ["Q", "R"])], relativeResults: true).components(separatedBy: "\n")
+        XCTAssertEqual(lines, [
+            "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints",
+            "class,Foo,final,\"available(*, deprecated, message: \"\"Use Bar\"\")\",public,s:Foo,Sources/A.swift:3:5,unused",
+            "protocol,P,,,internal,s:P,Sources/A.swift:3:5,redundantProtocol",
+            "protocol,P,,,,s:Conformance,Sources/B.swift:9:1,\"redundantConformance(replace with: 'Q, R')\"",
+        ])
     }
 
     func testGitHubActionsFormatRequiresRelativeResults() {
@@ -133,6 +151,14 @@ final class OutputFormatterTest: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [[String: Any]])
     }
 
+    /// Object keys in the order they appear in the raw output.
+    private func keys(_ text: String) throws -> [String] {
+        let regex = try NSRegularExpression(pattern: #""([a-z_]+)" *:"#)
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+            Range($0.range(at: 1), in: text).map { String(text[$0]) }
+        }
+    }
+
     private func location(_ relativePath: String = "Sources/A.swift", line: Int = 3, column: Int = 5) -> Location {
         Location(file: SourceFile(path: root.appending(relativePath), modules: ["App"]), line: line, column: column)
     }
@@ -148,9 +174,9 @@ final class OutputFormatterTest: XCTestCase {
         ScanResult(declaration: declaration(name: name, kind: .class, usr: usr, line: line), annotation: .unused)
     }
 
-    private func redundantProtocol() -> ScanResult {
+    private func redundantProtocol(inherited: Set<String> = ["Q"]) -> ScanResult {
         let conformance = Reference(name: "P", kind: .related, declarationKind: .protocol, usr: "s:Conformance", location: location("Sources/B.swift", line: 9, column: 1))
         let protocolDeclaration = Declaration(name: "P", kind: .protocol, usrs: ["s:P"], location: location())
-        return ScanResult(declaration: protocolDeclaration, annotation: .redundantProtocol(references: [conformance], inherited: ["Q"]))
+        return ScanResult(declaration: protocolDeclaration, annotation: .redundantProtocol(references: [conformance], inherited: inherited))
     }
 }
