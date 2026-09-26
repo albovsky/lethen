@@ -1,5 +1,5 @@
 alias(
     name = "periphery",
-    actual = "//Sources:Frontend_opt",
+    actual = "//Sources:LethenCLI_opt",
     visibility = ["//visibility:public"],
 )
