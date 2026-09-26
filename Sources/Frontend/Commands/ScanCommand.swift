@@ -202,60 +202,24 @@ struct ScanCommand: ParsableCommand {
             swiftVersion: swiftVersion
         ).perform(project: project)
 
-        let results = scanOutput.results
         let interval = logger.beginInterval("result:output")
-        var baseline: Baseline?
+        let report = try ScanReport(results: scanOutput.results, configuration: configuration, logger: logger)
 
-        if let baselinePath = configuration.baseline {
-            let data = try Data(contentsOf: baselinePath.url)
-            baseline = try JSONDecoder().decode(Baseline.self, from: data)
-        }
-
-        let filteredResults = try OutputDeclarationFilter(configuration: configuration, logger: logger).filter(results, with: baseline)
-
-        if let baselinePath = configuration.writeBaseline {
-            let usrs = filteredResults
-                .flatMapSet { $0.usrs }
-                .union(baseline?.usrs ?? [])
-            let baseline = Baseline.v1(usrs: usrs.sorted())
-            let data = try JSONEncoder().encode(baseline)
-            try data.write(to: baselinePath.url)
-        }
-
-        let outputFormat = configuration.outputFormat
-        let formatter = outputFormat.formatter.init(configuration: configuration, logger: logger)
-        let colored = outputFormat.supportsColoredOutput && logger.isColoredOutputEnabled
-
-        let formattedOutput = try formatter.format(filteredResults, colored: colored)
-
-        if let output = formattedOutput {
-            if outputFormat.supportsAuxiliaryOutput {
+        if let output = report.output {
+            if configuration.outputFormat.supportsAuxiliaryOutput {
                 logger.info("", canQuiet: true)
             }
 
             logger.info(output, canQuiet: false)
         }
 
-        if let resultsPath = configuration.writeResults {
-            let output: String = if colored {
-                // The formatted output contains ANSI escape codes, so we need to re-format
-                // with coloring disabled.
-                try formatter.format(filteredResults, colored: false) ?? ""
-            } else {
-                formattedOutput ?? ""
-            }
-
-            try output.write(to: resultsPath.url, atomically: true, encoding: .utf8)
-        }
-
+        try report.writeResults()
         logger.endInterval(interval)
 
         updateChecker.waitForCompletion()
         updateChecker.notifyIfAvailable()
 
-        if !filteredResults.isEmpty, configuration.strict {
-            throw LethenError.foundIssues(count: filteredResults.count)
-        }
+        try report.validateStrictMode()
     }
 
     /// Changes into the project root and builds the configuration from the configuration file and the
