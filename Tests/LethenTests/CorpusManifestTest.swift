@@ -22,6 +22,8 @@ final class CorpusManifestTest: XCTestCase {
             XCTAssertTrue(entry.commit.range(of: "^[0-9a-f]{40}$", options: .regularExpression) != nil, "\(entry.name) must pin a full commit SHA")
             XCTAssertTrue(["spm", "xcode"].contains(entry.kind), "\(entry.name) has unknown kind \(entry.kind)")
             XCTAssertTrue(entry.url.hasPrefix("https://"), "\(entry.name) must use an https URL")
+            // corpus/scan.sh reads arguments one per line and skips empty lines.
+            XCTAssertFalse(entry.arguments.contains { $0.isEmpty || $0.contains("\n") }, "\(entry.name) has an empty or multi-line argument")
             XCTAssertTrue(ProjectRootPath.appending("corpus/expected/\(entry.name).json").exists, "\(entry.name) has no committed expectation")
         }
     }
