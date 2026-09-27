@@ -70,7 +70,11 @@ public final class SourceGraphMutatorRunner {
         for mutator in mutators {
             let elapsed = try Benchmark.measure {
                 let interval = logger.beginInterval("mutator:run")
+                let retainedBefore = graph.recordsRetentionSources ? graph.retainedDeclarations : []
                 try mutator.init(graph: graph, configuration: configuration, swiftVersion: swiftVersion).mutate()
+                if graph.recordsRetentionSources {
+                    graph.recordRetentionSource(String(describing: mutator), for: graph.retainedDeclarations.subtracting(retainedBefore))
+                }
                 logger.endInterval(interval)
             }
             logger.debug("\(mutator) (\(elapsed)s)")

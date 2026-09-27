@@ -23,6 +23,10 @@ public final class SourceGraph {
     public private(set) var extensions: [Declaration: Set<Declaration>] = [:]
     public private(set) var commandIgnoredDeclarations: [Declaration: CommandIgnoreKind] = [:]
     public private(set) var functionsWithIgnoredParameters: Set<Declaration> = []
+    /// The mutator that retained each declaration, recorded only for `lethen explain`.
+    public private(set) var retentionSources: [Declaration: String] = [:]
+    /// Whether mutator runs record `retentionSources`. Off for scans, which never read them.
+    public var recordsRetentionSources = false
 
     private var indexedModules: Set<String> = []
     private var unindexedExportedModules: Set<String> = []
@@ -226,6 +230,12 @@ public final class SourceGraph {
 
     public func add(_ assetReference: AssetReference) {
         _ = assetReferences.insert(assetReference)
+    }
+
+    func recordRetentionSource(_ source: String, for declarations: Set<Declaration>) {
+        for declaration in declarations where retentionSources[declaration] == nil {
+            retentionSources[declaration] = source
+        }
     }
 
     func markUsed(_ declaration: Declaration) {

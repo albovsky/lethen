@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+- `lethen explain <name|usr>` scans like `lethen scan` and explains one declaration: why it is reported as unused, the shortest chain of references that makes it used, or the rule or comment that retains or ignores it.
 - `lethen scan --stats` prints the time spent in each scan phase, the number of Swift files, lines of code, and declarations scanned, and the indexing and analysis throughput. The report goes to standard error, so `json` and `csv` results on standard output stay valid. Lines of code are now counted only for `--stats`; scans without it no longer walk every token to count them and discard the result.
 - Managed `xcodebuild` and `swift build` runs show that they are still working. The default output prints `Still building (Ns elapsed, step n/m)` to standard error every 15 seconds, `--verbose` streams the full build output to standard error, and `--quiet` and machine-readable formats print nothing, so results on standard output stay valid.
 - `--skip-build` without `--index-store-path` also finds the index Xcode keeps for the project in its DerivedData and uses whichever index was written most recently, so a project Xcode has indexed can be scanned without an `xcodebuild` build. Such an index is checked first: units older than their source file are ignored, and a source file newer than every unit for it stops the scan with a stale-index error instead of producing results from outdated code. The same check now applies to SwiftPM `--skip-build` scans without an explicit path.

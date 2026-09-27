@@ -32,11 +32,20 @@ final class Scan: ScanRunning {
         let results: [ScanResult]
         /// The size of the scanned project, when the configuration asks for statistics.
         let statistics: ScanStatistics?
+        /// The analyzed source graph, which `lethen explain` reads.
+        let graph: SourceGraph?
 
-        init(results: [ScanResult], statistics: ScanStatistics? = nil) {
+        init(results: [ScanResult], statistics: ScanStatistics? = nil, graph: SourceGraph? = nil) {
             self.results = results
             self.statistics = statistics
+            self.graph = graph
         }
+    }
+
+    /// Records which mutator retained each declaration, for `lethen explain`.
+    var recordsRetentionSources: Bool {
+        get { graph.recordsRetentionSources }
+        set { graph.recordsRetentionSources = newValue }
     }
 
     func perform(project: Project) throws -> Output {
@@ -67,7 +76,7 @@ final class Scan: ScanRunning {
             lineCount: lineCount,
             declarationCount: declarationCount
         ) : nil
-        return Output(results: results, statistics: statistics)
+        return Output(results: results, statistics: statistics, graph: graph)
     }
 
     // MARK: - Private
