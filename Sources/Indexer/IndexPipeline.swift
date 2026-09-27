@@ -19,7 +19,9 @@ public struct IndexPipeline {
         self.swiftVersion = swiftVersion
     }
 
-    public func perform() throws -> Int {
+    /// Indexes the plan into the graph and returns the number of lines of code in its Swift source
+    /// files, or `nil` unless the configuration asks for statistics.
+    public func perform() throws -> Int? {
         let scannedLOC = try SwiftIndexer(
             sourceFiles: plan.sourceFiles,
             graph: graph,
