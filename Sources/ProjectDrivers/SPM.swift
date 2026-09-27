@@ -47,22 +47,112 @@ public enum SPM {
             }
 
             var arguments = ["swift", "build", "--build-tests"] + additionalArguments + ["--enable-index-store"]
-            if configuration.indexStorePath.isEmpty {
-                let binary = try binaryDirectory(additionalArguments: additionalArguments)
-                let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)
-                // Indexing flags do not invalidate all Swiftbuild compilation tasks.
-                // Even an existing store can be stale after an unindexed build.
-                // Rebuild managed products; callers that verify an external index
-                // can opt into reuse with --skip-build.
-                if binary.exists {
-                    try clean(additionalArguments: additionalArguments)
-                }
-                // In swiftbuild Release builds, --enable-index-store alone does
-                // not put indexing flags on the Swift compiler invocation.
-                let quotedStore = "'" + store.string.replacingOccurrences(of: "'", with: "'\\''") + "'"
-                arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
+            guard configuration.indexStorePath.isEmpty else {
+                try shell.exec(arguments)
+                return
+            }
+
+            let binary = try binaryDirectory(additionalArguments: additionalArguments)
+            let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)
+            // In swiftbuild Release builds, --enable-index-store alone does
+            // not put indexing flags on the Swift compiler invocation.
+            let quotedStore = "'" + store.string.replacingOccurrences(of: "'", with: "'\\''") + "'"
+            arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
+
+            if configuration.experimentalReuseIndex {
+                try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store)
+                return
+            }
+
+            // Indexing flags do not invalidate all Swiftbuild compilation tasks.
+            // Even an existing store can be stale after an unindexed build.
+            // Rebuild managed products; callers that verify an external index
+            // can opt into reuse with --skip-build.
+            if binary.exists {
+                try clean(additionalArguments: additionalArguments)
             }
             try shell.exec(arguments)
+        }
+
+        /// Builds incrementally when SPMIndexFreshness can prove the store matches the build, and cleans
+        /// otherwise. The stamp is removed before any build it does not describe.
+        private func buildReusingIndex(arguments: [String], additionalArguments: [String], binary: FilePath, store: FilePath) throws {
+            let logger = logger.contextualized(with: "spm:index-reuse")
+            // swiftbuild keeps objects beside Products (.build/out), the native build system beside the triple.
+            let freshness = SPMIndexFreshness(storePath: store, buildRoot: binary.removingLastComponent().removingLastComponent(), packageRoot: path)
+            let stamp = try SPMIndexFreshness.Stamp(
+                swiftVersion: SwiftVersion(shell: shell).fullVersion,
+                buildArguments: additionalArguments
+            )
+            let sources = try packageSources()
+
+            if binary.exists, store.exists, let previous = freshness.readStamp(), previous.stamp == stamp {
+                // Only failures to read or verify the store fall back to cleaning; a failing build still throws.
+                let preparation: SPMIndexFreshness.Preparation
+                do {
+                    preparation = try freshness.prepare(sources: sources, stampDate: previous.date)
+                } catch {
+                    preparation = .clean(reason: "the store could not be read: \(error)")
+                }
+
+                switch preparation {
+                case let .clean(reason):
+                    logger.debug("Index store not reusable, cleaning: \(reason)")
+                case let .recompile(objects, modules):
+                    try freshness.removeStamp()
+                    for object in objects {
+                        try FileManager.default.removeItem(atPath: object.string)
+                    }
+
+                    let start = Date()
+                    try shell.exec(arguments)
+                    let issues = verify(freshness, sources: sources, buildStart: start)
+                    if issues.isEmpty {
+                        logger.debug("Reused the index store; recompiled \(modules.count) modules (\(objects.count) objects): \(modules.sorted().joined(separator: ", "))")
+                        try freshness.writeStamp(stamp)
+                        return
+                    }
+
+                    logger.debug("Index store not reusable (\(issues.count) issues), cleaning: \(issues.prefix(3).joined(separator: "; "))")
+                }
+            } else {
+                logger.debug("No matching build stamp, cleaning.")
+            }
+
+            try freshness.removeStamp()
+            if binary.exists {
+                try clean(additionalArguments: additionalArguments)
+            }
+            let start = Date()
+            try shell.exec(arguments)
+            let issues = verify(freshness, sources: sources, buildStart: start)
+            guard issues.isEmpty else {
+                // Leave no stamp, so the next scan cleans again; the scan itself proceeds as it does today.
+                logger.debug("Clean build did not index every source (\(issues.count) issues): \(issues.prefix(3).joined(separator: "; "))")
+                return
+            }
+
+            try freshness.writeStamp(stamp)
+        }
+
+        /// Verification issues, with a store that cannot be read reported as one.
+        private func verify(_ freshness: SPMIndexFreshness, sources: Set<SPMIndexFreshness.Source>, buildStart: Date) -> [String] {
+            do {
+                return try freshness.verify(sources: sources, buildStart: buildStart).map(\.description)
+            } catch {
+                return ["the store could not be read: \(error)"]
+            }
+        }
+
+        func packageSources() throws -> Set<SPMIndexFreshness.Source> {
+            let description = try load()
+            // Plugin scripts are compiled outside the build, so they never have units.
+            return Set(description.targets.filter { $0.type != "plugin" }.flatMap { target in
+                let module = target.c99name ?? target.name
+                return (target.sources ?? [])
+                    .filter { $0.hasSuffix(".swift") }
+                    .map { SPMIndexFreshness.Source(path: path.appending(target.path).appending($0), module: module) }
+            })
         }
 
         public func indexStorePath(additionalArguments: [String]) throws -> FilePath {
@@ -121,6 +211,9 @@ public struct Target: Decodable {
     public let name: String
     public let type: String
     public let path: String
+    /// The target's module name, as SwiftPM derives it.
+    public let c99name: String?
+    public let sources: [String]?
     public let resources: [Resource]?
 
     public var isTestTarget: Bool {
