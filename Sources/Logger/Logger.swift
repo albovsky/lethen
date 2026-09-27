@@ -86,6 +86,13 @@ public struct Logger: Sendable {
         log(text, output: stdout)
     }
 
+    /// Writes progress to standard error so that it never mixes with results on standard output.
+    public func progress(_ text: String) {
+        guard !quiet else { return }
+
+        log(text, output: stderr)
+    }
+
     public func warn(_ text: String, newlinePrefix: Bool = false) {
         guard !quiet else { return }
 

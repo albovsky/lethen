@@ -26,7 +26,20 @@ final class ShellProcessStore: Sendable {
 public protocol Shell: Sendable {
     @discardableResult
     func exec(_ args: [String]) throws -> String
+    /// Runs `args` like `exec(_:)`, and also passes each line the command writes to standard output or standard
+    /// error to `onOutputLine` while the command runs. Lines are delivered one at a time, from a background thread.
+    /// The returned output and the error thrown on failure are the same as `exec(_:)`.
+    @discardableResult
+    func exec(_ args: [String], onOutputLine: @escaping @Sendable (String) -> Void) throws -> String
     func execStatus(_ args: [String]) throws -> Int32
+}
+
+public extension Shell {
+    /// Shells that cannot observe output while a command runs capture it as `exec(_:)` does and report no lines.
+    @discardableResult
+    func exec(_ args: [String], onOutputLine _: @escaping @Sendable (String) -> Void) throws -> String {
+        try exec(args)
+    }
 }
 
 public final class ShellImpl: Shell {
@@ -50,7 +63,26 @@ public final class ShellImpl: Shell {
 
     @discardableResult
     public func exec(_ args: [String]) throws -> String {
-        let (status, stdout, stderr) = try exec(args)
+        try capture(args, lineHandler: nil)
+    }
+
+    @discardableResult
+    public func exec(_ args: [String], onOutputLine: @escaping @Sendable (String) -> Void) throws -> String {
+        try capture(args, lineHandler: SerialLineHandler(onOutputLine))
+    }
+
+    @discardableResult
+    public func execStatus(_ args: [String]) throws -> Int32 {
+        let process = launch(args)
+        defer { store.remove(process) }
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
+    // MARK: - Private
+
+    private func capture(_ args: [String], lineHandler: SerialLineHandler?) throws -> String {
+        let (status, stdout, stderr) = try captureOutput(of: args, lineHandler: lineHandler)
 
         if status == 0 {
             return stdout
@@ -63,68 +95,108 @@ public final class ShellImpl: Shell {
         )
     }
 
-    @discardableResult
-    public func execStatus(_ args: [String]) throws -> Int32 {
-        let (status, _, _) = try exec(args, captureOutput: false)
-        return status
-    }
-
-    // MARK: - Private
-
-    private func exec(
-        _ cmd: [String],
-        captureOutput: Bool = true
-    ) throws -> (Int32, String, String) {
+    private func launch(_ cmd: [String], configure: (Process) -> Void = { _ in }) -> Process {
         let process = Process()
         process.launchPath = "/bin/bash"
         process.arguments = ["-c", cmd.joined(separator: " ")]
+        configure(process)
 
         logger.debug("\(cmd.joined(separator: " "))")
         store.add(process)
-
-        var stdoutPipe: Pipe?
-        var stderrPipe: Pipe?
-
-        if captureOutput {
-            stdoutPipe = Pipe()
-            stderrPipe = Pipe()
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-        }
-
         process.launch()
+        return process
+    }
 
-        var standardOutput = ""
-        var standardError = ""
-
-        if let stdoutData = try stdoutPipe?.fileHandleForReading.readToEnd() {
-            guard let stdoutStr = String(data: stdoutData, encoding: .utf8)
-            else {
-                store.remove(process)
-                throw LethenError.shellOutputEncodingFailed(
-                    cmd: cmd,
-                    encoding: .utf8
-                )
-            }
-
-            standardOutput = stdoutStr
+    private func captureOutput(
+        of cmd: [String],
+        lineHandler: SerialLineHandler?
+    ) throws -> (Int32, String, String) {
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        let process = launch(cmd) {
+            $0.standardOutput = stdoutPipe
+            $0.standardError = stderrPipe
         }
+        defer { store.remove(process) }
 
-        if let stderrData = try stderrPipe?.fileHandleForReading.readToEnd() {
-            guard let stderrStr = String(data: stderrData, encoding: .utf8)
-            else {
-                store.remove(process)
-                throw LethenError.shellOutputEncodingFailed(
-                    cmd: cmd,
-                    encoding: .utf8
-                )
-            }
-
-            standardError = stderrStr
+        // Drain both pipes concurrently. Reading one to its end before the other would stall a command that
+        // fills the other pipe, and would hold back the lines of whichever stream is read second.
+        let stderrResult = Mutex<Result<Data, Error>>(.success(Data()))
+        let stderrReader = DispatchGroup()
+        DispatchQueue.global().async(group: stderrReader) {
+            let result = Result { try Self.drain(stderrPipe.fileHandleForReading, lineHandler: lineHandler) }
+            stderrResult.withLock { $0 = result }
         }
-
+        let stdoutResult = Result { try Self.drain(stdoutPipe.fileHandleForReading, lineHandler: lineHandler) }
+        stderrReader.wait()
         process.waitUntilExit()
-        store.remove(process)
+
+        let stdoutData = try stdoutResult.get()
+        let stderrData = try stderrResult.withLock { $0 }.get()
+
+        guard let standardOutput = String(data: stdoutData, encoding: .utf8),
+              let standardError = String(data: stderrData, encoding: .utf8)
+        else {
+            throw LethenError.shellOutputEncodingFailed(
+                cmd: cmd,
+                encoding: .utf8
+            )
+        }
+
         return (process.terminationStatus, standardOutput, standardError)
+    }
+
+    /// Reads `handle` until end of file, passing each complete line to `lineHandler` as soon as it is read.
+    private static func drain(_ handle: FileHandle, lineHandler: SerialLineHandler?) throws -> Data {
+        let newline = UInt8(ascii: "\n")
+        let descriptor = handle.fileDescriptor
+        var output = Data()
+        var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+        var lineStart = 0
+
+        while true {
+            let count = buffer.withUnsafeMutableBytes { read(descriptor, $0.baseAddress, $0.count) }
+
+            if count < 0 {
+                if errno == EINTR { continue }
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+
+            guard count > 0 else { break }
+
+            output.append(contentsOf: buffer[0 ..< count])
+
+            guard let lineHandler else { continue }
+
+            while let newlineIndex = output[lineStart...].firstIndex(of: newline) {
+                lineHandler.deliver(output[lineStart ..< newlineIndex])
+                lineStart = newlineIndex + 1
+            }
+        }
+
+        if let lineHandler, lineStart < output.count {
+            lineHandler.deliver(output[lineStart...])
+        }
+
+        return output
+    }
+}
+
+/// Passes lines from both output streams to a handler one at a time.
+private final class SerialLineHandler: Sendable {
+    private let handler: Mutex<@Sendable (String) -> Void>
+
+    init(_ handler: @escaping @Sendable (String) -> Void) {
+        self.handler = Mutex(handler)
+    }
+
+    func deliver(_ bytes: Data) {
+        // Output that is not UTF-8 fails the command once it exits, see `shellOutputEncodingFailed`.
+        guard var line = String(bytes: bytes, encoding: .utf8) else { return }
+
+        if line.hasSuffix("\r") {
+            line.removeLast()
+        }
+        handler.withLock { $0(line) }
     }
 }

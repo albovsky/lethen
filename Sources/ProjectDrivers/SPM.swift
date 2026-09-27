@@ -41,14 +41,15 @@ public enum SPM {
             try shell.exec(["swift", "package", "clean"] + scratchArguments)
         }
 
-        public func build(additionalArguments: [String]) throws {
+        /// Builds the package with indexing enabled, passing each line of build output to `onOutputLine`.
+        public func build(additionalArguments: [String], onOutputLine: @escaping @Sendable (String) -> Void = { _ in }) throws {
             guard !additionalArguments.contains("--disable-index-store") else {
                 throw LethenError.usageError("--disable-index-store conflicts with scanning a managed build. Remove it, or use --skip-build with --index-store-path for an externally built index.")
             }
 
             var arguments = ["swift", "build", "--build-tests"] + additionalArguments + ["--enable-index-store"]
             guard configuration.indexStorePath.isEmpty else {
-                try shell.exec(arguments)
+                try shell.exec(arguments, onOutputLine: onOutputLine)
                 return
             }
 
@@ -60,7 +61,7 @@ public enum SPM {
             arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
 
             if configuration.experimentalReuseIndex {
-                try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store)
+                try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store, onOutputLine: onOutputLine)
                 return
             }
 
@@ -71,12 +72,18 @@ public enum SPM {
             if binary.exists {
                 try clean(additionalArguments: additionalArguments)
             }
-            try shell.exec(arguments)
+            try shell.exec(arguments, onOutputLine: onOutputLine)
         }
 
         /// Builds incrementally when SPMIndexFreshness can prove the store matches the build, and cleans
         /// otherwise. The stamp is removed before any build it does not describe.
-        private func buildReusingIndex(arguments: [String], additionalArguments: [String], binary: FilePath, store: FilePath) throws {
+        private func buildReusingIndex(
+            arguments: [String],
+            additionalArguments: [String],
+            binary: FilePath,
+            store: FilePath,
+            onOutputLine: @escaping @Sendable (String) -> Void
+        ) throws {
             let logger = logger.contextualized(with: "spm:index-reuse")
             // swiftbuild keeps objects beside Products (.build/out), the native build system beside the triple.
             let freshness = SPMIndexFreshness(storePath: store, buildRoot: binary.removingLastComponent().removingLastComponent(), packageRoot: path)
@@ -105,7 +112,7 @@ public enum SPM {
                     }
 
                     let start = Date()
-                    try shell.exec(arguments)
+                    try shell.exec(arguments, onOutputLine: onOutputLine)
                     let issues = verify(freshness, sources: sources, buildStart: start)
                     if issues.isEmpty {
                         logger.debug("Reused the index store; recompiled \(modules.count) modules (\(objects.count) objects): \(modules.sorted().joined(separator: ", "))")
@@ -124,7 +131,7 @@ public enum SPM {
                 try clean(additionalArguments: additionalArguments)
             }
             let start = Date()
-            try shell.exec(arguments)
+            try shell.exec(arguments, onOutputLine: onOutputLine)
             let issues = verify(freshness, sources: sources, buildStart: start)
             guard issues.isEmpty else {
                 // Leave no stamp, so the next scan cleans again; the scan itself proceeds as it does today.

@@ -7,6 +7,7 @@
 ##### Enhancements
 
 - `lethen scan --stats` prints the time spent in each scan phase, the number of Swift files, lines of code, and declarations scanned, and the indexing and analysis throughput. The report goes to standard error, so `json` and `csv` results on standard output stay valid. Lines of code are now counted only for `--stats`; scans without it no longer walk every token to count them and discard the result.
+- Managed `xcodebuild` and `swift build` runs show that they are still working. The default output prints `Still building (Ns elapsed, step n/m)` to standard error every 15 seconds, `--verbose` streams the full build output to standard error, and `--quiet` and machine-readable formats print nothing, so results on standard output stay valid.
 
 ##### Bug Fixes
 

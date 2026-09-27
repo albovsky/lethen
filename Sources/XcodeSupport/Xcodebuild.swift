@@ -32,8 +32,15 @@ public final class Xcodebuild {
         }
     }
 
+    /// Builds `scheme` for testing with indexing enabled, passing each line of build output to `onOutputLine`.
     @discardableResult
-    public func build(project: XcodeProjectlike, scheme: String, allSchemes: [String], additionalArguments: [String] = []) throws -> String {
+    public func build(
+        project: XcodeProjectlike,
+        scheme: String,
+        allSchemes: [String],
+        additionalArguments: [String] = [],
+        onOutputLine: @escaping @Sendable (String) -> Void = { _ in }
+    ) throws -> String {
         let args = try [
             "-\(project.type)", "\"\(project.path.lexicallyNormalized().string.withEscapedQuotes)\"",
             "-scheme", "\"\(scheme.withEscapedQuotes)\"",
@@ -52,7 +59,7 @@ public final class Xcodebuild {
 
         let quotedArguments = quote(arguments: additionalArguments)
         let xcodebuild = ["xcodebuild"] + args + envs + quotedArguments
-        return try shell.exec(xcodebuild)
+        return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
     }
 
     public func removeDerivedData(for project: XcodeProjectlike, allSchemes: [String]) throws {

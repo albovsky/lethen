@@ -108,10 +108,13 @@
                     logger.info("\(asterisk) Building \(scheme)...")
                 }
 
-                try xcodebuild.build(project: project,
-                                     scheme: scheme,
-                                     allSchemes: Array(schemes),
-                                     additionalArguments: configuration.buildArguments)
+                try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
+                    try xcodebuild.build(project: project,
+                                         scheme: scheme,
+                                         allSchemes: Array(schemes),
+                                         additionalArguments: configuration.buildArguments,
+                                         onOutputLine: onOutputLine)
+                }
             }
         }
 
