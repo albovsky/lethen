@@ -131,6 +131,9 @@ public final class Configuration {
     @Setting(key: "clean_build", defaultValue: false)
     public var cleanBuild: Bool
 
+    @Setting(key: "experimental_reuse_index", defaultValue: false)
+    public var experimentalReuseIndex: Bool
+
     @Setting(key: "relative_results", defaultValue: false)
     public var relativeResults: Bool
 
@@ -234,7 +237,7 @@ public final class Configuration {
         $disableUnusedImportAnalysis, $superfluousIgnoreComments, $retainUnusedImportedModules,
         $externalEncodableProtocols, $externalCodableProtocols, $externalTestCaseClasses, $verbose, $quiet, $color,
         $disableUpdateCheck, $strict, $stats, $indexStorePath,
-        $skipBuild, $skipSchemesValidation, $cleanBuild, $buildArguments, $xcodeListArguments, $relativeResults,
+        $skipBuild, $skipSchemesValidation, $cleanBuild, $experimentalReuseIndex, $buildArguments, $xcodeListArguments, $relativeResults,
         $jsonPackageManifestPath, $retainCodableProperties, $retainEncodableProperties, $retainEquatableProperties,
         $retainHashableProperties, $baseline, $writeBaseline,
         $writeResults, $genericProjectConfig, $bazel, $bazelFilter, $bazelQuery, $bazelIndexStore, $bazelCheckVisibility,

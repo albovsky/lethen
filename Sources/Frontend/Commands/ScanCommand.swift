@@ -114,6 +114,9 @@ struct ScanCommand: ParsableCommand {
     @Flag(help: "Clean existing build artifacts before building")
     var cleanBuild: Bool = defaultConfiguration.$cleanBuild.defaultValue
 
+    @Flag(help: ArgumentHelp("Experimental: reuse a verified SwiftPM index instead of cleaning before the build", visibility: .hidden))
+    var experimentalReuseIndex: Bool = defaultConfiguration.$experimentalReuseIndex.defaultValue
+
     @Flag(help: "Skip the project build step")
     var skipBuild: Bool = defaultConfiguration.$skipBuild.defaultValue
 
@@ -287,6 +290,7 @@ struct ScanCommand: ParsableCommand {
         configuration.apply(\.$excludeTargets, excludeTargets)
         configuration.apply(\.$skipSchemesValidation, skipSchemesValidation)
         configuration.apply(\.$cleanBuild, cleanBuild)
+        configuration.apply(\.$experimentalReuseIndex, experimentalReuseIndex)
         configuration.apply(\.$buildArguments, buildArguments)
         configuration.apply(\.$relativeResults, relativeResults)
         configuration.apply(\.$retainCodableProperties, retainCodableProperties)

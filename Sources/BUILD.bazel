@@ -139,6 +139,7 @@ swift_library(
         "ProjectDrivers/GenericProjectDriver.swift",
         "ProjectDrivers/ProjectDriver.swift",
         "ProjectDrivers/SPM.swift",
+        "ProjectDrivers/SPMIndexFreshness.swift",
         "ProjectDrivers/SPMIndexStoreLocator.swift",
         "ProjectDrivers/SPMProjectDriver.swift",
         "ProjectDrivers/XcodeProjectDriver.swift",
