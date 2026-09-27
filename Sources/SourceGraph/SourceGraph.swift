@@ -187,7 +187,10 @@ public final class SourceGraph {
         usedDeclarations.remove(declaration)
         assignOnlyProperties.remove(declaration)
         suppressedAssignOnlyProperties.remove(declaration)
-        declaration.usrs.forEach { allDeclarationsByUsr.removeValue(forKey: $0) }
+        // A conflicting declaration can own the USR; removing this one must not unmap it.
+        for usr in declaration.usrs where allDeclarationsByUsr[usr] === declaration {
+            allDeclarationsByUsr.removeValue(forKey: usr)
+        }
     }
 
     public func add(_ reference: Reference) {

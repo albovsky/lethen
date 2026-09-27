@@ -460,6 +460,34 @@ final class DeterminismRegressionTest: XCTestCase {
         XCTAssertIdentical(graph2.declaration(withUsr: "shared_usr"), earlier)
     }
 
+    func testRemovingAConflictingDeclarationKeepsTheOwnerOfTheUSR() {
+        let graph = makeGraph()
+        let owner = makeDeclaration(
+            kind: .class,
+            name: "MyClass",
+            usr: "shared_usr",
+            location: makeLocation("/tmp/a.swift", module: "A", line: 10)
+        )
+        let conflicting = makeDeclaration(
+            kind: .class,
+            name: "MyClass",
+            usr: "shared_usr",
+            location: makeLocation("/tmp/b.swift", module: "B", line: 20)
+        )
+        graph.add(owner)
+        graph.add(conflicting)
+
+        // Removing the declaration that lost the USR used to unmap the USR from the one that owns it,
+        // so lookups depended on which of the two was removed and when.
+        graph.remove(conflicting)
+
+        XCTAssertIdentical(graph.declaration(withUsr: "shared_usr"), owner)
+
+        graph.remove(owner)
+
+        XCTAssertNil(graph.declaration(withUsr: "shared_usr"))
+    }
+
     // MARK: - AncestralReferenceEliminator with Same-Location Declarations
 
     func testAncestralReferenceEliminatorWithSameLocationDeclarations() throws {

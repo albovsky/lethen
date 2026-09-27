@@ -96,13 +96,15 @@ swift build --enable-index-store
 lethen scan --skip-build --index-store-path "$(swift build --show-bin-path --enable-index-store)/index/store"
 ```
 
-Use `--skip-build` only with an index you know is current. Packages that only build for iOS or another Apple platform cannot be built by `swift build`; build them with `xcodebuild` and scan the DerivedData index store the same way (see Continuous integration).
+With `--skip-build` and no `--index-store-path`, lethen reads the package's build directory and stops with a "stale" error when a source file is newer than every index unit for it. An explicit `--index-store-path` is used as-is, so use it only with an index you know is current. Packages that only build for iOS or another Apple platform cannot be built by `swift build`; build them with `xcodebuild` and scan the DerivedData index store the same way (see Continuous integration).
 
 ### Xcode projects and workspaces
 
 Pass `--project` with the `.xcodeproj` or `.xcworkspace` and `--schemes` with the schemes to build. Lethen runs `xcodebuild build-for-testing` once per scheme into its own DerivedData directory under `~/Library/Caches/com.github.peripheryapp`, keyed by Xcode version, project name, and the set of schemes, so a second scan reuses the build. `--clean-build` deletes that directory first. `lethen clear-cache` removes the whole cache directory.
 
 Interface Builder files, Info.plist files, and Core Data models found in the project are read for class and member references.
+
+`--skip-build` without `--index-store-path` scans without running `xcodebuild` builds. Lethen uses the most recently written of two indexes: its own from an earlier scan, or the one Xcode keeps for this project in its DerivedData (`~/Library/Developer/Xcode/DerivedData`, or the custom location set in Xcode's preferences, matched by the project path Xcode records there). It names the index it chose. Because this index may predate your edits, lethen checks it first: index units older than their source file are ignored, and if a source file has no unit as new as the file, the scan stops with a "stale" error that lists the files. Build in Xcode, or scan without `--skip-build`, to refresh it. Source files that Xcode never indexed are not detected, so build the schemes you scan at least once.
 
 ### Bazel
 
@@ -278,7 +280,7 @@ Get the scan working in a terminal first. Then add an Aggregate target, give it 
 
 **Mixed Objective-C.** See the Objective-C options above; references from Objective-C into Swift are not visible.
 
-**Index store not found.** For managed SwiftPM scans lethen resolves the active build directory itself. For `--skip-build`, pass `--index-store-path` explicitly and make sure the build enabled indexing.
+**Index store not found.** For managed SwiftPM scans lethen resolves the active build directory itself. For `--skip-build`, lethen looks in the package's build directory or, for Xcode projects, in its own and Xcode's DerivedData; otherwise pass `--index-store-path` and make sure the build enabled indexing.
 
 Known Swift index-store bugs that can produce wrong results are listed in the [historical upstream guide](UPSTREAM-README.md#known-bugs).
 

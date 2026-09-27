@@ -23,19 +23,7 @@ public final class XcodeTarget {
     }
 
     public func identifyFiles() throws {
-        let sourceRoot = project.sourceRoot.lexicallyNormalized()
-        let rootFileSystemFiles = try project.xcodeProject.pbxproj.fileSystemSynchronizedRootGroups.flatMapSet {
-            if let stringPath = try $0.fullPath(sourceRoot: sourceRoot.string) {
-                let path = FilePath(stringPath)
-                return FilePath.glob(path.appending("**/*").string)
-            }
-
-            return []
-        }
-
-        try identifyFiles(in: rootFileSystemFiles)
-        try identifyFiles(in: rootFileSystemFiles)
-        try identifyFiles(in: rootFileSystemFiles)
+        try identifyFiles(in: project.fileSystemSynchronizedFiles())
 
         let sourcesBuildPhases = project.xcodeProject.pbxproj.sourcesBuildPhases
         let resourcesBuildPhases = project.xcodeProject.pbxproj.resourcesBuildPhases
