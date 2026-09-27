@@ -60,19 +60,10 @@ public enum SPM {
             let quotedStore = "'" + store.string.replacingOccurrences(of: "'", with: "'\\''") + "'"
             arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
 
-            if configuration.experimentalReuseIndex {
-                try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store, onOutputLine: onOutputLine)
-                return
-            }
-
-            // Indexing flags do not invalidate all Swiftbuild compilation tasks.
-            // Even an existing store can be stale after an unindexed build.
-            // Rebuild managed products; callers that verify an external index
-            // can opt into reuse with --skip-build.
-            if binary.exists {
-                try clean(additionalArguments: additionalArguments)
-            }
-            try shell.exec(arguments, onOutputLine: onOutputLine)
+            // Indexing flags do not invalidate compiled tasks, so an existing tree can hold objects that
+            // were never indexed or were recompiled without indexing. The build is reused only when
+            // SPMIndexFreshness verifies it, and cleaned otherwise.
+            try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store, onOutputLine: onOutputLine)
         }
 
         /// Builds incrementally when SPMIndexFreshness can prove the store matches the build, and cleans

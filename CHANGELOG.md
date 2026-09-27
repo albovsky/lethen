@@ -2,7 +2,7 @@
 
 ##### Breaking
 
-- None.
+- Managed SwiftPM scans no longer clean before every build. Lethen reuses the previous build when it can verify the index: it recompiles every module that another build or an edit touched, together with the modules that import it, checks the index afterwards, and cleans and rebuilds when anything cannot be verified. A rescan of Lethen itself with nothing changed takes 5.3 s instead of 33.8 s. `--clean-build` restores the previous behavior.
 
 ##### Enhancements
 
