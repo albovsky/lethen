@@ -87,9 +87,16 @@ lethen scan --project MyApp.xcodeproj --schemes MyApp -- -destination 'generic/p
 
 ### Swift packages
 
-A managed scan runs `swift build --build-tests --enable-index-store` and reads the index store from the package's build directory. Managed scans always clean first when products already exist: SwiftPM does not treat indexing as a change that invalidates compiled files, so a build tree produced by a plain `swift build` yields a stale or partial index and silently wrong results. The cost is that **a managed SwiftPM scan is always a full rebuild.**
+A managed scan runs `swift build --build-tests --enable-index-store` and reads the index store from the package's build directory. SwiftPM does not treat indexing as a change that invalidates compiled files, and incremental builds do not always recompile a module that imports a changed module, so an existing build tree can hold a stale or partial index. Lethen therefore reuses the tree only when it can verify it:
 
-To keep incremental builds, build the index yourself and point lethen at it:
+- Each verified build ends with a stamp that records the Swift version and the build arguments.
+- Before the next build, every module with an object compiled after the stamp (for example by a plain `swift build`), a source edited after it, or a source without an index unit is recompiled, together with every module that imports it.
+- After the build, every package source must have a unit for its module, and nothing may remain indexed for a file the package no longer builds.
+- Anything that cannot be verified, including a missing stamp, different build arguments, or a different Swift version, cleans and rebuilds.
+
+A rescan with nothing changed rebuilds nothing; an edit costs the edited module and its importers, never the package's dependencies. `--clean-build` always cleans first. `--verbose` logs which modules were recompiled, or why the build was cleaned.
+
+To build the index yourself instead, point lethen at it:
 
 ```sh
 swift build --enable-index-store

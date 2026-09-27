@@ -62,7 +62,7 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
             "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(binary)/index/store'",
         ]
         let pkg = SPM.Package(configuration: Configuration(), shell: ExpectedCommandShell(
-            responses: [query: binary, build: ""]
+            responses: [query: binary, build: ""].merging(Self.reuseQueries) { $1 }
         ), logger: logger)
         try pkg.build(additionalArguments: arguments)
     }
@@ -71,13 +71,13 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
         let binary = "/tmp/lethen-unbuilt-\(UUID().uuidString)/debug"
         let query = ["swift", "build", "--show-bin-path", "--enable-index-store"]
         let build = ["swift", "build", "--build-tests", "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(binary)/index/store'"]
-        let shell = StreamingShell(responses: [query: binary, build: "[1/1] Compiling A a.swift\n"])
+        let shell = StreamingShell(responses: [query: binary, build: "[1/1] Compiling A a.swift\n"].merging(Self.reuseQueries) { $1 })
         let lines = Mutex<[String]>([])
         let pkg = SPM.Package(configuration: Configuration(), shell: shell, logger: logger)
 
         try pkg.build(additionalArguments: []) { line in lines.withLock { $0.append(line) } }
 
-        XCTAssertEqual(shell.captured, [query])
+        XCTAssertEqual(Set(shell.captured), Set([query] + Self.reuseQueries.keys))
         XCTAssertEqual(shell.streamed, [build])
         XCTAssertEqual(lines.withLock { $0 }, ["[1/1] Compiling A a.swift"])
     }
@@ -122,6 +122,13 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
             XCTAssertThrowsError(try driver.plan(logger: logger.contextualized(with: "test")))
         }
     }
+
+    /// Queries the managed build makes to decide whether its previous build can be reused: the compiler
+    /// version it records in the build stamp, and the package's sources.
+    private static let reuseQueries: [[String]: String] = [
+        ["swift", "-version"]: "Apple Swift version 6.4 (swiftlang-6.4.0.34.1 clang-2100.3.34.1)",
+        ["swift", "package", "describe", "--type", "json"]: #"{"targets": []}"#,
+    ]
 
     private func withTemporaryDirectory(_ body: (FilePath) throws -> Void) throws {
         let root = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen discovery \(UUID().uuidString)").path)

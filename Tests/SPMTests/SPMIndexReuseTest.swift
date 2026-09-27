@@ -9,7 +9,7 @@ import SystemPackage
 @testable import TestShared
 import XCTest
 
-/// `--experimental-reuse-index` replaces the managed clean with SPMIndexFreshness. Every test builds a
+/// A managed SwiftPM scan reuses its build only when SPMIndexFreshness verifies it. Every test builds a
 /// private copy of IndexStoreDiscoveryProject for real, then checks both whether lethen cleaned and what
 /// the store holds for the edited files, so a reused store is proven current rather than assumed.
 final class SPMIndexReuseTest: XCTestCase {
@@ -243,7 +243,6 @@ final class SPMIndexReuseTest: XCTestCase {
 
     private func package() -> SPM.Package {
         let configuration = Configuration()
-        configuration.experimentalReuseIndex = true
         return SPM.Package(configuration: configuration, shell: shell, logger: logger)
     }
 
