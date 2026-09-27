@@ -90,6 +90,22 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
         }
     }
 
+    /// A `swift package` subcommand without the build's scratch path locks the default `.build`, which blocks
+    /// while the `swift package` running a command plugin holds it; inside a plugin's sandbox SwiftPM also
+    /// cannot start its own, so `--disable-sandbox` goes along.
+    func testPackageSubcommandsShareTheScratchPathAndSandboxSetting() throws {
+        let configuration = Configuration()
+        configuration.buildArguments = ["-c", "release", "--scratch-path", "'/tmp/Build Space'", "--disable-sandbox", "--build-system", "native"]
+        let shared = ["--scratch-path", "'/tmp/Build Space'", "--disable-sandbox"]
+        let pkg = SPM.Package(configuration: configuration, shell: ExpectedCommandShell(responses: [
+            ["swift", "package"] + shared + ["describe", "--type", "json"]: #"{"targets": []}"#,
+            ["swift", "package", "clean"] + shared: "",
+        ]), logger: logger)
+
+        XCTAssertEqual(try pkg.load().targets.count, 0)
+        try pkg.clean(additionalArguments: configuration.buildArguments)
+    }
+
     func testCleanForwardsOnlyScratchPath() throws {
         for scratch in [["--scratch-path", "'/tmp/Build Space'"], ["--scratch-path='/tmp/Build Space'"]] {
             let pkg = SPM.Package(configuration: Configuration(), shell: ExpectedCommandShell(

@@ -7,6 +7,8 @@
 ##### Enhancements
 
 - `lethen explain <name|usr>` scans like `lethen scan` and explains one declaration: why it is reported as unused, the shortest chain of references that makes it used, or the rule or comment that retains or ignores it.
+- Lethen's package includes a command plugin, `LethenPlugin`: `swift package --allow-writing-to-package-directory --allow-network-connections all lethen` scans a package, building it with indexing in `.build/lethen`, and an Xcode command scans an Xcode project from the index Xcode keeps and reports results as Xcode issues. The package must be added with a branch or commit rule because Lethen depends on swift-index-store by commit.
+- `mint install albovsky/lethen` is supported and documented.
 - `lethen scan --stats` prints the time spent in each scan phase, the number of Swift files, lines of code, and declarations scanned, and the indexing and analysis throughput. The report goes to standard error, so `json` and `csv` results on standard output stay valid. Lines of code are now counted only for `--stats`; scans without it no longer walk every token to count them and discard the result.
 - Managed `xcodebuild` and `swift build` runs show that they are still working. The default output prints `Still building (Ns elapsed, step n/m)` to standard error every 15 seconds, `--verbose` streams the full build output to standard error, and `--quiet` and machine-readable formats print nothing, so results on standard output stay valid.
 - `--skip-build` without `--index-store-path` also finds the index Xcode keeps for the project in its DerivedData and uses whichever index was written most recently, so a project Xcode has indexed can be scanned without an `xcodebuild` build. Such an index is checked first: units older than their source file are ignored, and a source file newer than every unit for it stops the scan with a stale-index error instead of producing results from outdated code. The same check now applies to SwiftPM `--skip-build` scans without an explicit path.
@@ -14,6 +16,8 @@
 
 ##### Bug Fixes
 
+- `swift package describe` now receives the build's `--scratch-path`, `--disable-sandbox`, and `--disable-keychain`, like `swift package clean` already did for the scratch path. Without the scratch path it locked the default `.build`, so a scan waited forever while another SwiftPM process held that lock.
+- XcodeProj is capped at 9.10.x, the version Lethen is tested with. Packages that depend on Lethen resolve XcodeProj themselves, and 9.11 and later add enum cases Lethen does not handle, so they could not build it.
 - Scans of an index store holding units for several versions of one file, such as an Xcode index built for several destinations over time, gave different results from run to run: the versions' declarations conflicted, and which one won depended on hash and thread order. Each file is now indexed from one version (the units written after the file last changed, or else the most recently written version), declarations whose USRs collide are chosen in a fixed order, and removing a declaration no longer unmaps a USR that a conflicting declaration owns. On an app of about 100,000 lines, six identical scans had given six different result sets; they are now identical.
 - Redundant protocol conformance locations are listed in file, line, and column order in every output format. They previously followed per-process hash order, so identical scans of a protocol with several conformances could produce different output, contrary to the byte-identical output claimed in 3.9.0.
 
