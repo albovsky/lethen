@@ -23,6 +23,7 @@ DerivedData
 *.gcno
 .swiftpm
 /.build/
+/.corpus/
 Tests/Fixtures/.build/
 
 # VSCode

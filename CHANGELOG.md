@@ -13,6 +13,7 @@
 - Managed `xcodebuild` and `swift build` runs show that they are still working. The default output prints `Still building (Ns elapsed, step n/m)` to standard error every 15 seconds, `--verbose` streams the full build output to standard error, and `--quiet` and machine-readable formats print nothing, so results on standard output stay valid.
 - `--skip-build` without `--index-store-path` also finds the index Xcode keeps for the project in its DerivedData and uses whichever index was written most recently, so a project Xcode has indexed can be scanned without an `xcodebuild` build. Such an index is checked first: units older than their source file are ignored, and a source file newer than every unit for it stops the scan with a stale-index error instead of producing results from outdated code. The same check now applies to SwiftPM `--skip-build` scans without an explicit path.
 - Xcode projects that use file system synchronized groups are parsed faster: the group tree is walked once per project instead of three times per target.
+- The repository has a precision corpus: `corpus/projects.json` pins Alamofire and swift-nio, `corpus/scan.sh` scans one at its pinned commit, and `corpus/diff.sh` compares the result with the findings committed under `corpus/expected/`, so an analysis change shows exactly which findings it adds or removes on real code.
 
 ##### Bug Fixes
 
