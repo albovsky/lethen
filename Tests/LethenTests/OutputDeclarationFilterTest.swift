@@ -55,15 +55,22 @@ final class OutputDeclarationFilterTest: XCTestCase {
         XCTAssertEqual(filtered.map(\.declaration.name), ["EarlierLine", "EarlierFile", "Later"])
     }
 
+    func testCertainResultsSortBeforeLikelyOnes() throws {
+        let likely = result(name: "Likely", usr: "s:Likely", line: 1, confidence: .likely)
+        let certain = result(name: "Certain", usr: "s:Certain", line: 2)
+        let filtered = try filter([likely, certain], configuration: Configuration(), baseline: nil)
+        XCTAssertEqual(filtered.map(\.declaration.name), ["Certain", "Likely"])
+    }
+
     // MARK: - Private
 
     private func filter(_ results: [ScanResult], configuration: Configuration, baseline: Baseline?) throws -> [ScanResult] {
         try OutputDeclarationFilter(configuration: configuration, logger: logger).filter(results, with: baseline)
     }
 
-    private func result(name: String, usr: String, path: String = "Sources/A.swift", line: Int = 1, annotation: ScanResult.Annotation = .unused) -> ScanResult {
+    private func result(name: String, usr: String, path: String = "Sources/A.swift", line: Int = 1, annotation: ScanResult.Annotation = .unused, confidence: Confidence = .certain) -> ScanResult {
         let location = Location(file: SourceFile(path: root.appending(path), modules: ["App"]), line: line, column: 1)
         let declaration = Declaration(name: name, kind: .class, usrs: [usr], location: location)
-        return ScanResult(declaration: declaration, annotation: annotation)
+        return ScanResult(declaration: declaration, annotation: annotation, confidence: confidence)
     }
 }

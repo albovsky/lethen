@@ -20,6 +20,7 @@ final class JsonFormatter: OutputFormatter {
             let location = declarationLocation(from: result.declaration)
             let object: [AnyHashable: Any] = [
                 "kind": declarationKind(from: result.declaration),
+                "confidence": result.confidence.rawValue,
                 "modules": location.file.modules.sorted(),
                 "name": result.declaration.name,
                 "modifiers": result.declaration.modifiers.sorted(),
@@ -36,6 +37,7 @@ final class JsonFormatter: OutputFormatter {
                 for ref in orderedConformances(references) {
                     let object: [AnyHashable: Any] = [
                         "kind": ref.declarationKind.rawValue,
+                        "confidence": result.confidence.rawValue,
                         "name": ref.name,
                         "modifiers": [String](),
                         "attributes": [String](),

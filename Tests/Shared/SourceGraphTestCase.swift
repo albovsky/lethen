@@ -114,6 +114,17 @@ open class SourceGraphTestCase: XCTestCase {
         }
     }
 
+    func assertConfidence(_ description: DeclarationDescription, _ confidence: Confidence, file: StaticString = #file, line: UInt = #line) {
+        guard let declaration = materialize(description, file: file, line: line) else { return }
+        guard let result = Self.results.first(where: { $0.declaration == declaration }) else {
+            return XCTFail("Expected a result for \(description)", file: file, line: line)
+        }
+
+        if result.confidence != confidence {
+            XCTAssertEqual(result.confidence, confidence, "Confidence of \(description)", file: file, line: line)
+        }
+    }
+
     func assertNotReferenced(_ description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) {
         if case .module = description.kind {
             if Self.graph.unusedModuleImports.first(where: { $0.name == description.name }) == nil {

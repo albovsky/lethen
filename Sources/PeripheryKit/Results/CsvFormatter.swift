@@ -15,7 +15,7 @@ final class CsvFormatter: OutputFormatter {
     }
 
     func format(_ results: [ScanResult], colored _: Bool) -> String? {
-        var lines = ["Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints"]
+        var lines = ["Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence"]
 
         for result in results {
             let line = format(
@@ -26,7 +26,8 @@ final class CsvFormatter: OutputFormatter {
                 accessibility: result.declaration.accessibility.value.rawValue,
                 usrs: result.declaration.usrs,
                 location: declarationLocation(from: result.declaration),
-                hint: describe(result.annotation)
+                hint: describe(result.annotation),
+                confidence: result.confidence.rawValue
             )
             lines.append(line)
 
@@ -41,7 +42,8 @@ final class CsvFormatter: OutputFormatter {
                         accessibility: nil,
                         usrs: [ref.usr],
                         location: ref.location,
-                        hint: redundantConformanceHint(with: inherited)
+                        hint: redundantConformanceHint(with: inherited),
+                        confidence: result.confidence.rawValue
                     )
                     lines.append(line)
                 }
@@ -63,13 +65,14 @@ final class CsvFormatter: OutputFormatter {
         accessibility: String?,
         usrs: Set<String>,
         location: Location,
-        hint: String?
+        hint: String?,
+        confidence: String
     ) -> String {
         let joinedModifiers = modifiers.sorted().joined(separator: "|")
         let joinedAttributes = attributes.sorted().joined(separator: "|")
         let joinedUsrs = usrs.sorted().joined(separator: "|")
         let path = locationDescription(location)
-        return [kind, name, joinedModifiers, joinedAttributes, accessibility ?? "", joinedUsrs, path, hint ?? ""]
+        return [kind, name, joinedModifiers, joinedAttributes, accessibility ?? "", joinedUsrs, path, hint ?? "", confidence]
             .map(escape)
             .joined(separator: ",")
     }

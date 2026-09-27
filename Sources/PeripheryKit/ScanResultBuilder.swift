@@ -85,6 +85,15 @@ public enum ScanResultBuilder {
 
                 return !graph.retainedDeclarations.contains(result.declaration)
             }
+            .map { result in
+                let assessment = graph.assessConfidence(of: result.declaration)
+                return ScanResult(
+                    declaration: result.declaration,
+                    annotation: result.annotation,
+                    confidence: assessment.confidence,
+                    confidenceReason: assessment.reason
+                )
+            }
     }
 
     /// Checks if a declaration has references from code that is not part of the command ignored set.

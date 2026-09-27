@@ -305,6 +305,9 @@ final class SwiftIndexer: Indexer {
             visitDeclarations(using: declarationSyntaxVisitor)
             let valueUses = ValueUseSyntaxVisitor(locations: locationBuilder)
             valueUses.walk(multiplexingSyntaxVisitor.syntax)
+            let literalTokens = StringLiteralTokenVisitor()
+            literalTokens.walk(multiplexingSyntaxVisitor.syntax)
+            graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
             let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
             for (call, arguments) in valueUses.arguments {
                 let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })

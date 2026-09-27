@@ -186,6 +186,8 @@ report_exclude:
 
 Each result is a declaration (class, struct, enum, protocol, function, property, initializer, typealias, and so on) with one hint. Only the outermost unused declaration is reported: an unused class is one result, not one per member.
 
+Every result also has a confidence. It is `likely` when a dynamic feature could reach the declaration without a reference Lethen can see: the declaration is accessible from Objective-C and neither `--retain-objc-accessible` nor `--retain-objc-annotated` is set, or its name (without argument labels) appears as a word in a string literal anywhere in the scanned sources, as in a selector string or `NSClassFromString("Name")`. Otherwise it is `certain`. Confidence never changes what is reported or what a baseline filters; results are listed with `certain` ones first, in location order within each tier.
+
 ### Unused declarations
 
 The declaration cannot be reached from any entry point. Lethen treats the following as used without being asked, because Swift or a framework reaches them without a visible reference:
@@ -292,7 +294,7 @@ Entries are keyed by the declaration's symbol identifier, so a baselined result 
 
 `--stats` prints a report after the scan: the time spent in each phase (setup, build, index (planning which source files to read from the index store, then its two Swift passes), analysis, building the results, and output), the number of Swift source files indexed, their lines of code (blank and comment-only lines excluded), the declarations indexed, and indexing plus analysis throughput in lines per second. The report goes to standard error even with `--quiet`, so `json`, `csv`, and the other formats on standard output stay machine-readable. Lines are counted only when `--stats` is given, so other scans do not pay for it. Use it with a managed SwiftPM scan to see the cost of its clean build, or with `--skip-build` to time indexing and analysis alone.
 
-The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location.
+The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location, and a `confidence` of `certain` or `likely`; the CSV format ends with a `Confidence` column. Results are sorted with `certain` first.
 
 ### Reusing a build in CI
 

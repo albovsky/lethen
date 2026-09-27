@@ -1933,4 +1933,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.class("FixtureClass221Child"))
         }
     }
+
+    func testConfidenceLikelyForStringLiteralNames() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass223")) {
+                self.assertNotReferenced(.functionMethodInstance("namedInLiteral()"))
+                self.assertConfidence(.functionMethodInstance("namedInLiteral()"), .likely)
+                self.assertConfidence(.functionMethodInstance("namedInSelectorString()"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("notNamedAnywhere()"))
+                self.assertConfidence(.functionMethodInstance("notNamedAnywhere()"), .certain)
+            }
+        }
+    }
 }

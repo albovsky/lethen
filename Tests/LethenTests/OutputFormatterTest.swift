@@ -86,7 +86,7 @@ final class OutputFormatterTest: XCTestCase {
     }
 
     func testJsonFormatsWriteKeysInSortedOrder() throws {
-        XCTAssertEqual(try keys(format(.json, [unusedClass()])), ["accessibility", "attributes", "hints", "ids", "kind", "location", "modifiers", "modules", "name"])
+        XCTAssertEqual(try keys(format(.json, [unusedClass()])), ["accessibility", "attributes", "confidence", "hints", "ids", "kind", "location", "modifiers", "modules", "name"])
         XCTAssertEqual(try keys(format(.gitlabCodeQuality, [unusedClass()], relativeResults: true)), ["check_name", "description", "fingerprint", "location", "lines", "begin", "path", "severity"])
         XCTAssertEqual(try keys(format(.codeclimate, [unusedClass()], relativeResults: true)), ["description", "fingerprint", "location", "lines", "begin", "path", "severity"])
     }
@@ -94,8 +94,20 @@ final class OutputFormatterTest: XCTestCase {
     func testCsvFormatWritesColumnsInHeaderOrder() throws {
         let lines = try format(.csv, [unusedClass()]).components(separatedBy: "\n")
         XCTAssertEqual(lines.count, 2)
-        XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints")
-        XCTAssertEqual(lines[1], "class,Foo,final,,public,s:Foo,\(root.string)/Sources/A.swift:3:5,unused")
+        XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence")
+        XCTAssertEqual(lines[1], "class,Foo,final,,public,s:Foo,\(root.string)/Sources/A.swift:3:5,unused,certain")
+    }
+
+    func testJsonFormatIncludesConfidence() throws {
+        let likely = ScanResult(declaration: declaration(name: "Foo", kind: .class, usr: "s:Foo"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        let objects = try json(format(.json, [unusedClass(), likely]))
+        XCTAssertEqual(objects.map { $0["confidence"] as? String }, ["certain", "likely"])
+    }
+
+    func testCsvFormatEndsWithConfidenceColumn() throws {
+        let lines = try format(.csv, [unusedClass()], relativeResults: true).components(separatedBy: "\n")
+        XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence")
+        XCTAssertTrue(lines[1].hasSuffix(",unused,certain"), lines[1])
     }
 
     func testCsvFormatQuotesFieldsContainingDelimitersAndQuotes() throws {
@@ -103,10 +115,10 @@ final class OutputFormatterTest: XCTestCase {
         deprecated.declaration.attributes = [DeclarationAttribute(name: "available", arguments: "*, deprecated, message: \"Use Bar\"")]
         let lines = try format(.csv, [deprecated, redundantProtocol(inherited: ["Q", "R"])], relativeResults: true).components(separatedBy: "\n")
         XCTAssertEqual(lines, [
-            "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints",
-            "class,Foo,final,\"available(*, deprecated, message: \"\"Use Bar\"\")\",public,s:Foo,Sources/A.swift:3:5,unused",
-            "protocol,P,,,internal,s:P,Sources/A.swift:3:5,redundantProtocol",
-            "protocol,P,,,,s:Conformance,Sources/B.swift:9:1,\"redundantConformance(replace with: 'Q, R')\"",
+            "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence",
+            "class,Foo,final,\"available(*, deprecated, message: \"\"Use Bar\"\")\",public,s:Foo,Sources/A.swift:3:5,unused,certain",
+            "protocol,P,,,internal,s:P,Sources/A.swift:3:5,redundantProtocol,certain",
+            "protocol,P,,,,s:Conformance,Sources/B.swift:9:1,\"redundantConformance(replace with: 'Q, R')\",certain",
         ])
     }
 

@@ -27,6 +27,8 @@ public final class SourceGraph {
     public private(set) var retentionSources: [Declaration: String] = [:]
     /// Whether mutator runs record `retentionSources`. Off for scans, which never read them.
     public var recordsRetentionSources = false
+    /// Identifier-like words found in string literals across the scanned sources.
+    public private(set) var literalTokens: Set<String> = []
 
     private var indexedModules: Set<String> = []
     private var unindexedExportedModules: Set<String> = []
@@ -40,6 +42,32 @@ public final class SourceGraph {
     public init(configuration: Configuration, logger: Logger) {
         self.configuration = configuration
         self.logger = logger
+    }
+
+    public func addLiteralTokens(_ tokens: Set<String>) {
+        literalTokens.formUnion(tokens)
+    }
+
+    public func assessConfidence(of declaration: Declaration) -> ConfidenceAssessment {
+        let objcAttributes: Set<String> = ["objc", "objc.name", "objcMembers"]
+        let isObjcExposed = declaration.isObjcAccessible
+            || declaration.attributes.contains { objcAttributes.contains($0.name) }
+            || declaration.modifiers.contains("dynamic")
+
+        if isObjcExposed, !configuration.retainObjcAccessible, !configuration.retainObjcAnnotated {
+            return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot see references made from Objective-C")
+        }
+
+        if literalTokens.contains(Self.baseName(of: declaration.name)) {
+            return .init(confidence: .likely, reason: "its name appears in a string literal")
+        }
+
+        return .init(confidence: .certain, reason: nil)
+    }
+
+    /// The name without argument labels: `load(from:)` becomes `load`.
+    public static func baseName(of name: String) -> String {
+        name.split(separator: "(", maxSplits: 1).first.map(String.init) ?? name
     }
 
     public func indexingComplete() {

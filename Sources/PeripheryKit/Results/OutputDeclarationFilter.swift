@@ -38,7 +38,7 @@ public final class OutputDeclarationFilter {
         }
 
         if configuration.reportInclude.isEmpty, configuration.reportExclude.isEmpty {
-            return declarations.sorted { $0.declaration < $1.declaration }
+            return declarations.sorted { ($0.confidence, $0.declaration) < ($1.confidence, $1.declaration) }
         }
 
         return declarations
@@ -67,6 +67,6 @@ public final class OutputDeclarationFilter {
 
                 return false
             }
-            .sorted { $0.declaration < $1.declaration }
+            .sorted { ($0.confidence, $0.declaration) < ($1.confidence, $1.declaration) }
     }
 }
