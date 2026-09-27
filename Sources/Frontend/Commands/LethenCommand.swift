@@ -5,6 +5,7 @@ public struct LethenCommand: ParsableCommand {
         commandName: "lethen",
         subcommands: [
             ScanCommand.self,
+            ExplainCommand.self,
             CheckUpdateCommand.self,
             ClearCacheCommand.self,
             VersionCommand.self,

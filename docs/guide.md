@@ -202,6 +202,20 @@ A protocol that types conform to but that is never used as a type: never an exis
 
 A `// periphery:ignore` comment on a declaration that is actually used. Turn off with `--no-superfluous-ignore-comments`.
 
+## Explaining a result
+
+`lethen explain <name>` scans exactly as `lethen scan` does, with the same options, then explains one declaration instead of listing results. The name can carry argument labels or not (`load` or `load(from:)`), be qualified by enclosing declarations and a module (`Store.load`, `App.Store.load`), or be a USR as printed by `--format json`. Every matching declaration is explained:
+
+- **Reported as unused:** whether anything references it at all, or which unused declarations are the only ones that do.
+- **Used:** the shortest chain of references from a retained declaration, or from top-level code, to it.
+- **Retained:** the rule that retained it, such as `XCTestRetainer`, `PubliclyAccessibleRetainer` with `--retain-public`, or an ignore comment.
+- **Not reported:** the comment command that ignores it, or the enclosing declaration that is reported instead.
+
+```sh
+lethen explain functionWithSimpleReturnType
+lethen explain Store.load --project MyApp.xcodeproj --schemes MyApp
+```
+
 ## Comment commands
 
 Place a command on the line above a declaration. It applies to the declaration and everything nested in it.
