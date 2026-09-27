@@ -24,7 +24,15 @@ public enum SPM {
         }
 
         public func clean(additionalArguments: [String] = []) throws {
-            // Build-only flags are not accepted by `swift package clean`.
+            try shell.exec(["swift", "package", "clean"] + Self.packageArguments(in: additionalArguments))
+        }
+
+        /// The build arguments that `swift package` subcommands must share with the build: `--scratch-path`,
+        /// `--disable-sandbox`, and `--disable-keychain`. Build-only flags are not accepted by `swift package` subcommands, so only
+        /// these are kept. Without the scratch path, a subcommand locks the default `.build`, which blocks when
+        /// another SwiftPM process holds that lock, such as the `swift package` running a command plugin that
+        /// runs lethen; and inside a plugin's sandbox, SwiftPM cannot start a sandbox of its own.
+        static func packageArguments(in additionalArguments: [String]) throws -> [String] {
             var scratchArguments: [String] = []
             var arguments = additionalArguments.makeIterator()
             while let argument = arguments.next() {
@@ -34,11 +42,11 @@ public enum SPM {
                     }
 
                     scratchArguments += [argument, path]
-                } else if argument.hasPrefix("--scratch-path=") {
+                } else if argument.hasPrefix("--scratch-path=") || ["--disable-sandbox", "--disable-keychain"].contains(argument) {
                     scratchArguments.append(argument)
                 }
             }
-            try shell.exec(["swift", "package", "clean"] + scratchArguments)
+            return scratchArguments
         }
 
         /// Builds the package with indexing enabled, passing each line of build output to `onOutputLine`.
@@ -185,7 +193,8 @@ public enum SPM {
             if let path = configuration.jsonPackageManifestPath {
                 jsonData = try Data(contentsOf: path.url)
             } else {
-                let jsonString = try shell.exec(["swift", "package", "describe", "--type", "json"])
+                let packageArguments = try Self.packageArguments(in: configuration.buildArguments)
+                let jsonString = try shell.exec(["swift", "package"] + packageArguments + ["describe", "--type", "json"])
 
                 guard let data = jsonString.data(using: .utf8) else {
                     throw LethenError.packageError(message: "Failed to read swift package description.")

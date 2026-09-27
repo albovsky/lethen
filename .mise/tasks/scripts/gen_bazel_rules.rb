@@ -14,6 +14,12 @@ PRODUCTS = {
     "AEXML" => "@aexml",
 }
 
+# Bazel names for SwiftPM targets named differently. The executable target is named like the `lethen`
+# product, as a SwiftPM plugin requires; Bazel keeps the LethenCLI labels.
+BAZEL_NAMES = {
+    "lethen" => "LethenCLI",
+}
+
 VISIBILITY = {
     "LethenCLI" => "@@+generated+periphery_generated//:__pkg__",
 }
@@ -35,8 +41,12 @@ def target_labels(targets)
     end
 end
 
+def bazel_name(target)
+    BAZEL_NAMES.fetch(target["name"], target["name"])
+end
+
 def generate_label(target)
-    "//Sources:#{target["name"]}"
+    "//Sources:#{bazel_name(target)}"
 end
 
 def generate_sources(target)
@@ -114,10 +124,11 @@ json = parse_json
 labels = target_labels(json["targets"])
 
 rules = json["targets"].map do |target|
-    name = target["name"]
+    name = bazel_name(target)
     path = target["path"]
 
-    next if path.start_with?("Tests")
+    # Tests are built by SwiftPM, and plugins run only inside SwiftPM and Xcode.
+    next if path.start_with?("Tests") || target["type"] == "plugin"
 
     puts generate_label(target)
 

@@ -1,6 +1,26 @@
 load("@rules_swift//swift:swift.bzl", "swift_binary", "swift_library")
 load("//bazel/internal:opt.bzl", "optimized_swift_binary")  # buildifier: disable=bzl-visibility
 
+swift_binary(
+    name = "LethenCLI",
+    srcs = ["LethenCLI/main.swift"],
+    module_name = "LethenCLI",
+    visibility = ["@@+generated+periphery_generated//:__pkg__"],
+    deps = [
+        "//Sources:Frontend",
+        "@swift_argument_parser//:ArgumentParser",
+    ],
+)
+
+optimized_swift_binary(
+    name = "LethenCLI_opt",
+    target = ":LethenCLI",
+    visibility = [
+        "//:__pkg__",
+        "@@+generated+periphery_generated//:__pkg__",
+    ],
+)
+
 swift_library(
     name = "XcodeSupport",
     srcs = [
@@ -199,26 +219,6 @@ swift_library(
     name = "Logger",
     srcs = ["Logger/Logger.swift"],
     module_name = "Logger",
-)
-
-swift_binary(
-    name = "LethenCLI",
-    srcs = ["LethenCLI/main.swift"],
-    module_name = "LethenCLI",
-    visibility = ["@@+generated+periphery_generated//:__pkg__"],
-    deps = [
-        "//Sources:Frontend",
-        "@swift_argument_parser//:ArgumentParser",
-    ],
-)
-
-optimized_swift_binary(
-    name = "LethenCLI_opt",
-    target = ":LethenCLI",
-    visibility = [
-        "//:__pkg__",
-        "@@+generated+periphery_generated//:__pkg__",
-    ],
 )
 
 swift_library(

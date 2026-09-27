@@ -27,6 +27,8 @@ lethen version
 
 Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. The same binary is attached to each [release](https://github.com/albovsky/lethen/releases) as `lethen-<version>-macos-arm64.zip`, with a `SHA256SUMS` file.
 
+[Mint](https://github.com/yonaskolb/Mint) builds it from source: `mint install albovsky/lethen@3.9.0`. To run Lethen from a package or an Xcode project, add this package with a branch or commit rule and use its `LethenPlugin` command plugin; the [guide](docs/guide.md#swift-package-plugin-and-xcode-command) shows how.
+
 ### Download the macOS zip
 
 Download [lethen-3.9.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.9.0/lethen-3.9.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.9.0/SHA256SUMS) into the same directory, then run there:

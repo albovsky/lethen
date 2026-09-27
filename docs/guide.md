@@ -36,6 +36,17 @@ lethen version
 
 Keep the PATH export in your shell profile.
 
+### Mint
+
+[Mint](https://github.com/yonaskolb/Mint) builds Lethen from source at a release tag, which takes a few minutes and needs Xcode (or the Command Line Tools):
+
+```sh
+mint install albovsky/lethen@3.9.0
+mint run albovsky/lethen@3.9.0 scan
+```
+
+To pin it for a project, add `albovsky/lethen@3.9.0` to your `Mintfile`.
+
 ### Linux
 
 On Linux, releases from 3.9.0 include tarballs for x86_64 and aarch64. They need glibc 2.35 or later and a Swift 6.3 or newer toolchain; the README's Linux section shows how to install one. The tarball's `bin/lethen` uses the indexing library of the `swiftc` on your `PATH`, so swiftly toolchains work. Swift 6.1 and 6.2 cannot load it; use a source build of 3.8.1 with them.
@@ -112,6 +123,27 @@ Pass `--project` with the `.xcodeproj` or `.xcworkspace` and `--schemes` with th
 Interface Builder files, Info.plist files, and Core Data models found in the project are read for class and member references.
 
 `--skip-build` without `--index-store-path` scans without running `xcodebuild` builds. Lethen uses the most recently written of two indexes: its own from an earlier scan, or the one Xcode keeps for this project in its DerivedData (`~/Library/Developer/Xcode/DerivedData`, or the custom location set in Xcode's preferences, matched by the project path Xcode records there). It names the index it chose. Because this index may predate your edits, lethen checks it first: index units older than their source file are ignored, and if a source file has no unit as new as the file, the scan stops with a "stale" error that lists the files. Build in Xcode, or scan without `--skip-build`, to refresh it. Source files that Xcode never indexed are not detected, so build the schemes you scan at least once.
+
+### Swift package plugin and Xcode command
+
+Lethen's package includes a command plugin, `LethenPlugin`. Add the package with a **branch or commit rule**, not a version: Lethen depends on swift-index-store by commit because that package uses unsafe build flags, and SwiftPM only lets packages with such dependencies be used by branch or commit. In `Package.swift`:
+
+```swift
+.package(url: "https://github.com/albovsky/lethen", branch: "master"),
+```
+
+In Xcode, choose File > Add Package Dependencies, enter the URL, and pick the Branch or Commit rule.
+
+For a package, run the plugin from the package directory. It takes `lethen scan` options, and build arguments after `--`:
+
+```sh
+swift package --allow-writing-to-package-directory --allow-network-connections all lethen
+swift package --allow-writing-to-package-directory --allow-network-connections all lethen --format json -- -c release
+```
+
+The plugin builds the package with indexing in `.build/lethen`, separately from `.build`, which SwiftPM keeps locked while a plugin runs. It needs to write there and to fetch the package's dependencies for that build, which the two permissions allow; `swift package --disable-sandbox lethen` also works. The first run builds Lethen itself and the package's dependencies, which takes a few minutes; later runs reuse both.
+
+For an Xcode project, right-click the project in the navigator and choose **lethen**. The command scans the index Xcode keeps for the project instead of building, the same way `--skip-build` does, so build the project in Xcode first; results appear as warnings in the Issue navigator. It passes the project's name as the scheme; pass `--schemes` in the command's arguments to choose others.
 
 ### Bazel
 

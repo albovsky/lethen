@@ -14,9 +14,11 @@ var dependencies: [Package.Dependency] = [
 
 #if os(macOS)
     dependencies.append(
+        // Capped at the tested minor: packages that depend on lethen, such as users of its plugin, resolve
+        // XcodeProj themselves, and 9.11 and later add enum cases lethen's exhaustive switches do not handle.
         .package(
             url: "https://github.com/tuist/xcodeproj",
-            from: "9.0.0"
+            .upToNextMinor(from: "9.10.1")
         )
     )
 #endif
@@ -32,12 +34,25 @@ var projectDriverDependencies: [PackageDescription.Target.Dependency] = [
 #endif
 
 var targets: [PackageDescription.Target] = [
+    .plugin(
+        name: "LethenCommandPlugin",
+        capability: .command(
+            intent: .custom(verb: "lethen", description: "Scan the package for unused code"),
+            permissions: [
+                .writeToPackageDirectory(reason: "Lethen builds the package with indexing into .build/lethen."),
+                .allowNetworkConnections(scope: .all(), reason: "Lethen fetches the package's dependencies for that build."),
+            ]
+        ),
+        dependencies: [.target(name: "lethen")]
+    ),
     .executableTarget(
-        name: "LethenCLI",
+        // Named like the product, which a plugin needs to use it as a tool; the directory keeps its name.
+        name: "lethen",
         dependencies: [
             .target(name: "Frontend"),
             .product(name: "ArgumentParser", package: "swift-argument-parser"),
-        ]
+        ],
+        path: "Sources/LethenCLI"
     ),
     .target(
         name: "Frontend",
@@ -188,7 +203,8 @@ let package = Package(
     name: "Lethen",
     platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "lethen", targets: ["LethenCLI"]),
+        .executable(name: "lethen", targets: ["lethen"]),
+        .plugin(name: "LethenPlugin", targets: ["LethenCommandPlugin"]),
         .library(name: "PeripheryKit", targets: ["PeripheryKit"]),
     ],
     dependencies: dependencies,
