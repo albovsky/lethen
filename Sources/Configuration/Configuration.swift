@@ -116,6 +116,9 @@ public final class Configuration {
     @Setting(key: "strict", defaultValue: false)
     public var strict: Bool
 
+    @Setting(key: "stats", defaultValue: false)
+    public var stats: Bool
+
     @Setting(key: "index_store_path", defaultValue: [], setter: filePathArraySetter)
     public var indexStorePath: [FilePath]
 
@@ -233,7 +236,7 @@ public final class Configuration {
         $retainObjcAnnotated, $retainUnusedProtocolFuncParams, $retainSwiftUIPreviews, $disableRedundantPublicAnalysis,
         $disableUnusedImportAnalysis, $superfluousIgnoreComments, $retainUnusedImportedModules,
         $externalEncodableProtocols, $externalCodableProtocols, $externalTestCaseClasses, $verbose, $quiet, $color,
-        $disableUpdateCheck, $strict, $indexStorePath,
+        $disableUpdateCheck, $strict, $stats, $indexStorePath,
         $skipBuild, $skipSchemesValidation, $cleanBuild, $experimentalReuseIndex, $buildArguments, $xcodeListArguments, $relativeResults,
         $jsonPackageManifestPath, $retainCodableProperties, $retainEncodableProperties, $retainEquatableProperties,
         $retainHashableProperties, $baseline, $writeBaseline,

@@ -12,7 +12,8 @@ public extension Logger {
         self.init(
             quiet: configuration.quiet,
             verbose: configuration.verbose,
-            colorMode: colorMode
+            colorMode: colorMode,
+            intervalRecorder: configuration.stats ? IntervalRecorder() : nil
         )
     }
 }

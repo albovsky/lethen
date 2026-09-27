@@ -129,6 +129,9 @@ struct ScanCommand: ParsableCommand {
     @Flag(help: "Exit with non-zero status if any unused code is found")
     var strict: Bool = defaultConfiguration.$strict.defaultValue
 
+    @Flag(help: "Print phase timings and the size of the scanned project to standard error after the scan")
+    var stats: Bool = defaultConfiguration.$stats.defaultValue
+
     @Flag(help: "Disable checking for updates")
     var disableUpdateCheck: Bool = defaultConfiguration.$disableUpdateCheck.defaultValue
 
@@ -228,6 +231,10 @@ struct ScanCommand: ParsableCommand {
         try report.writeResults()
         logger.endInterval(interval)
 
+        if let intervalRecorder = logger.intervalRecorder {
+            logger.report(ScanStatisticsReport.render(durations: intervalRecorder.durations, statistics: scanOutput.statistics))
+        }
+
         updateChecker.waitForCompletion()
         updateChecker.notifyIfAvailable()
 
@@ -276,6 +283,7 @@ struct ScanCommand: ParsableCommand {
         configuration.apply(\.$color, noColor ? .never : color)
         configuration.apply(\.$disableUpdateCheck, disableUpdateCheck)
         configuration.apply(\.$strict, strict)
+        configuration.apply(\.$stats, stats)
         configuration.apply(\.$indexStorePath, indexStorePath)
         configuration.apply(\.$skipBuild, skipBuild)
         configuration.apply(\.$excludeTests, excludeTests)
