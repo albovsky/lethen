@@ -215,7 +215,15 @@ final class SwiftIndexer: Indexer {
 
             var newDeclarations: Set<Declaration> = []
 
-            for (key, values) in rawDeclsByKey {
+            // Declarations are equal when their USRs are, so when two keys share USRs (an index built from
+            // code that failed to type-check can give overloads the same USR) the first one inserted wins.
+            // Walking keys in a fixed order keeps that choice the same in every process.
+            let orderedKeys = rawDeclsByKey.keys.sorted {
+                ($0.location, $0.name, $0.kind.rawValue, $0.isImplicit ? 1 : 0) < ($1.location, $1.name, $1.kind.rawValue, $1.isImplicit ? 1 : 0)
+            }
+
+            for key in orderedKeys {
+                let values = rawDeclsByKey[key, default: []]
                 let usrs = values.mapSet { $0.0.usr }
                 let decl = Declaration(name: key.name, kind: key.kind, usrs: usrs, location: key.location)
 

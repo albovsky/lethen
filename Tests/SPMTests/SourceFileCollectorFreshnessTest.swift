@@ -1,6 +1,7 @@
 import Configuration
 import Foundation
-import Indexer
+@testable import Indexer
+import IndexStore
 import Logger
 import Shared
 import SystemPackage
@@ -67,7 +68,80 @@ final class SourceFileCollectorFreshnessTest: XCTestCase {
         XCTAssertTrue(try collect(requireFreshUnits: false).contains("main.swift"))
     }
 
+    /// Units for two versions of one file, as an Xcode index built for several destinations over time
+    /// holds, give conflicting declarations; only the current version is indexed.
+    func testOnlyTheCurrentVersionOfAFileIsIndexed() throws {
+        let twoVersions = try buildTwoVersionsOfMain()
+
+        XCTAssertEqual(try symbols(inUnitsOf: "main.swift", store: twoVersions, requireFreshUnits: false), [["versionTwoOnly()"]])
+    }
+
+    /// When the file changed after every unit, the most recently written version is used, and only it.
+    func testTheNewestVersionIsIndexedWhenEveryUnitIsOlderThanTheFile() throws {
+        let twoVersions = try buildTwoVersionsOfMain()
+        try append("\nfunc versionThreeOnly() {}\n", to: "Sources/MainTarget/main.swift")
+
+        XCTAssertEqual(try symbols(inUnitsOf: "main.swift", store: twoVersions, requireFreshUnits: false), [["versionTwoOnly()"]])
+        XCTAssertThrowsError(try symbols(inUnitsOf: "main.swift", store: twoVersions, requireFreshUnits: true))
+    }
+
     // MARK: - Private
+
+    /// Builds main.swift into one store twice, in debug and in release so the units do not replace each
+    /// other, adding a function between the builds.
+    private func buildTwoVersionsOfMain() throws -> FilePath {
+        let twoVersions = root.appending("two-versions")
+        try root.chdir {
+            let shell = ShellImpl(logger: logger)
+            let arguments = ["--build-system", "native", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(twoVersions.string)'"]
+            try append("\nfunc versionOneOnly() {}\n", to: "Sources/MainTarget/main.swift")
+            try shell.exec(["swift", "build", "-c", "debug"] + arguments)
+            // A second build a moment later, so the two versions' units have different dates.
+            Thread.sleep(forTimeInterval: 1.1)
+            try replace("versionOneOnly", with: "versionTwoOnly", in: "Sources/MainTarget/main.swift")
+            try shell.exec(["swift", "build", "-c", "release"] + arguments)
+        }
+        return twoVersions
+    }
+
+    /// The probe declarations in each unit collected for the file, one set per unit.
+    private func symbols(inUnitsOf fileName: String, store: FilePath, requireFreshUnits: Bool) throws -> [Set<String>] {
+        var result: [Set<String>] = []
+        try root.chdir {
+            let collector = SourceFileCollector(
+                indexStorePaths: [store],
+                excludedTestTargets: [],
+                requireFreshUnits: requireFreshUnits,
+                logger: logger.contextualized(with: "test"),
+                configuration: Configuration()
+            )
+            for (file, units) in try collector.collect() where file.path.lastComponent?.string == fileName {
+                for unit in units {
+                    var names: Set<String> = []
+                    for recordName in unit.unit.recordNames {
+                        let record = try RecordReader(indexStore: unit.store, recordName: recordName)
+                        record.forEach(symbol: { symbol in
+                            if symbol.name.hasPrefix("version") {
+                                names.insert(symbol.name)
+                            }
+                        })
+                    }
+                    result.append(names)
+                }
+            }
+        }
+        return result
+    }
+
+    private func append(_ text: String, to relativePath: String) throws {
+        let url = root.appending(relativePath).url
+        try (String(contentsOf: url, encoding: .utf8) + text).write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func replace(_ old: String, with new: String, in relativePath: String) throws {
+        let url = root.appending(relativePath).url
+        try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: old, with: new).write(to: url, atomically: true, encoding: .utf8)
+    }
 
     private func collect(requireFreshUnits: Bool) throws -> Set<String> {
         var names: Set<String> = []

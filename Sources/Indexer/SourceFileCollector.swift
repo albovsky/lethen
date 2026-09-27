@@ -13,10 +13,14 @@ public struct SourceFileCollector {
     private let logger: ContextualLogger
     private let configuration: Configuration
 
-    /// - Parameter requireFreshUnits: drop units older than their source file, and fail with
-    ///   `LethenError.staleIndexStore` when a source file has units but none as new as the file. Used for
-    ///   stores lethen did not just build, such as `--skip-build` scans; an explicit `--index-store-path`
-    ///   stays authoritative.
+    /// A store can hold units for several versions of one file, such as an Xcode index built for
+    /// several destinations over time. Their declarations conflict, so each file is indexed from one
+    /// version: the units written after the file last changed, or, when every unit is older, the most
+    /// recently written version, identified by its content-addressed main record.
+    ///
+    /// - Parameter requireFreshUnits: fail with `LethenError.staleIndexStore` instead when a source file
+    ///   has units but none as new as the file. Used for stores lethen did not just build, such as
+    ///   `--skip-build` scans; an explicit `--index-store-path` stays authoritative.
     public init(
         indexStorePaths: Set<FilePath>,
         excludedTestTargets: Set<String>,
@@ -39,7 +43,8 @@ public struct SourceFileCollector {
             .flatMap { indexStorePath in
                 logger.debug("Reading \(indexStorePath)")
                 let indexStore = try IndexStore(path: indexStorePath.string)
-                let unitsDirectory = requireFreshUnits ? try Self.unitsDirectory(in: indexStorePath) : nil
+                // Without unit dates every unit counts as current, which is how stores were read before.
+                let unitsDirectory = requireFreshUnits ? try Self.unitsDirectory(in: indexStorePath) : try? Self.unitsDirectory(in: indexStorePath)
 
                 return indexStore.units.filter { !$0.isSystem }.compactMap { unit -> CollectedUnit? in
                     let filePath = unit.mainFile
@@ -60,8 +65,17 @@ public struct SourceFileCollector {
                             return nil
                         }
 
-                        let isFresh = unitsDirectory.map { Self.isUnit(unit, in: $0, asNewAs: file) } ?? true
-                        return CollectedUnit(file: file, store: indexStore, storePath: indexStorePath, unit: unit, module: unit.moduleName, isFresh: isFresh)
+                        let date = unitsDirectory.flatMap { Self.modificationDate($0.appending(unit.name)) }
+                        let isFresh = unitsDirectory == nil || Self.isDate(date, asNewAs: file)
+                        return CollectedUnit(
+                            file: file,
+                            store: indexStore,
+                            storePath: indexStorePath,
+                            unit: unit,
+                            module: unit.moduleName,
+                            date: date ?? .distantPast,
+                            isFresh: isFresh
+                        )
                     }
 
                     return nil
@@ -71,18 +85,23 @@ public struct SourceFileCollector {
         var staleFiles: [FilePath: FilePath] = [:]
         var result: [SourceFile: [IndexUnit]] = [:]
         for (file, units) in Dictionary(grouping: collected, by: \.file) {
-            let fresh = units.filter(\.isFresh)
-            guard !fresh.isEmpty else {
-                staleFiles[file] = units[0].storePath
-                continue
+            var chosen = units.filter(\.isFresh)
+            if chosen.isEmpty {
+                if requireFreshUnits {
+                    staleFiles[file] = units[0].storePath
+                    continue
+                }
+
+                chosen = Self.newestVersion(of: units)
             }
 
-            if fresh.count < units.count {
-                logger.debug("Ignoring \(units.count - fresh.count) units older than \(file.string)")
+            if chosen.count < units.count {
+                logger.debug("Ignoring \(units.count - chosen.count) units for an older version of \(file.string)")
             }
 
-            let sourceFile = SourceFile(path: file, modules: fresh.mapSet(\.module))
-            result[sourceFile] = fresh.map { IndexUnit(store: $0.store, unit: $0.unit) }
+            chosen.sort { ($0.storePath, $0.unit.name) < ($1.storePath, $1.unit.name) }
+            let sourceFile = SourceFile(path: file, modules: chosen.mapSet(\.module))
+            result[sourceFile] = chosen.map { IndexUnit(store: $0.store, unit: $0.unit) }
         }
 
         if let store = staleFiles.values.min() {
@@ -100,7 +119,17 @@ public struct SourceFileCollector {
         let storePath: FilePath
         let unit: UnitReader
         let module: String
+        let date: Date
         let isFresh: Bool
+    }
+
+    /// The units that indexed the same content as the most recently written unit. Units of one version
+    /// share the record of the main file, whose name is derived from its content.
+    private static func newestVersion(of units: [CollectedUnit]) -> [CollectedUnit] {
+        guard let newest = units.max(by: { ($0.date, $0.unit.name) < ($1.date, $1.unit.name) }) else { return [] }
+
+        let record = newest.unit.recordName
+        return units.filter { $0.unit.recordName == record }
     }
 
     private func isExcluded(_ file: FilePath) -> Bool {
@@ -118,10 +147,8 @@ public struct SourceFileCollector {
         return store.appending(version).appending("units")
     }
 
-    private static func isUnit(_ unit: UnitReader, in unitsDirectory: FilePath, asNewAs file: FilePath) -> Bool {
-        guard let unitDate = modificationDate(unitsDirectory.appending(unit.name)),
-              let fileDate = modificationDate(file)
-        else { return false }
+    private static func isDate(_ unitDate: Date?, asNewAs file: FilePath) -> Bool {
+        guard let unitDate, let fileDate = modificationDate(file) else { return false }
 
         return unitDate >= fileDate
     }
