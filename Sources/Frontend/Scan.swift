@@ -18,6 +18,8 @@ final class Scan: ScanRunning {
     private let logger: Logger
     private let graph: SourceGraph
     private let swiftVersion: SwiftVersion
+    private var sourceFileCount = 0
+    private var lineCount: Int?
 
     required init(configuration: Configuration, logger: Logger, swiftVersion: SwiftVersion) {
         self.configuration = configuration
@@ -28,6 +30,13 @@ final class Scan: ScanRunning {
 
     struct Output {
         let results: [ScanResult]
+        /// The size of the scanned project, when the configuration asks for statistics.
+        let statistics: ScanStatistics?
+
+        init(results: [ScanResult], statistics: ScanStatistics? = nil) {
+            self.results = results
+            self.statistics = statistics
+        }
     }
 
     func perform(project: Project) throws -> Output {
@@ -50,8 +59,15 @@ final class Scan: ScanRunning {
 
         try build(driver)
         try index(driver)
+        let declarationCount = graph.allDeclarations.count
         try analyze()
-        return Output(results: buildResults())
+        let results = buildResults()
+        let statistics = configuration.stats ? ScanStatistics(
+            sourceFileCount: sourceFileCount,
+            lineCount: lineCount,
+            declarationCount: declarationCount
+        ) : nil
+        return Output(results: results, statistics: statistics)
     }
 
     // MARK: - Private
@@ -78,10 +94,13 @@ final class Scan: ScanRunning {
         }
 
         let indexLogger = logger.contextualized(with: "index")
+        let planInterval = logger.beginInterval("index:plan")
         let plan = try driver.plan(logger: indexLogger)
+        logger.endInterval(planInterval)
         let graphMutex = SourceGraphMutex(graph: graph)
         let pipeline = IndexPipeline(plan: plan, graph: graphMutex, logger: indexLogger, configuration: configuration, swiftVersion: swiftVersion)
-        _ = try pipeline.perform()
+        lineCount = try pipeline.perform()
+        sourceFileCount = plan.sourceFiles.count
         logger.endInterval(indexInterval)
     }
 

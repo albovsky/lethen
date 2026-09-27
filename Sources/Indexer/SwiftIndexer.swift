@@ -34,7 +34,9 @@ final class SwiftIndexer: Indexer {
         super.init(configuration: configuration)
     }
 
-    func perform() throws -> Int {
+    /// Indexes the source files and returns the number of lines of code they contain, which is counted
+    /// only when the scan reports statistics.
+    func perform() throws -> Int? {
         let jobs = sourceFiles.map { file, units -> Job in
             Job(
                 sourceFile: file,
@@ -74,6 +76,8 @@ final class SwiftIndexer: Indexer {
         }
 
         logger.endInterval(phaseTwoInterval)
+
+        guard configuration.stats else { return nil }
 
         return jobs.reduce(into: 0) { $0 += $1.scannedLOC }
     }
@@ -273,10 +277,12 @@ final class SwiftIndexer: Indexer {
 
             multiplexingSyntaxVisitor.visit()
 
-            scannedLOC = SourceLOCCounter.countLines(
-                of: multiplexingSyntaxVisitor.syntax,
-                using: multiplexingSyntaxVisitor.locationConverter
-            )
+            if configuration.stats {
+                scannedLOC = SourceLOCCounter.countLines(
+                    of: multiplexingSyntaxVisitor.syntax,
+                    using: multiplexingSyntaxVisitor.locationConverter
+                )
+            }
 
             sourceFile.importStatements = importSyntaxVisitor.importStatements
             sourceFile.importsSwiftTesting = importSyntaxVisitor.importStatements.contains(where: { $0.module == "Testing" })

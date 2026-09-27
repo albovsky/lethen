@@ -113,6 +113,7 @@ swift_library(
     name = "Shared",
     srcs = [
         "Shared/Benchmark.swift",
+        "Shared/BuildProgress.swift",
         "Shared/Constants.swift",
         "Shared/JobPool.swift",
         "Shared/LethenError.swift",
@@ -140,6 +141,7 @@ swift_library(
         "ProjectDrivers/GenericProjectDriver.swift",
         "ProjectDrivers/ProjectDriver.swift",
         "ProjectDrivers/SPM.swift",
+        "ProjectDrivers/SPMIndexFreshness.swift",
         "ProjectDrivers/SPMIndexStoreLocator.swift",
         "ProjectDrivers/SPMProjectDriver.swift",
         "ProjectDrivers/XcodeProjectDriver.swift",
@@ -260,6 +262,7 @@ swift_library(
         "Frontend/SPMProjectSetupGuide.swift",
         "Frontend/Scan.swift",
         "Frontend/ScanReport.swift",
+        "Frontend/ScanStatistics.swift",
         "Frontend/UpdateChecker.swift",
         "Frontend/Version.swift",
     ],

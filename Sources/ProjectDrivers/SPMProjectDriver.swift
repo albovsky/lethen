@@ -39,7 +39,9 @@ extension SPMProjectDriver: ProjectDriver {
                 logger.info("\(asterisk) Building...")
             }
 
-            try pkg.build(additionalArguments: configuration.buildArguments)
+            try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
+                try pkg.build(additionalArguments: configuration.buildArguments, onOutputLine: onOutputLine)
+            }
         }
     }
 

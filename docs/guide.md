@@ -237,6 +237,8 @@ Entries are keyed by the declaration's symbol identifier, so a baselined result 
 
 `--format` selects one of `xcode` (default, readable and Xcode-parseable), `json`, `csv`, `checkstyle`, `codeclimate`, `github-actions`, `github-markdown`, and `gitlab-codequality`. `--write-results path` writes the output to a file as well. `--relative-results` prints paths relative to the current directory and is required by `github-actions`. `--quiet` suppresses progress, and `--strict` makes the exit status 1 when anything is reported.
 
+`--stats` prints a report after the scan: the time spent in each phase (setup, build, index (planning which source files to read from the index store, then its two Swift passes), analysis, building the results, and output), the number of Swift source files indexed, their lines of code (blank and comment-only lines excluded), the declarations indexed, and indexing plus analysis throughput in lines per second. The report goes to standard error even with `--quiet`, so `json`, `csv`, and the other formats on standard output stay machine-readable. Lines are counted only when `--stats` is given, so other scans do not pay for it. Use it with a managed SwiftPM scan to see the cost of its clean build, or with `--skip-build` to time indexing and analysis alone.
+
 The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location.
 
 ### Reusing a build in CI

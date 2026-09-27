@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 #if canImport(os)
     import os
@@ -32,6 +33,8 @@ public struct Logger: Sendable {
     let quiet: Bool
     let verbose: Bool
     let colorMode: LoggerColorMode
+    /// Records how long each interval takes, when a scan reports statistics.
+    public let intervalRecorder: IntervalRecorder?
 
     #if canImport(os)
         let signposter = OSSignposter()
@@ -51,11 +54,13 @@ public struct Logger: Sendable {
     public init(
         quiet: Bool,
         verbose: Bool,
-        colorMode: LoggerColorMode
+        colorMode: LoggerColorMode,
+        intervalRecorder: IntervalRecorder? = nil
     ) {
         self.quiet = quiet
         self.verbose = verbose
         self.colorMode = colorMode
+        self.intervalRecorder = intervalRecorder
         outputQueue = DispatchQueue(label: "Logger.outputQueue")
     }
 
@@ -81,6 +86,13 @@ public struct Logger: Sendable {
         log(text, output: stdout)
     }
 
+    /// Writes progress to standard error so that it never mixes with results on standard output.
+    public func progress(_ text: String) {
+        guard !quiet else { return }
+
+        log(text, output: stderr)
+    }
+
     public func warn(_ text: String, newlinePrefix: Bool = false) {
         guard !quiet else { return }
 
@@ -97,13 +109,20 @@ public struct Logger: Sendable {
         log(text, output: stderr)
     }
 
+    /// Writes `text` to standard error even in quiet mode, keeping reports the user asked for apart
+    /// from results on standard output.
+    public func report(_ text: String) {
+        log(text, output: stderr)
+    }
+
     public func beginInterval(_ name: StaticString) -> SignpostInterval {
+        let start = intervalRecorder.map { _ in ContinuousClock.now }
         #if canImport(os)
             let id = signposter.makeSignpostID()
             let state = signposter.beginInterval(name, id: id)
-            return .init(name: name, state: state)
+            return .init(name: name, start: start, state: state)
         #else
-            return SignpostInterval()
+            return .init(name: name, start: start)
         #endif
     }
 
@@ -111,6 +130,9 @@ public struct Logger: Sendable {
         #if canImport(os)
             signposter.endInterval(interval.name, interval.state)
         #endif
+        if let intervalRecorder, let start = interval.start {
+            intervalRecorder.record(interval.name, duration: ContinuousClock.now - start)
+        }
     }
 
     // MARK: - Private
@@ -152,14 +174,28 @@ public struct ContextualLogger: Sendable {
     }
 }
 
-#if canImport(os)
-    public struct SignpostInterval {
-        let name: StaticString
+public struct SignpostInterval {
+    let name: StaticString
+    /// When the interval began, if the logger records interval durations.
+    let start: ContinuousClock.Instant?
+    #if canImport(os)
         let state: OSSignpostIntervalState
+    #endif
+}
+
+/// The total time spent in each named interval. Intervals that end more than once, such as one per
+/// source graph mutator, accumulate.
+public final class IntervalRecorder: Sendable {
+    private let totals = Mutex<[String: Duration]>([:])
+
+    public init() {}
+
+    /// The accumulated duration of each interval that has ended, keyed by interval name.
+    public var durations: [String: Duration] {
+        totals.withLock { $0 }
     }
-#else
-    public struct SignpostInterval {
-        @usableFromInline
-        init() {}
+
+    func record(_ name: StaticString, duration: Duration) {
+        totals.withLock { $0["\(name)", default: .zero] += duration }
     }
-#endif
+}
