@@ -1951,4 +1951,19 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
     }
+
+    func testRetainsResultBuilderPartialBlockAndArity() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct225")) {
+                self.assertReferenced(.functionMethodStatic("buildPartialBlock(first:)"))
+                self.assertReferenced(.functionMethodStatic("buildPartialBlock(accumulated:next:)"))
+                self.assertReferenced(.functionMethodStatic("buildBlock(_:_:_:)"))
+                self.assertReferenced(.functionMethodStatic("buildExpression(_:scale:)"))
+                self.assertNotReferenced(.functionMethodStatic("buildSomethingElse()"))
+            }
+            assertReferenced(.struct("FixtureStruct225NotABuilder")) {
+                self.assertNotReferenced(.functionMethodStatic("buildBlock(_:)"))
+            }
+        }
+    }
 }
