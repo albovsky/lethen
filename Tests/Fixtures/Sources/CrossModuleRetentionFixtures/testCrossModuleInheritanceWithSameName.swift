@@ -10,3 +10,6 @@ class FixtureClass129Retainer {
         _ = FixtureClass129.self
     }
 }
+
+// Control: public in a module that is not listed, so it is reported.
+public class FixtureClass228Reported {}

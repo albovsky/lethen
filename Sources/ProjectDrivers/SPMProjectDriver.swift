@@ -71,6 +71,9 @@ extension SPMProjectDriver: ProjectDriver {
 
         // Load package description once and reuse it
         let description = try pkg.load()
+        if let warning = Self.buildBoundaryWarning(description: description, configuration: configuration) {
+            self.logger.warn(warning)
+        }
 
         let excludedTestTargets = configuration.excludeTests ? testTargetNames(from: description) : []
         let collector = SourceFileCollector(
@@ -88,6 +91,30 @@ extension SPMProjectDriver: ProjectDriver {
             sourceFiles: sourceFiles,
             xibPaths: xibPaths
         )
+    }
+
+    /// Excluded targets can be the only consumers of a scanned target's public API. Says so, naming
+    /// the modules to pass to `--retain-public-targets`.
+    static func buildBoundaryWarning(description: PackageDescription, configuration: Configuration) -> String? {
+        guard !configuration.retainPublic else { return nil }
+
+        let excluded = description.targets.filter {
+            (configuration.excludeTests && $0.isTestTarget) || configuration.excludeTargets.contains($0.name)
+        }
+        guard !excluded.isEmpty else { return nil }
+
+        let targetsByName = Dictionary(description.targets.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let excludedNames = Set(excluded.map(\.name))
+        let retained = Set(configuration.retainPublicTargets)
+        let consumed = Set(excluded.flatMap { $0.targetDependencies ?? [] })
+            .subtracting(excludedNames)
+            .compactMap { targetsByName[$0] }
+            .map { $0.c99name ?? $0.name }
+            .filter { !retained.contains($0) }
+            .sorted()
+        guard !consumed.isEmpty else { return nil }
+
+        return "Targets \(excludedNames.sorted().joined(separator: ", ")) are excluded from the scan but depend on \(consumed.joined(separator: ", ")). Public declarations used only from the excluded targets will be reported; pass --retain-public-targets \(consumed.joined(separator: " ")) to keep them."
     }
 
     // MARK: - Private

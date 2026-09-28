@@ -216,3 +216,10 @@ Alamofire and swift-nio: no change. Wikipedia iOS: 24 rows removed, 5 added.
   change removed a false keep-alive that happened to hide them; scanning the configuration the app
   ships is what fixes them.
 - No added row is a genuine use through generated code, so no retention pattern needed a fixture.
+
+### `--retain-public-targets` and the build-boundary warning
+
+Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. The two libraries scan
+with `--retain-public`, which already retains every public declaration, and the Wikipedia scan lists
+no targets. `RetainPublicTargetsTest` covers retention of one listed module with a reported control
+in another, and `BuildBoundaryWarningTest` covers the warning.
