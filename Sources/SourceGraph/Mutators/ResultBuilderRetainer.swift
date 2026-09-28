@@ -2,19 +2,15 @@ import Configuration
 import Foundation
 import Shared
 
-/// Retains static methods used by the Result Builder language feature.
+/// Retains static methods used by the Result Builder language feature. The compiler calls them
+/// by base name with whatever labels and arity the builder declares, so every overload counts.
 final class ResultBuilderRetainer: SourceGraphMutator {
+    private static let resultBuilderMethodNames: Set<String> = [
+        "buildBlock", "buildExpression", "buildOptional", "buildEither", "buildArray",
+        "buildFinalResult", "buildLimitedAvailability", "buildPartialBlock",
+    ]
+
     private let graph: SourceGraph
-    private let resultBuilderMethods = Set<String>([
-        "buildExpression(_:)",
-        "buildOptional(_:)",
-        "buildEither(first:)",
-        "buildEither(second:)",
-        "buildArray(_:)",
-        "buildBlock(_:)",
-        "buildFinalResult(_:)",
-        "buildLimitedAvailability(_:)",
-    ])
 
     required init(graph: SourceGraph, configuration _: Configuration, swiftVersion _: SwiftVersion) {
         self.graph = graph
@@ -22,8 +18,8 @@ final class ResultBuilderRetainer: SourceGraphMutator {
 
     func mutate() {
         for decl in graph.declarations(ofKinds: Declaration.Kind.toplevelAttributableKind) where decl.attributes.contains(where: { $0.name == "resultBuilder" }) {
-            for childDecl in decl.declarations {
-                if resultBuilderMethods.contains(childDecl.name) {
+            for childDecl in decl.declarations where childDecl.kind == .functionMethodStatic {
+                if let baseName = childDecl.name.split(separator: "(", maxSplits: 1).first, Self.resultBuilderMethodNames.contains(String(baseName)) {
                     graph.markRetained(childDecl)
                 }
             }

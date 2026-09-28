@@ -152,3 +152,9 @@ Core Data accessor that code generation would recreate.
 
 Each analysis pull request appends a section: PR, projects re-scanned, rows added or removed, and
 the verdict for every changed row.
+
+### Result builder methods by base name
+
+Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. None of the three
+declares a result builder with `buildPartialBlock` or a multi-argument `buildBlock`; the fixture
+`testRetainsResultBuilderPartialBlockAndArity` covers the change.
