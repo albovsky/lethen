@@ -178,6 +178,8 @@ struct UnusedParameterParser {
             parse(functionDecl: node, collector)
         } else if let node = node.as(InitializerDeclSyntax.self) {
             parse(initializerDecl: node, collector)
+        } else if let node = node.as(SubscriptDeclSyntax.self) {
+            parse(subscriptDecl: node, collector)
         } else if let optBindingCondition = node.as(OptionalBindingConditionSyntax.self) {
             if optBindingCondition.initializer == nil,
                let pattern = optBindingCondition.pattern.as(IdentifierPatternSyntax.self),
@@ -283,6 +285,12 @@ struct UnusedParameterParser {
             }
         }
 
+        for binding in bindings {
+            if let function = parse(closureBinding: binding) {
+                collector?.add(function)
+            }
+        }
+
         let items = bindings.flatMap {
             let initializerItems = $0.initializer?.children(viewMode: .sourceAccurate).compactMap { parse(node: $0, collector) } ?? []
             let accessorItems = $0.accessorBlock?.children(viewMode: .sourceAccurate).compactMap { parse(node: $0, collector) } ?? []
@@ -318,11 +326,67 @@ struct UnusedParameterParser {
               collector)
     }
 
+    private func parse(subscriptDecl syntax: SubscriptDeclSyntax, _ collector: Collector<some Any>?) -> Item? {
+        let hasBody = syntax.accessorBlock.map { block in
+            switch block.accessors {
+            case .getter: true
+            case let .accessors(accessors): accessors.contains { $0.body != nil }
+            }
+        } ?? false
+
+        return build(function: syntax.parameterClause,
+                     attributes: syntax.attributes,
+                     genericParams: syntax.genericParameterClause,
+                     body: hasBody ? syntax.accessorBlock : nil,
+                     named: "subscript",
+                     position: syntax.subscriptKeyword.positionAfterSkippingLeadingTrivia,
+                     collector)
+    }
+
+    /// A closure stored in a variable, such as `let handler: (Int) -> Void = { value in … }`, is a
+    /// function named after the variable. Its parameters are fixed by the variable's type, so an
+    /// unused one should be `_`.
+    private func parse(closureBinding binding: PatternBindingSyntax) -> Function? {
+        guard let pattern = binding.pattern.as(IdentifierPatternSyntax.self),
+              let closure = binding.initializer?.value.as(ClosureExprSyntax.self),
+              let parameterClause = closure.signature?.parameterClause else { return nil }
+
+        let parameters: [Parameter] = switch parameterClause {
+        case let .simpleInput(shorthand):
+            shorthand.map { closureParameter(label: $0.name, name: $0.name) }
+        case let .parameterClause(clause):
+            clause.parameters.map { closureParameter(label: $0.firstName, name: $0.secondName ?? $0.firstName) }
+        }
+        guard !parameters.isEmpty else { return nil }
+
+        let name = pattern.identifier.text
+        return Function(
+            name: name,
+            fullName: name,
+            location: sourceLocation(of: pattern.identifier.positionAfterSkippingLeadingTrivia),
+            items: parse(node: closure.statements, Collector<Item>?.none)?.items ?? [],
+            parameters: parameters,
+            genericParameters: [],
+            attributes: []
+        )
+    }
+
+    private func closureParameter(label labelSyntax: TokenSyntax, name nameSyntax: TokenSyntax) -> Parameter {
+        func part(_ token: TokenSyntax) -> Parameter.PartKind {
+            token.tokenKind == .wildcard ? .wildcard : .identifier(token.identifier?.name ?? token.text)
+        }
+
+        return Parameter(label: part(labelSyntax),
+                         name: part(nameSyntax),
+                         metatype: nil,
+                         location: sourceLocation(of: nameSyntax.positionAfterSkippingLeadingTrivia))
+    }
+
     private func build(
         function syntax: SyntaxProtocol,
         attributes: AttributeListSyntax?,
         genericParams: GenericParameterClauseSyntax?,
-        body: CodeBlockSyntax?,
+        body: SyntaxProtocol?,
         named name: String,
         position: AbsolutePosition,
         _ collector: Collector<some Any>?

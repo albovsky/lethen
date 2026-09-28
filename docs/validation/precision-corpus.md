@@ -303,3 +303,11 @@ branches the scan did not compile, and test targets: 56 TP, 0 FP (100 %).
 | 56 | wikipedia-ios | Wikipedia/Code/WMFAccountLoginLogoutFetcher.swift:31 | `WMFAccountLoginError.invalidSiteURL` | TP | Only matched at :72 (and the `default` in `errorDescription`). |
 
 </details>
+
+### Unused subscript and stored-closure parameters
+
+Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. The closures in the
+three projects with unused named parameters are local variables inside function bodies, which the
+analysis does not cover, and their subscripts use their parameters or satisfy another module's
+protocol requirement. The fixture `testReportsUnusedSubscriptParameter` covers both new cases and
+the external-requirement control (`Collection.subscript(position:)`).
