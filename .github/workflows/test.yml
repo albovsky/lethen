@@ -315,6 +315,42 @@ jobs:
     container: ${{ matrix.container }}
     continue-on-error: true
     steps: *linux-steps
+  corpus:
+    # Scans every pinned precision-corpus project and fails on any finding that differs from
+    # its committed expectation (corpus/expected/), so analysis drift is adjudicated rather
+    # than merged unnoticed. Only checkouts are cached; each project's .build would crowd
+    # the repository cache quota described under prune-caches.
+    name: Precision corpus
+    needs: changes
+    if: needs.changes.outputs.profile == 'nightly'
+    runs-on: xcode-27
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Cache corpus checkouts
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .corpus/checkouts
+            !.corpus/checkouts/*/.build
+          key: corpus-checkouts-${{ hashFiles('corpus/projects.json') }}
+      - run: swift build --product lethen
+      - name: Scan and diff every project
+        run: |
+          set -euo pipefail
+          status=0
+          for name in $(python3 -c 'import json; print("\n".join(e["name"] for e in json.load(open("corpus/projects.json"))))'); do
+            corpus/scan.sh "$name"
+            corpus/diff.sh "$name" || status=1
+          done
+          exit $status
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: corpus-results
+          path: .corpus/results
+          include-hidden-files: true
   prune-caches:
     # Caches saved by merged or closed pull requests and deleted branches are never
     # restored again, but they count against the 10 GB repository quota until GitHub
@@ -352,7 +388,7 @@ jobs:
     # profile calls for: success when it was meant to run, skipped when it was not.
     name: Required checks
     if: always()
-    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, linux, linux-release]
+    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, linux, linux-release, corpus]
     runs-on: ubuntu-24.04
     permissions: {}
     steps:
@@ -364,20 +400,23 @@ jobs:
         # Keep in sync with `needs` above; a mismatch fails the gate.
         CORE: '["changes", "swift-6-4", "lint", "bazel", "macOS", "linux", "linux-release"]'
         EXTENDED: '["bazel-extended"]'
+        NIGHTLY: '["corpus"]'
       run: |
         echo "profile=$PROFILE code=$CODE"
         echo "$NEEDS" | jq -r 'to_entries[] | "\(.value.result)\t\(.key)"'
 
         if ! echo "$NEEDS" | jq -e --argjson core "$CORE" --argjson extended "$EXTENDED" \
-          --arg code "$CODE" --arg profile "$PROFILE" '
+          --argjson nightly "$NIGHTLY" --arg code "$CODE" --arg profile "$PROFILE" '
           def expected($job):
             if $job == "changes" then "success"
             elif ($core | index($job)) != null then
               (if $code == "true" then "success" else "skipped" end)
+            elif ($nightly | index($job)) != null then
+              (if $profile == "nightly" then "success" else "skipped" end)
             else
               (if $code == "true" and $profile != "pr" then "success" else "skipped" end)
             end;
-          (keys | sort) == (($core + $extended) | sort)
+          (keys | sort) == (($core + $extended + $nightly) | sort)
             and all(to_entries[]; .value.result == expected(.key))' > /dev/null; then
           echo "::error::Every required job must be present with the result its profile expects."
           exit 1
