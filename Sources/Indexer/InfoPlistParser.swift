@@ -4,9 +4,11 @@ import SourceGraph
 import SystemPackage
 
 final class InfoPlistParser {
-    private static let elements = [
+    /// Keys whose value names a class the system instantiates by name.
+    static let classNameKeys = [
         "UISceneClassName", "UISceneDelegateClassName", "NSPrincipalClass",
         "NSExtensionPrincipalClass", "CLKComplicationPrincipalClass", "WKExtensionDelegateClassName",
+        "NSDocumentClass",
     ]
     private let path: FilePath
 
@@ -31,7 +33,7 @@ final class InfoPlistParser {
         var elements: [AEXMLElement] = []
 
         for (i, child) in parent.children.enumerated() {
-            if child.name == "key", Self.elements.contains(child.string) {
+            if child.name == "key", Self.classNameKeys.contains(child.string) {
                 if let nextElement = parent.children[safe: i + 1] {
                     elements.append(nextElement)
                 }
