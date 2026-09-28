@@ -19,6 +19,7 @@
 - `--configurations debug release` builds a Swift package in each configuration and scans their index stores together, so code used only behind `#if DEBUG`, or only in release builds, is no longer reported as unused. A configuration that fails to build fails the scan. Other project types reject the option.
 - `--retain-public-targets <module>…` retains the public API of the listed modules only, for local packages whose consumers or tests are outside the scan. Swift package scans that exclude tests or targets warn when an excluded target depends on a scanned one and name the modules to retain.
 - Enum cases that are only ever matched in patterns and never constructed are reported with the new hint `unconstructedEnumCase` ("Enum case 'x' is matched but never constructed"). Raw-value, `CaseIterable`, `Codable`, `@objc`, and retained enums are skipped. On the precision corpus it reports 56 cases, all adjudicated as dead. One of them was in Lethen itself, `SetupSelection.all`, which is removed.
+- Unused parameters of subscripts, and of closures stored in a property or global variable, are reported like unused function parameters. A subscript that satisfies another module's protocol requirement keeps its parameters.
 
 ##### Bug Fixes
 

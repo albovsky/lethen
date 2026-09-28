@@ -533,7 +533,8 @@ final class SwiftIndexer: Indexer {
         }
 
         private func identifyUnusedParameters(using syntaxVisitor: MultiplexingSyntaxVisitor) {
-            let functionDecls = declarations.filter(\.kind.isFunctionKind)
+            // Variables too: a closure stored in a property is analyzed like a function.
+            let functionDecls = declarations.filter { $0.kind.isFunctionKind || $0.kind.isVariableKind }
             let functionDeclsByLocation = functionDecls.reduce(into: [Location: Declaration]()) {
                 $0[$1.location] = $1
             }

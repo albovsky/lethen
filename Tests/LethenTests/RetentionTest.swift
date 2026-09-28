@@ -2043,4 +2043,24 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
     }
+
+    func testReportsUnusedSubscriptParameter() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass233")) {
+                self.assertReferenced(.functionSubscript("subscript(_:_:)")) {
+                    self.assertNotReferenced(.varParameter("column"))
+                    self.assertUsedParameter("row")
+                }
+                self.assertReferenced(.varInstance("transform")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                    self.assertUsedParameter("used")
+                }
+            }
+            assertReferenced(.struct("FixtureStruct233Collection")) {
+                self.assertReferenced(.functionSubscript("subscript(_:)")) {
+                    self.assertReferenced(.varParameter("position"))
+                }
+            }
+        }
+    }
 }

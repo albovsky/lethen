@@ -104,6 +104,24 @@ final class UnusedParameterTest: XCTestCase {
         assertUnused(label: "param", name: "param", in: "myFunc(param:)")
     }
 
+    func testSubscriptParameters() {
+        analyze()
+        assertUsed(label: "row", name: "row", in: "subscript(row:column:)")
+        assertUnused(label: "column", name: "column", in: "subscript(row:column:)")
+        assertUnused(label: "index", name: "index", in: "subscript(index:)")
+    }
+
+    func testClosureParameters() {
+        analyze()
+        assertUsed(label: "used", name: "used", in: "handler")
+        assertUnused(label: "unused", name: "unused", in: "handler")
+        assertUsed(label: "value", name: "value", in: "transform")
+        assertUsed(label: "first", name: "first", in: "typed")
+        assertUnused(label: "second", name: "second", in: "typed")
+        // A wildcard parameter is explicitly unused and never reported; the analyzer counts it as used.
+        assertUsed(label: "_", name: "_", in: "onEvent")
+    }
+
     func testSubscriptArgument() {
         analyze()
         assertUsed(label: "param", name: "param", in: "myFunc(param:)")

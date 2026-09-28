@@ -210,6 +210,8 @@ Frameworks and libraries whose public interface is consumed elsewhere need `--re
 
 A function parameter that the body never reads. For protocol requirements and overridden methods, a parameter is reported only if it is unused in the requirement and in every implementation; `--retain-unused-protocol-func-params` retains the protocol case. Parameters of functions that only call `fatalError` (typically `required init?(coder:)`), of `@IBAction` methods, and of methods whose base declaration lives in another module are not reported.
 
+Subscripts are analyzed like functions, and so are closures stored in a property or global (`let transform: (Int, Int) -> Int = { value, unused in value }`), whose unused parameters should become `_`. Closures in local variables and enum case payloads are not analyzed.
+
 ### Unused imports
 
 An `import` of a module scanned in the same run that the file never uses. Modules outside the scan are never reported, because a module can re-export others with `@_exported`, and neither are `public`, `@testable`, or conditional imports. Mixed Swift and Objective-C targets produce false positives here; disable the analysis with `--disable-unused-import-analysis` or exclude those files from the results, and keep specific modules with `--retain-unused-imported-modules`.
