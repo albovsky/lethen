@@ -43,7 +43,9 @@ git -C "$checkout" checkout --quiet --force --detach "$commit"
 
 "$lethen" scan --project-root "$checkout" --quiet --disable-update-check \
     --format json --relative-results ${arguments[@]+"${arguments[@]}"} > "$results/$name.json"
+# One finding per line, so a changed finding is a one-line diff and expectations stay small.
 python3 "$root/.github/scripts/canonicalize-scan-json.py" "$checkout" "$results/$name.json" \
+    | python3 -c 'import json, sys; rows = json.load(sys.stdin); print("[\n" + ",\n".join(json.dumps(r) for r in rows) + "\n]")' \
     > "$results/$name.canonical.json"
 
 # An empty result set is a broken scan until a human says otherwise.
