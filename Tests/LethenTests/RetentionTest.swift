@@ -1966,4 +1966,15 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
     }
+
+    func testRetainsPropertyWrapperInitializers() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("Fixture225Wrapper")) {
+                self.assertReferenced(.functionConstructor("init(wrappedValue:)"))
+                self.assertReferenced(.functionConstructor("init(wrappedValue:clampedTo:)"))
+                self.assertReferenced(.functionConstructor("init(projectedValue:)"))
+                self.assertNotReferenced(.functionConstructor("init(other:)"))
+            }
+        }
+    }
 }

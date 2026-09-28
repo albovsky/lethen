@@ -158,3 +158,8 @@ the verdict for every changed row.
 Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. None of the three
 declares a result builder with `buildPartialBlock` or a multi-argument `buildBlock`; the fixture
 `testRetainsResultBuilderPartialBlockAndArity` covers the change.
+### Property wrapper initializers
+
+Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. No property wrapper
+in the three declares an `init(wrappedValue:…)` with further labels or an `init(projectedValue:)`
+that was reported; the fixture `testRetainsPropertyWrapperInitializers` covers the change.
