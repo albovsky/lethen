@@ -167,3 +167,29 @@ that was reported; the fixture `testRetainsPropertyWrapperInitializers` covers t
 
 Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. None of them is a
 document-based app; `InfoPlistParserTest` covers `NSDocumentClass` inside `CFBundleDocumentTypes`.
+### Synthesized Encodable reads by value flow
+
+Alamofire: 11 rows removed, none added. All 11 are properties of structs a test passes to an
+encoder (`EncodableStruct`, `NestedEncodableStruct`, `OptionalEncodableStruct` in
+`ParameterEncoderTests.swift`, `TestParameters` in `TestHelpers.swift`): fixed false positives,
+including sampled rows Alamofire-15, 19, 20 and 23.
+
+swift-nio: no change.
+
+Wikipedia iOS: 261 rows removed (256 assign-only properties, 5 unused types or properties), 2 added.
+
+- A first version treated any call to an unindexed function as possible encoding and removed 317
+  rows. A seeded sample of 30 of those found 24 fixed false positives and 6 true positives it hid:
+  the values reached `Array.append`, `CheckedContinuation.resume(returning:)`, a synthesized
+  memberwise initializer, `??`, or a `nil` assignment, none of which encodes. The rule was narrowed
+  to callees whose parameter is constrained to `Encodable` or is `any Encodable` (read from the
+  mangled USR for unindexed callees), and a used-but-not-encoded control (`Array.append`, `print`)
+  was added to the fixture.
+- With the narrowed rule, all 6 hidden true positives are reported again and all 24 fixed false
+  positives stay fixed. The values reach `EventPlatformClient.submit<E: EventInterface>` (every
+  analytics funnel), `PageContentService.getJavascriptFor<T: Encodable>`,
+  `SharedContainerCache.saveCache<T: Codable>`, `WMFKeyValueStore.save<T: Codable>`, or
+  `JSONEncoder`/`PropertyListEncoder` directly; they include sampled rows wikipedia-ios-10 and 16.
+- The 2 added rows are TP: `WMFOnThisDayContentURLs.init(desktop:mobile:)` and
+  `WMFOnThisDayURLPair.init(page:)` have no callers. Their types were previously reported whole
+  and are now used, so their dead initializers are reported on their own.

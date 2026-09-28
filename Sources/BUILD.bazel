@@ -115,6 +115,7 @@ swift_library(
         "SourceGraph/Mutators/UnusedImportMarker.swift",
         "SourceGraph/Mutators/UnusedParameterRetainer.swift",
         "SourceGraph/Mutators/UsedDeclarationMarker.swift",
+        "SourceGraph/Mutators/ValueTypeResolver.swift",
         "SourceGraph/Mutators/XCTestRetainer.swift",
         "SourceGraph/SourceGraph.swift",
         "SourceGraph/SourceGraphDebugger.swift",

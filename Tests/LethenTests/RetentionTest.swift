@@ -1977,4 +1977,37 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
     }
+
+    func testCodableSynthesizedEncodeReads() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct226")) {
+                self.assertNotAssignOnlyProperty(.varInstance("encoded"))
+                self.assertNotAssignOnlyProperty(.varInstance("nested"))
+            }
+            assertReferenced(.struct("FixtureStruct226Nested")) {
+                self.assertNotAssignOnlyProperty(.varInstance("nestedValue"))
+            }
+            assertReferenced(.struct("FixtureStruct226Codable")) {
+                self.assertNotAssignOnlyProperty(.varInstance("codableEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Generic")) {
+                self.assertNotAssignOnlyProperty(.varInstance("genericEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Existential")) {
+                self.assertNotAssignOnlyProperty(.varInstance("existentialEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Unencoded")) {
+                self.assertAssignOnlyProperty(.varInstance("neverEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Passed")) {
+                self.assertAssignOnlyProperty(.varInstance("passedButNotEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Appended")) {
+                self.assertAssignOnlyProperty(.varInstance("appendedButNotEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Custom")) {
+                self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
+            }
+        }
+    }
 }
