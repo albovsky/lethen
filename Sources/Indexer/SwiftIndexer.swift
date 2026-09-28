@@ -234,10 +234,6 @@ final class SwiftIndexer: Indexer {
                 decl.isImplicit = key.isImplicit
                 decl.isObjcAccessible = key.isObjcAccessible
 
-                if decl.isImplicit {
-                    graph.withLock { $0.markRetained(decl) }
-                }
-
                 if decl.isObjcAccessible, configuration.retainObjcAccessible {
                     graph.withLock { $0.markRetained(decl) }
                 }
@@ -260,6 +256,16 @@ final class SwiftIndexer: Indexer {
             }
 
             establishDeclarationHierarchy()
+
+            // Generated declarations are retained through their parent, so they are used only when
+            // the declaration the macro was attached to is used. Parentless expansions stay roots,
+            // except extensions: ExtensionReferenceBuilder folds those into the type they extend
+            // (and retains extensions of external types), so a generated conformance such as
+            // `extension Foo: Observable` does not keep `Foo` alive.
+            let implicitDeclarations = declarations.filter { $0.isImplicit && !$0.kind.isExtensionKind }
+            graph.withLock { graph in
+                implicitDeclarations.forEach { graph.markRetained($0) }
+            }
         }
 
         /// Phase two associates latent references, and performs other actions that depend on the completed source graph.
