@@ -43,6 +43,16 @@ final class ExplainCommandTest: FixtureSourceGraphTestCase {
         XCTAssertTrue(output.contains("references class FixtureClass129"), output)
     }
 
+    func testReportedDeclarationStatesItsConfidence() throws {
+        // FixtureClass223 is public; with --retain-public its unused methods are reported, not the class.
+        let output = try explain("FixtureClass223.namedInLiteral", "--retain-public")
+
+        XCTAssertTrue(output.contains("Confidence: likely, because its name appears in a string literal."), output)
+
+        let certain = try explain("FixtureClass223.notNamedAnywhere", "--retain-public")
+        XCTAssertTrue(certain.contains("Confidence: certain."), certain)
+    }
+
     func testUnknownNameIsAUsageError() {
         XCTAssertThrowsError(try explain("noSuchDeclarationAnywhere")) { error in
             guard case let LethenError.usageError(message) = error else {
@@ -55,14 +65,14 @@ final class ExplainCommandTest: FixtureSourceGraphTestCase {
 
     // MARK: - Private
 
-    private func explain(_ query: String) throws -> String {
+    private func explain(_ query: String, _ arguments: String...) throws -> String {
         let command = try ExplainCommand.parse([
             query,
             "--project-root", FixturesProjectPath.string,
             "--skip-build",
             "--disable-update-check",
             "--quiet",
-        ])
+        ] + arguments)
         return try captureOutput(of: STDOUT_FILENO) {
             try command.run()
         }

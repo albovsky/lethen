@@ -186,6 +186,8 @@ report_exclude:
 
 Each result is a declaration (class, struct, enum, protocol, function, property, initializer, typealias, and so on) with one hint. Only the outermost unused declaration is reported: an unused class is one result, not one per member.
 
+Every result also has a confidence. It is `likely` when a dynamic feature could reach the declaration without a reference Lethen can see: the declaration is accessible from Objective-C and neither `--retain-objc-accessible` nor `--retain-objc-annotated` is set, or it is a type, method, property, or enum case whose name (without argument labels) appears in a string literal shaped like a symbol reference anywhere in the scanned sources: a selector such as `"handleTap:"`, a name such as `"MyApp.Store"` for `NSClassFromString`, or a key path such as `"user.name"`. Literals with spaces or interpolation, such as log messages, do not count, and parameters and imports are never `likely` for this reason. Otherwise it is `certain`. Confidence never changes what is reported or what a baseline filters; results are listed with `certain` ones first, in location order within each tier.
+
 ### Unused declarations
 
 The declaration cannot be reached from any entry point. Lethen treats the following as used without being asked, because Swift or a framework reaches them without a visible reference:
@@ -242,6 +244,7 @@ A `// periphery:ignore` comment on a declaration that is actually used. Turn off
 - **Used:** the shortest chain of references from a retained declaration, or from top-level code, to it.
 - **Retained:** the rule that retained it, such as `XCTestRetainer`, `PubliclyAccessibleRetainer` with `--retain-public`, or an ignore comment.
 - **Not reported:** the comment command that ignores it, or the enclosing declaration that is reported instead.
+- **Confidence:** for every reported declaration, `Confidence: certain.` or `Confidence: likely` with the reason, such as a name that appears in a string literal.
 
 ```sh
 lethen explain functionWithSimpleReturnType
@@ -292,7 +295,7 @@ Entries are keyed by the declaration's symbol identifier, so a baselined result 
 
 `--stats` prints a report after the scan: the time spent in each phase (setup, build, index (planning which source files to read from the index store, then its two Swift passes), analysis, building the results, and output), the number of Swift source files indexed, their lines of code (blank and comment-only lines excluded), the declarations indexed, and indexing plus analysis throughput in lines per second. The report goes to standard error even with `--quiet`, so `json`, `csv`, and the other formats on standard output stay machine-readable. Lines are counted only when `--stats` is given, so other scans do not pay for it. Use it with a managed SwiftPM scan to see the cost of its clean build, or with `--skip-build` to time indexing and analysis alone.
 
-The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location.
+The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location, a `confidence` of `certain` or `likely`, and a one-sentence `reason` such as `no references in the scanned modules` or `assigned but never read`; the CSV format ends with a `Confidence` column. Results are sorted with `certain` first. The `xcode`, `github-actions`, `github-markdown`, `gitlab-codequality`, and `codeclimate` formats append `[likely: <why>]` to `likely` results.
 
 ### Reusing a build in CI
 

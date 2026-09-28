@@ -12,6 +12,19 @@ public struct ScanResult {
 
     let declaration: Declaration
     let annotation: Annotation
+    public let confidence: Confidence
+    /// Why `confidence` is `likely`; nil when `certain`.
+    public let confidenceReason: String?
+    /// Why the declaration is reported, in one sentence.
+    public let reason: String
+
+    init(declaration: Declaration, annotation: Annotation, confidence: Confidence = .certain, confidenceReason: String? = nil, reason: String = "") {
+        self.declaration = declaration
+        self.annotation = annotation
+        self.confidence = confidence
+        self.confidenceReason = confidenceReason
+        self.reason = reason
+    }
 
     public var usrs: Set<String> {
         if case .superfluousIgnoreCommand = annotation {

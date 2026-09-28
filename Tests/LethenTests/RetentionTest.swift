@@ -1933,4 +1933,22 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.class("FixtureClass221Child"))
         }
     }
+
+    func testConfidenceLikelyForStringLiteralNames() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass223")) {
+                self.assertNotReferenced(.functionMethodInstance("namedInLiteral()"))
+                self.assertConfidence(.functionMethodInstance("namedInLiteral()"), .likely)
+                self.assertConfidence(.functionMethodInstance("namedInSelectorString()"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("notNamedAnywhere()"))
+                self.assertConfidence(.functionMethodInstance("notNamedAnywhere()"), .certain)
+                self.assertNotReferenced(.functionMethodInstance("namedInProse()"))
+                self.assertConfidence(.functionMethodInstance("namedInProse()"), .certain)
+                self.assertReferenced(.functionMethodInstance("use(namedParameter:)")) {
+                    // A parameter cannot be looked up by name at run time.
+                    self.assertConfidence(.varParameter("namedParameter"), .certain)
+                }
+            }
+        }
+    }
 }

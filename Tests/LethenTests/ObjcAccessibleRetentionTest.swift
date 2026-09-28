@@ -70,5 +70,22 @@ import XCTest
                 }
             }
         }
+
+        func testConfidenceLikelyForObjcAccessible() throws {
+            try analyze(retainPublic: true) {
+                assertReferenced(.class("FixtureClass232")) {
+                    self.assertNotReferenced(.functionMethodInstance("exposed()"))
+                    self.assertConfidence(.functionMethodInstance("exposed()"), .likely)
+                    self.assertConfidence(.functionMethodInstance("plain()"), .certain)
+                }
+            }
+
+            // With the retention flag the declaration is retained, so no result carries a confidence.
+            try analyze(retainPublic: true, retainObjcAccessible: true) {
+                assertReferenced(.class("FixtureClass232")) {
+                    self.assertReferenced(.functionMethodInstance("exposed()"))
+                }
+            }
+        }
     }
 #endif

@@ -74,6 +74,10 @@ extension OutputFormatter {
             description += "Superfluous ignore comment for \(kindDisplayName) '\(name)' (declaration is referenced and should not be ignored)"
         }
 
+        if result.confidence == .likely, let reason = result.confidenceReason {
+            description += " [likely: \(reason)]"
+        }
+
         return [(location, description)] + secondaryResults
     }
 
