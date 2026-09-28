@@ -41,6 +41,8 @@ extension OutputFormatter {
             "redundantPublicAccessibility"
         case .superfluousIgnoreCommand:
             "superfluousIgnoreCommand"
+        case .unconstructedEnumCase:
+            "unconstructedEnumCase"
         }
     }
 
@@ -72,6 +74,8 @@ extension OutputFormatter {
             description += "Redundant public accessibility for \(kindDisplayName) '\(name)' (not used outside of \(modulesJoined))"
         case .superfluousIgnoreCommand:
             description += "Superfluous ignore comment for \(kindDisplayName) '\(name)' (declaration is referenced and should not be ignored)"
+        case .unconstructedEnumCase:
+            description += "Enum case '\(name)' is matched but never constructed"
         }
 
         if result.confidence == .likely, let reason = result.confidenceReason {

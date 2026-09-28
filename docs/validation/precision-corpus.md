@@ -223,3 +223,83 @@ Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. Th
 with `--retain-public`, which already retains every public declaration, and the Wikipedia scan lists
 no targets. `RetainPublicTargetsTest` covers retention of one listed module with a reported control
 in another, and `BuildBoundaryWarningTest` covers the warning.
+### Enum cases matched but never constructed (new hint `unconstructedEnumCase`)
+
+Rows added: Alamofire 6, swift-nio 4, Wikipedia iOS 46; none removed. All 56 were adjudicated by
+searching each checkout for every mention of the case, including Objective-C files, `#if`
+branches the scan did not compile, and test targets: 56 TP, 0 FP (100 %).
+
+- Alamofire: `BaseTestCase` timeout case `twenty` and five `ServerTrustEvaluatorTests` certificate
+  cases, constructed only in commented-out code.
+- swift-nio: `NIOAsyncWriter`'s `WriterFinishAction.resumeContinuations`, the HTTP upgrader state
+  machine's `UnbufferAction.close`, `Shutdown.RDWR` (the Windows branch only matches it), and a test
+  helper's `symbolicLink` case.
+- Wikipedia iOS: unused styles of `WMFSwiftUIFont`, `WMFSFSymbolIcon` and other component enums,
+  logging-delegate actions and button styles, all public in modules only the app uses (scanned
+  without `--retain-public`).
+- Several are near misses the analysis gets right: a case with the same name in another enum is
+  constructed (`resumeContinuations`, `close`, `book`, `addToList`, `history`, three font styles),
+  which is now a fixture control. The new hint also found `SetupSelection.all` in Lethen itself,
+  which this change removes.
+
+<details><summary>All 56 adjudicated rows</summary>
+
+| # | Project | Location | Case | Verdict | Evidence |
+| 1 | Alamofire | Tests/BaseTestCase.swift:31 | `SkipVersion.twenty` | TP | Only matched in `shouldSkip`/`reason` switches (BaseTestCase.swift:36, :49); `skipVersion` returns `.none` (:59) and no subclass overrides it with `.twenty`. |
+| 2 | Alamofire | Tests/ServerTrustEvaluatorTests.swift:64 | `TestTrusts.leafWildcard` | TP | Private enum; only matched in `var trust` switch (:82). `TestTrusts.leafWildcard.trust` appears only in commented-out tests (:267, :468, :631). Other hits are the `TestCertificates.leafWildcard` static property. |
+| 3 | Alamofire | Tests/ServerTrustEvaluatorTests.swift:65 | `TestTrusts.leafMultipleDNSNames` | TP | Only matched at :86; the one construction is commented out (:306); :1019 is `TestCertificates`. |
+| 4 | Alamofire | Tests/ServerTrustEvaluatorTests.swift:66 | `TestTrusts.leafSignedByCA1` | TP | Only matched at :90; every other hit is `TestCertificates.leafSignedByCA1` (:1020, and in comments). |
+| 5 | Alamofire | Tests/ServerTrustEvaluatorTests.swift:67 | `TestTrusts.leafDNSNameAndURI` | TP | Only matched at :94; the constructions are commented out (:182, :241). |
+| 6 | Alamofire | Tests/ServerTrustEvaluatorTests.swift:72 | `TestTrusts.leafSignedByCA2` | TP | Only matched at :106; hits at :728/:830/:938/:1092/:1169 are `TestCertificates.leafSignedByCA2`. |
+| 7 | swift-nio | Sources/NIOCore/AsyncSequences/NIOAsyncWriter.swift:1476 | `WriterFinishAction.resumeContinuations(_:)` | TP | `writerFinish(error:)` (:1481-1538) returns only `.callDidTerminate`/`.none`; the case is only matched at :756. The `.resumeContinuations(...)` returns at :977/:1027/:1629/:1660 build the same-named cases of other action enums (:943, :1590). No tests reference it. |
+| 8 | swift-nio | Sources/NIOHTTP1/NIOTypedHTTPServerUpgraderStateMachine.swift:377 | `UnbufferAction.close` | TP | `unbuffer()` (:384-409) never returns `.close`; the case is only matched at NIOTypedHTTPServerUpgradeHandler.swift:437. The `return .close` at :424/:434/:447 builds `InputClosedAction.close`. Tests (HTTPServerUpgraderStateMachineTests.swift:96-110) only pattern-match other cases. |
+| 9 | swift-nio | Sources/NIOPosix/BSDSocketAPICommon.swift:42 | `Shutdown.RDWR` | TP | Only matched in `cValue` switches (BSDSocketAPIPosix.swift:28, BSDSocketAPIWindows.swift:184, PipePair.swift:198). The only `shutdown(how:)` callers pass `.WR`/`.RD` (BaseStreamSocketChannel.swift:93/:96, ChannelTests.swift:1591), including the uncompiled Windows branch. |
+| 10 | swift-nio | Tests/NIOFSIntegrationTests/FileSystemTests.swift:1588 | `TestFileStructure.symbolicLink(_:)` | TP | Fileprivate test enum; only matched at :1630. The one caller of `generateDeterministicDirectoryStructure` (:939) passes `makeNestedDirs`, which builds only `.dir`. |
+| 11 | wikipedia-ios | WMF Framework/PermanentlyPersistableURLCache.swift:307 | `CacheResponseContentType.string(_:)` | TP | Only matched at :366; the one place that builds this type is `content: .data(result.data)` (CacheFileWriter.swift:64). |
+| 12 | wikipedia-ios | WMF Framework/Remote Notifications/RemoteNotificationsAPIController.swift:384 | `Query.Limit.numeric(_:)` | TP | Only matched in `value` (:390); `limit:` defaults to `.max` and no caller passes `.numeric`. |
+| 13 | wikipedia-ios | WMF Framework/TimelineView.swift:5 | `TimelineView.Decoration.singleDot` | TP | Only matched in switches (:37, :71, :87, :177); `decoration` defaults to `.doubleDot`, only compared with `.doubleDot`/`.squiggle`, and the enum is not `@objc`. |
+| 14 | wikipedia-ios | WMFComponents/.../Find and Replace/WMFFindAndReplaceViewModel.swift:6 | `Configuration.findOnly` | TP | `configuration` is a `let` set to `.findAndReplace` (:16); `.findOnly` is only matched at WMFFindAndReplaceView.swift:252. |
+| 15 | wikipedia-ios | WMFComponents/.../Buttons/WMFMediumButton.swift:9 | `Configuration.Style.secondary` | TP | Only matched at :34/:43; the one `WMFMediumButton` use passes `.init(style: .primary)` (WMFActivityTabYearInReviewCardView.swift:31). Other `.secondary` hits belong to other types. |
+| 16 | wikipedia-ios | WMFComponents/.../Slideshow/WMFSlideshowViewModel.swift:37 | `Slide.Illustration.image(_:)` | TP | Only matched at WMFSlideView.swift:60; every `illustration:` argument is `.gif`/`.asset` (EvergreenAccountCreationCoordinator.swift:270-303, WMFSlideshowView.swift:227-248). |
+| 17 | wikipedia-ios | WMFComponents/.../Watchlist/WMFWatchlistUserButtonAction.swift:9 | `WMFWatchlistUserButtonAction.diff(revisionID:oldRevisionID:)` | TP | The menu handlers (WMFWatchlistViewController.swift:72-112) build only `.userPage/.userTalkPage/.userContributions/.thank` and route diff through `watchlistUserDidTapDiff`; `.diff` is only matched at WMFAppViewController+Extensions.swift:433/:626. |
+| 18 | wikipedia-ios | WMFComponents/.../Coordinator/ProfileCoordinatorDelegate.swift:21 | `ProfileAction.logYearInReviewTap` | TP | Only matched at ProfileCoordinator.swift:162; the only other hits are the `logYearInReviewTap()` method. |
+| 19 | wikipedia-ios | WMFComponents/.../LoggingDelegate/DonateLoggingDelegate.swift:10 | `WMFDonateLoggingAction.nativeFormDidEnterAmountInTextfield` | TP | Only matched at DonateCoordinator.swift:769. |
+| 20 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:265 | `WMFSwiftUIFont.mediumSubheadline` | TP | Only matched in `WMFSwiftUIFont.font(_:)` (:276); every `WMFSwiftUIFont.font(...)` call passes `.callout`/`.subheadline` (WMFPageRow.swift, WMFAsyncPageRow.swift). The many `.mediumSubheadline` hits are the same-named `WMFFont` case. |
+| 21 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:266 | `WMFSwiftUIFont.boldSubheadline` | TP | Same evidence as row 20. |
+| 22 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:268 | `WMFSwiftUIFont.caption1` | TP | Same evidence as row 20; other `.caption1` hits are `WMFFont.caption1`. |
+| 23 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:27 | `WMFFont.caption2Semibold` | TP | The only mention besides the declaration is the `WMFFont.for` switch arm (:151). |
+| 24 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:55 | `WMFFont.xxlTitleBold` | TP | The only mention besides the declaration is the switch arm (:237). |
+| 25 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:56 | `WMFFont.helveticaLargeHeadline` | TP | The only mention besides the declaration is the switch arm (:239). |
+| 26 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:57 | `WMFFont.helveticaBody` | TP | The only mention besides the declaration is the switch arm (:242). |
+| 27 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:58 | `WMFFont.helveticaBodyBold` | TP | The only mention besides the declaration is the switch arm (:245). |
+| 28 | wikipedia-ios | WMFComponents/.../Style/WMFFont.swift:59 | `WMFFont.helveticaCaption1` | TP | The only mention besides the declaration is the switch arm (:248). |
+| 29 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:113 | `WMFSFSymbolIcon.textBelowPhoto` | TP | No `.textBelowPhoto` anywhere except the `WMFSFSymbolIcon.for(symbol:)` switch arm; not `@objc`, no raw value. |
+| 30 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:115 | `WMFSFSymbolIcon.squareTextSquare` | TP | Same as row 29: only the `for(symbol:)` switch arm. |
+| 31 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:116 | `WMFSFSymbolIcon.eye` | TP | Same as row 29: only the switch arm. |
+| 32 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:120 | `WMFSFSymbolIcon.lightbulbMin` | TP | Same as row 29: only the switch arm. |
+| 33 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:126 | `WMFSFSymbolIcon.book` | TP | Only the switch arm. The `.book` hits in PageNamespace.swift:142 and NotificationsCenterAction.swift:95 are `PageNamespace.book`. |
+| 34 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:159 | `WMFSFSymbolIcon.questionMarkBubble` | TP | Same as row 29: only the switch arm. |
+| 35 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:163 | `WMFSFSymbolIcon.bubbleRightFill` | TP | Same as row 29: only the switch arm. |
+| 36 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:168 | `WMFSFSymbolIcon.trophy` | TP | Same as row 29: only the switch arm. |
+| 37 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:169 | `WMFSFSymbolIcon.bookPagesFill` | TP | Same as row 29: only the switch arm. |
+| 38 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:170 | `WMFSFSymbolIcon.appGiftFill` | TP | Same as row 29: only the switch arm. |
+| 39 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:171 | `WMFSFSymbolIcon.widgetAdd` | TP | Same as row 29: only the switch arm. |
+| 40 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:177 | `WMFSFSymbolIcon.medal` | TP | Same as row 29: only the switch arm. |
+| 41 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:183 | `WMFSFSymbolIcon.sparkles` | TP | Same as row 29: only the switch arm. |
+| 42 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:185 | `WMFSFSymbolIcon.docText` | TP | Same as row 29: only the switch arm. |
+| 43 | wikipedia-ios | WMFComponents/.../Style/WMFIcon.swift:70 | `WMFSFSymbolIcon.heart` | TP | Same as row 29: only the switch arm. |
+| 44 | wikipedia-ios | Wikipedia/Code/ArticleCacheDBWriter.swift:12 | `ArticleCacheDBWriterError.oneOrMoreItemsFailedToMarkDownloaded(_:)` | TP | Only matched at SavedArticlesFetcher.swift:325; no `throw`/`failure(...)` builds it. |
+| 45 | wikipedia-ios | Wikipedia/Code/ArticleCoordinator.swift:9 | `ArticleTabConfig.appendArticleAndAssignCurrentTabAndRemovePrecedingMainPage` | TP | Only in switch labels (:73, :89, :228); nothing passes it as `tabConfig`. |
+| 46 | wikipedia-ios | Wikipedia/Code/BatchEditSelectView.swift:100 | `BatchEditToolbarActionType.addToList` | TP | Only matched at :112, which itself maps to `type = .addTo` (:114). The other `.addToList` hits are the raw-value `EventCategoryMEP.addToList` (ReadingListsFunnel.swift:149/:153). |
+| 47 | wikipedia-ios | Wikipedia/Code/CollectionViewHeader.swift:13 | `CollectionViewHeader.Style.history` | TP | `style` is only assigned `.explore` (default), `.detail` (ColumnarCollectionViewController.swift:317) and `.pageHistory` (PageHistoryViewController.swift:423); `.history` is only matched at :102. Other `.history` hits are `EventCategoryMEP`/source enums. |
+| 48 | wikipedia-ios | Wikipedia/Code/CollectionViewHeader.swift:14 | `CollectionViewHeader.Style.recentSearches` | TP | Same assignments as row 47; only matched at :104. Other hits are a `recentSearches` property. |
+| 49 | wikipedia-ios | Wikipedia/Code/DiffListViewController.swift:21 | `ListUpdateType.theme(theme:)` | TP | The only update types built are `.layoutUpdate` (:100), `.itemExpandUpdate` (:372-373) and `.initialLoad` (DiffContainerViewController.swift:784/:787); `.theme` is only matched at :180. |
+| 50 | wikipedia-ios | Wikipedia/Code/HomeFeedSettingsCoordinator.swift:15 | `InitialView.modalFromFeed` | TP | Callers pass `.root` (HomeViewController.swift:289), `.interests(...)` (:297) or the default (SettingsCoordinator.swift:624); only matched at :63. |
+| 51 | wikipedia-ios | Wikipedia/Code/ReadingListsController.swift:49 | `ReadingListError.unableToUpdateList` | TP | Only matched in `localizedDescription` (:70); no throw or `==` comparison anywhere, ObjC included. |
+| 52 | wikipedia-ios | Wikipedia/Code/ReadingListsController.swift:53 | `ReadingListError.listWithProvidedNameNotFound(name:)` | TP | Only matched at :63. |
+| 53 | wikipedia-ios | Wikipedia/Code/RequestError.swift:6 | `RequestError.notModified` | TP | Only matched in `CustomNSError.errorCode` (:54); the factories `from(code:)`/`from(_:)` return `.http`/`.api`. `CustomNSError` gives no NSError-to-enum initializer. |
+| 54 | wikipedia-ios | Wikipedia/Code/SinglePageWebViewController.swift:53 | `ConfigType.yirLearnMore(_:)` | TP | `YiRLearnMoreConfig` is never instantiated; all 20+ `SinglePageWebViewController(configType:)` calls pass `.standard` or `.donate` (DonateCoordinator.swift:610), including WikipediaUnitTests. |
+| 55 | wikipedia-ios | Wikipedia/Code/WMFAccountLoginLogoutFetcher.swift:29 | `WMFAccountLoginError.authManagerInfoRequired(_:_:)` | TP | Only matched in `errorDescription` (:42) and `mediaWikiMessageCode` (:64). |
+| 56 | wikipedia-ios | Wikipedia/Code/WMFAccountLoginLogoutFetcher.swift:31 | `WMFAccountLoginError.invalidSiteURL` | TP | Only matched at :72 (and the `default` in `errorDescription`). |
+
+</details>

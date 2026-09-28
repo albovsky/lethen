@@ -46,6 +46,7 @@ swift_library(
     srcs = [
         "SyntaxAnalysis/CommentCommand.swift",
         "SyntaxAnalysis/DeclarationSyntaxVisitor.swift",
+        "SyntaxAnalysis/EnumCasePatternSyntaxVisitor.swift",
         "SyntaxAnalysis/ImportSyntaxVisitor.swift",
         "SyntaxAnalysis/MultiplexingSyntaxVisitor.swift",
         "SyntaxAnalysis/SourceLOCCounter.swift",
@@ -112,6 +113,7 @@ swift_library(
         "SourceGraph/Mutators/StructImplicitInitializerReferenceBuilder.swift",
         "SourceGraph/Mutators/SwiftTestingRetainer.swift",
         "SourceGraph/Mutators/SwiftUIRetainer.swift",
+        "SourceGraph/Mutators/UnconstructedEnumCaseMarker.swift",
         "SourceGraph/Mutators/UnusedImportMarker.swift",
         "SourceGraph/Mutators/UnusedParameterRetainer.swift",
         "SourceGraph/Mutators/UsedDeclarationMarker.swift",

@@ -27,6 +27,8 @@ public final class SourceGraph {
     public private(set) var retentionSources: [Declaration: String] = [:]
     /// Whether mutator runs record `retentionSources`. Off for scans, which never read them.
     public var recordsRetentionSources = false
+    /// Enum cases referenced only in patterns.
+    public private(set) var unconstructedEnumCases: Set<Declaration> = []
     /// Identifier-like words found in string literals across the scanned sources.
     public private(set) var literalTokens: Set<String> = []
 
@@ -174,6 +176,10 @@ public final class SourceGraph {
 
     public func markRetained(_ declarations: Set<Declaration>) {
         declarations.forEach { markRetained($0) }
+    }
+
+    func markUnconstructedEnumCase(_ declaration: Declaration) {
+        _ = unconstructedEnumCases.insert(declaration)
     }
 
     func markAssignOnlyProperty(_ declaration: Declaration) {
@@ -450,6 +456,19 @@ public final class SourceGraph {
 
         return inheritedTypeReferences(of: decl).contains {
             [.protocol, .typealias].contains($0.declarationKind) && encodableTypes.contains($0.name)
+        }
+    }
+
+    func isRawRepresentable(_ enumDeclaration: Declaration) -> Bool {
+        // If the enum has a related struct it's very likely to be raw representable,
+        // and thus is dynamic in nature.
+
+        if enumDeclaration.related.contains(where: { $0.declarationKind == .struct }) {
+            return true
+        }
+
+        return inheritedTypeReferences(of: enumDeclaration).contains {
+            $0.declarationKind == .protocol && $0.name == "RawRepresentable"
         }
     }
 

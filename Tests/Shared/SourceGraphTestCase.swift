@@ -240,6 +240,22 @@ open class SourceGraphTestCase: XCTestCase {
         scopeStack.removeLast()
     }
 
+    func assertUnconstructedEnumCase(_ description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) {
+        guard let declaration = materialize(description, file: file, line: line) else { return }
+
+        if !Self.results.unconstructedEnumCaseDeclarations.contains(declaration) {
+            XCTFail("Expected enum case to be matched but never constructed: \(declaration)", file: file, line: line)
+        }
+    }
+
+    func assertNotUnconstructedEnumCase(_ description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) {
+        guard let declaration = materialize(description, file: file, line: line) else { return }
+
+        if Self.results.unconstructedEnumCaseDeclarations.contains(declaration) {
+            XCTFail("Expected enum case to not be reported as never constructed: \(declaration)", file: file, line: line)
+        }
+    }
+
     func assertSuperfluousIgnoreCommand(_ description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) {
         // For parameters, we need to check results directly since they're created at result-building time
         if description.kind == .varParameter {
@@ -347,6 +363,16 @@ private extension [ScanResult] {
     var unusedDeclarations: Set<Declaration> {
         compactMapSet {
             if case .unused = $0.annotation {
+                return $0.declaration
+            }
+
+            return nil
+        }
+    }
+
+    var unconstructedEnumCaseDeclarations: Set<Declaration> {
+        compactMapSet {
+            if case .unconstructedEnumCase = $0.annotation {
                 return $0.declaration
             }
 

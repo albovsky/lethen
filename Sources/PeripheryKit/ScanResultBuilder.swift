@@ -42,6 +42,9 @@ public enum ScanResultBuilder {
             .init(declaration: $0.0, annotation: .redundantPublicAccessibility(modules: $0.1))
         }
 
+        let annotatedUnconstructedEnumCases: [ScanResult] = graph.unconstructedEnumCases
+            .filter { !removableDeclarations.contains($0) }
+            .map { .init(declaration: $0, annotation: .unconstructedEnumCase) }
         let annotatedSuperfluousIgnoreCommands: [ScanResult] = {
             guard configuration.superfluousIgnoreComments else { return [] }
 
@@ -66,7 +69,8 @@ public enum ScanResultBuilder {
             annotatedAssignOnlyProperties +
             annotatedRedundantProtocols +
             annotatedRedundantPublicAccessibility +
-            annotatedSuperfluousIgnoreCommands
+            annotatedSuperfluousIgnoreCommands +
+            annotatedUnconstructedEnumCases
 
         return allAnnotatedDeclarations
             .filter { result in
@@ -117,6 +121,8 @@ public enum ScanResultBuilder {
             return "not referenced outside \(modules.sorted().joined(separator: ", "))"
         case .superfluousIgnoreCommand:
             return "referenced from used code"
+        case .unconstructedEnumCase:
+            return "matched in patterns but never constructed"
         }
     }
 

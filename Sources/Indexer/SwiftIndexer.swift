@@ -309,6 +309,12 @@ final class SwiftIndexer: Indexer {
                 topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder)
             )
             visitDeclarations(using: declarationSyntaxVisitor)
+            let patterns = EnumCasePatternSyntaxVisitor()
+            patterns.walk(multiplexingSyntaxVisitor.syntax)
+            let patternLocations = Set(patterns.memberPositions.map { locationBuilder.location(at: $0) })
+            for reference in indexedReferences where reference.declarationKind == .enumelement && patternLocations.contains(reference.location) {
+                reference.role = .enumCasePattern
+            }
             let valueUses = ValueUseSyntaxVisitor(locations: locationBuilder)
             valueUses.walk(multiplexingSyntaxVisitor.syntax)
             let literalTokens = StringLiteralTokenVisitor()
