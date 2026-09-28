@@ -193,3 +193,9 @@ Wikipedia iOS: 261 rows removed (256 assign-only properties, 5 unused types or p
 - The 2 added rows are TP: `WMFOnThisDayContentURLs.init(desktop:mobile:)` and
   `WMFOnThisDayURLPair.init(page:)` have no callers. Their types were previously reported whole
   and are now used, so their dead initializers are reported on their own.
+
+### `--configurations` for SwiftPM
+
+Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. The corpus does not
+pass the new flag, and without it a scan builds exactly as before. `SPMConfigurationsTest` covers
+the flag on a package with a function called only under `#if DEBUG` and one called only without it.
