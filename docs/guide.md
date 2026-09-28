@@ -204,7 +204,7 @@ The declaration cannot be reached from any entry point. Lethen treats the follow
 
 Declarations exposed to Objective-C are not assumed to be used. If your project mixes Swift and Objective-C, use `--retain-objc-accessible` to retain everything reachable from the Objective-C runtime (`@objc`, `@objcMembers`, and `NSObject` subclasses), or `--retain-objc-annotated` to retain only explicitly annotated declarations. Lethen cannot see references made from Objective-C code, and string-based lookups such as selectors built from strings are invisible to it.
 
-Frameworks and libraries whose public interface is consumed elsewhere need `--retain-public`. To audit a specific `@_spi` group even then, list it with `--no-retain-spi`.
+Frameworks and libraries whose public interface is consumed elsewhere need `--retain-public`. To audit a specific `@_spi` group even then, list it with `--no-retain-spi`. When only some modules have consumers outside the scan, such as a local package whose tests or other clients are not built by the scanned scheme, `--retain-public-targets <module>…` (`retain_public_targets` in the configuration file) retains the `public` and `open` declarations of just those modules and never reports them as redundantly public. A Swift package scan with `--exclude-tests` or `--exclude-targets` warns when an excluded target depends on a scanned one, and names the modules to pass.
 
 ### Unused parameters
 

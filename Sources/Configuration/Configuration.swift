@@ -68,6 +68,9 @@ public final class Configuration {
     @Setting(key: "retain_public", defaultValue: false)
     public var retainPublic: Bool
 
+    @Setting(key: "retain_public_targets", defaultValue: [])
+    public var retainPublicTargets: [String]
+
     @Setting(key: "no_retain_spi", defaultValue: [])
     public var noRetainSPI: [String]
 
@@ -232,7 +235,7 @@ public final class Configuration {
 
     lazy var settings: [any AbstractSetting] = [
         $project, $schemes, $excludeTargets, $excludeTests, $indexExclude, $reportExclude, $reportInclude, $outputFormat,
-        $retainPublic, $noRetainSPI, $retainFiles, $retainAssignOnlyProperties, $retainAssignOnlyPropertyTypes, $retainObjcAccessible,
+        $retainPublic, $retainPublicTargets, $noRetainSPI, $retainFiles, $retainAssignOnlyProperties, $retainAssignOnlyPropertyTypes, $retainObjcAccessible,
         $retainObjcAnnotated, $retainUnusedProtocolFuncParams, $retainSwiftUIPreviews, $disableRedundantPublicAnalysis,
         $disableUnusedImportAnalysis, $superfluousIgnoreComments, $retainUnusedImportedModules,
         $externalEncodableProtocols, $externalCodableProtocols, $externalTestCaseClasses, $verbose, $quiet, $color,

@@ -229,6 +229,13 @@ public struct Target: Decodable {
     public let c99name: String?
     public let sources: [String]?
     public let resources: [Resource]?
+    /// Names of the package targets this target depends on.
+    public let targetDependencies: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case name, type, path, c99name, sources, resources
+        case targetDependencies = "target_dependencies"
+    }
 
     public var isTestTarget: Bool {
         type == "test"

@@ -60,6 +60,9 @@ struct ScanCommand: ParsableCommand {
     @Flag(help: "Retain all public declarations, recommended for framework/library projects")
     var retainPublic: Bool = defaultConfiguration.$retainPublic.defaultValue
 
+    @Option(parsing: .upToNextOption, help: "Targets whose public declarations are retained, for local packages whose consumers or tests are outside the scan")
+    var retainPublicTargets: [String] = defaultConfiguration.$retainPublicTargets.defaultValue
+
     @Option(parsing: .upToNextOption, help: "Public SPIs (System Programming Interfaces) to check for unused code even when '--retain-public' is enabled")
     var noRetainSPI: [String] = defaultConfiguration.$noRetainSPI.defaultValue
 
@@ -264,6 +267,7 @@ struct ScanCommand: ParsableCommand {
         configuration.apply(\.$outputFormat, format)
         configuration.apply(\.$retainFiles, retainFiles)
         configuration.apply(\.$retainPublic, retainPublic)
+        configuration.apply(\.$retainPublicTargets, retainPublicTargets)
         configuration.apply(\.$noRetainSPI, noRetainSPI)
         configuration.apply(\.$retainAssignOnlyProperties, retainAssignOnlyProperties)
         configuration.apply(\.$retainAssignOnlyPropertyTypes, retainAssignOnlyPropertyTypes)

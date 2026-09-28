@@ -14,13 +14,17 @@ final class PubliclyAccessibleRetainer: SourceGraphMutator {
     }
 
     func mutate() {
-        guard configuration.retainPublic else { return }
+        let retainedTargets = Set(configuration.retainPublicTargets)
+        guard configuration.retainPublic || !retainedTargets.isEmpty else { return }
 
         let declarations = Declaration.Kind.accessibleKinds.flatMap {
             graph.declarations(ofKind: $0)
         }
 
-        let publicDeclarations = declarations.filter { $0.accessibility.value == .public || $0.accessibility.value == .open }
+        let publicDeclarations = declarations.filter { decl in
+            (decl.accessibility.value == .public || decl.accessibility.value == .open)
+                && (configuration.retainPublic || !decl.location.file.modules.isDisjoint(with: retainedTargets))
+        }
 
         // Only filter if noRetainSPI is configured (performance optimization)
         let declarationsToRetain: [Declaration] = if configuration.noRetainSPI.isEmpty {
