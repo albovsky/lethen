@@ -2020,4 +2020,27 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
     }
+
+    func testUnconstructedEnumCases() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.enum("FixtureEnum229")) {
+                self.assertUnconstructedEnumCase(.enumelement("matchedOnly"))
+                self.assertUnconstructedEnumCase(.enumelement("payloadMatchedOnly(_:)"))
+                self.assertNotUnconstructedEnumCase(.enumelement("constructed"))
+                self.assertNotUnconstructedEnumCase(.enumelement("comparedOnly"))
+            }
+            assertReferenced(.enum("FixtureEnum229Other")) {
+                self.assertNotUnconstructedEnumCase(.enumelement("matchedOnly"))
+            }
+            assertReferenced(.enum("FixtureEnum229Raw")) {
+                self.assertNotUnconstructedEnumCase(.enumelement("matchedOnly"))
+            }
+            assertReferenced(.enum("FixtureEnum229Iterable")) {
+                self.assertNotUnconstructedEnumCase(.enumelement("matchedOnly"))
+            }
+            assertReferenced(.enum("FixtureEnum229Public")) {
+                self.assertNotUnconstructedEnumCase(.enumelement("matchedOnly"))
+            }
+        }
+    }
 }

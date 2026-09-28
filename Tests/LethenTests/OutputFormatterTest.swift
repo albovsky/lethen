@@ -25,11 +25,13 @@ final class OutputFormatterTest: XCTestCase {
         let assignOnly = ScanResult(declaration: declaration(name: "count", kind: .varInstance, usr: "s:count"), annotation: .assignOnlyProperty)
         let redundantPublic = ScanResult(declaration: declaration(name: "Bar", kind: .struct, usr: "s:Bar"), annotation: .redundantPublicAccessibility(modules: ["App"]))
         let superfluous = ScanResult(declaration: declaration(name: "Baz", kind: .enum, usr: "s:Baz"), annotation: .superfluousIgnoreCommand)
-        let output = try format(.xcode, [assignOnly, redundantPublic, superfluous], relativeResults: true)
+        let unconstructed = ScanResult(declaration: declaration(name: "idle", kind: .enumelement, usr: "s:idle"), annotation: .unconstructedEnumCase)
+        let output = try format(.xcode, [assignOnly, redundantPublic, superfluous, unconstructed], relativeResults: true)
         XCTAssertEqual(output.components(separatedBy: "\n"), [
             "Sources/A.swift:3:5: warning: Assign-only property 'count' is assigned, but never used",
             "Sources/A.swift:3:5: warning: Redundant public accessibility for struct 'Bar' (not used outside of App)",
             "Sources/A.swift:3:5: warning: Superfluous ignore comment for enum 'Baz' (declaration is referenced and should not be ignored)",
+            "Sources/A.swift:3:5: warning: Enum case 'idle' is matched but never constructed",
         ])
     }
 

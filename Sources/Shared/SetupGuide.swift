@@ -8,12 +8,11 @@ public protocol SetupGuide {
 }
 
 public enum SetupSelection {
-    case all([String])
     case some([String])
 
     public var selectedValues: [String] {
         switch self {
-        case let .all(values), let .some(values):
+        case let .some(values):
             values
         }
     }

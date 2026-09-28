@@ -18,6 +18,9 @@ public final class Reference {
         case initializerType
         case variableInitFunctionCall
         case functionCallMetatypeArgument
+        /// An enum case named in a pattern (`case .x:`, `if case .x = …`), which matches a value
+        /// rather than constructing one.
+        case enumCasePattern
         case unknown
 
         var isPubliclyExposable: Bool {

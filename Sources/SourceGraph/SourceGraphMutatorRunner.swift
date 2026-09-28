@@ -49,6 +49,7 @@ public final class SourceGraphMutatorRunner {
 
         AncestralReferenceEliminator.self,
         AssignOnlyPropertyReferenceEliminator.self,
+        UnconstructedEnumCaseMarker.self,
 
         UsedDeclarationMarker.self,
         RedundantProtocolMarker.self,

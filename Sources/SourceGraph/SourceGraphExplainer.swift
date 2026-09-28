@@ -142,6 +142,10 @@ public struct SourceGraphExplainer {
             lines.append("Reported as a redundant protocol: nothing uses it as a type, only conforms to it.")
         }
 
+        if graph.unconstructedEnumCases.contains(declaration) {
+            lines.append("Reported as matched but never constructed: every reference to it is a pattern.")
+        }
+
         if let modules = graph.redundantPublicAccessibility[declaration] {
             lines.append("Reported as redundantly public: it is only used within \(modules.sorted().joined(separator: ", ")).")
         }

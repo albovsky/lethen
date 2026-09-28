@@ -234,6 +234,10 @@ A `public` declaration that no other module references. Removing `public` shrink
 
 A protocol that types conform to but that is never used as a type: never an existential, a generic constraint, or an inherited protocol. The conformances are reported alongside it so both can be removed.
 
+### Unconstructed enum cases
+
+An enum case that is only ever matched, in `switch` cases, `if case`, `guard case`, or `for case`, and never created is dead together with the arms that match it: `Enum case 'x' is matched but never constructed` (hint `unconstructedEnumCase`). Comparisons such as `value == .x` create the case, so they count as construction. Enums whose cases can be created without naming them are skipped: raw-value enums (`init(rawValue:)`), `CaseIterable`, `Decodable` and `Codable` enums, `@objc` enums, public enums under `--retain-public`, and enums a comment command retains or ignores.
+
 ### Superfluous ignore comments
 
 A `// periphery:ignore` comment on a declaration that is actually used. Turn off with `--no-superfluous-ignore-comments`.
