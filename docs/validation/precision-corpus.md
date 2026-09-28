@@ -201,13 +201,13 @@ pass the new flag, and without it a scan builds exactly as before. `SPMConfigura
 the flag on a package with a function called only under `#if DEBUG` and one called only without it.
 ### Implicit declarations retained through their parent
 
-Alamofire and swift-nio: no change. Wikipedia iOS: 26 rows removed, 5 added.
+Alamofire and swift-nio: no change. Wikipedia iOS: 24 rows removed, 5 added.
 
 - The 5 added rows are types now reported whole: `SearchEntry` and `LockscreenSearchEntry`
   (widgets), `SessionsFunnel.SessionData`, and `UserHistoryFunnel` with its extension. Before, each
   was kept alive by a compiler-generated memberwise initializer retained as its own root (for
   example `SearchWidgetView.init(entry:)` referencing `SearchEntry`), even though nothing called
-  that initializer. The 26 removed rows are members of those types, which the type-level findings
+  that initializer. The 24 removed rows are members of those types, which the type-level findings
   now cover.
 - All 5 are FP of the "code compiled out of the scanned build" class: `SearchWidget` and
   `LockscreenSearchWidget` are listed in the widget bundle only under `#if DEBUG`, and
