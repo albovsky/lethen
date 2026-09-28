@@ -72,7 +72,7 @@ final class EquatableHashablePropertyRetainer: SourceGraphMutator {
             }
 
             var visited: Set<Declaration> = []
-            var types = valueTypes(referencedBy: use.valueArgumentReferences, visited: &visited)
+            var types = ValueTypeResolver.valueTypes(referencedBy: use.valueArgumentReferences, in: graph, visited: &visited)
             var compared: Set<Declaration> = []
             while let type = types.popFirst() {
                 guard synthesizedTypes.contains(type), compared.insert(type).inserted else { continue }
@@ -82,7 +82,7 @@ final class EquatableHashablePropertyRetainer: SourceGraphMutator {
                 }
                 for property in properties {
                     // Synthesized equality compares stored values recursively.
-                    types.formUnion(valueTypes(referencedBy: property.references, visited: &visited))
+                    types.formUnion(ValueTypeResolver.valueTypes(referencedBy: property.references, in: graph, visited: &visited))
                     for target in [property] + property.declarations.filter({ $0.kind == .functionAccessorGetter }) {
                         for usr in target.usrs {
                             let reference = Reference(name: target.name, kind: .normal,
@@ -108,27 +108,6 @@ final class EquatableHashablePropertyRetainer: SourceGraphMutator {
             }
         }
         return false
-    }
-
-    private func valueTypes(referencedBy references: Set<Reference>, visited: inout Set<Declaration>) -> Set<Declaration> {
-        var types: Set<Declaration> = []
-        for reference in references {
-            guard let declaration = graph.declaration(withUsr: reference.usr), visited.insert(declaration).inserted else { continue }
-
-            if declaration.kind == .struct {
-                types.insert(declaration)
-            } else if declaration.kind == .functionConstructor, let parent = declaration.parent {
-                types.insert(parent)
-            } else if declaration.kind == .functionAccessorGetter, let property = declaration.parent {
-                types.formUnion(valueTypes(referencedBy: property.references, visited: &visited))
-            } else {
-                let valueReferences = declaration.references.filter {
-                    [.varType, .initializerType, .variableInitFunctionCall, .returnType].contains($0.role)
-                }
-                types.formUnion(valueTypes(referencedBy: valueReferences, visited: &visited))
-            }
-        }
-        return types
     }
 
     private func shouldRetainProperties(of decl: Declaration) -> Bool {
