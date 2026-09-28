@@ -14,9 +14,15 @@ final class PropertyWrapperRetainer: SourceGraphMutator {
         buildProjectedValueReferences()
 
         for decl in graph.declarations(ofKinds: Declaration.Kind.toplevelAttributableKind) where decl.attributes.contains(where: { $0.name == "propertyWrapper" }) {
-            decl.declarations
-                .filter { $0.kind == .varInstance && specialProperties.contains($0.name) }
-                .forEach { graph.markRetained($0) }
+            for member in decl.declarations {
+                let isSpecialProperty = member.kind == .varInstance && specialProperties.contains(member.name)
+                // The compiler calls these for `@Wrapper(extra: 1) var x = 0` and for `$param` arguments.
+                let isContractInitializer = member.kind == .functionConstructor
+                    && (member.name.hasPrefix("init(wrappedValue:") || member.name.hasPrefix("init(projectedValue:"))
+                if isSpecialProperty || isContractInitializer {
+                    graph.markRetained(member)
+                }
+            }
         }
     }
 
