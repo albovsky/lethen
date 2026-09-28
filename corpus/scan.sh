@@ -37,7 +37,9 @@ if [ ! -d "$checkout/.git" ]; then
     git clone --quiet "$url" "$checkout"
 fi
 git -C "$checkout" fetch --quiet origin "$commit"
-git -C "$checkout" checkout --quiet --detach "$commit"
+# --force discards edits a previous scan's build made; some projects' build phases run
+# formatters over their sources (wikipedia-ios runs `swiftlint --fix`).
+git -C "$checkout" checkout --quiet --force --detach "$commit"
 
 "$lethen" scan --project-root "$checkout" --quiet --disable-update-check \
     --format json --relative-results ${arguments[@]+"${arguments[@]}"} > "$results/$name.json"

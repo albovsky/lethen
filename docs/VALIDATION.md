@@ -62,4 +62,4 @@ CI scan gates pass `--disable-update-check`, so this never affected scan validat
 that fails to clone, build, or scan, or that yields no findings, fails the run. The expectations
 were generated on 2026-09-26 with Apple Swift 6.4 (swiftlang-6.4.0.34.1) on macOS 27 from Lethen
 at `bc8c5b5`, both scanned with `--retain-public`: Alamofire at `bda9ed5` has 124 findings and
-swift-nio at `feaf4ac` has 434. A second scan of each produced an identical result.
+swift-nio at `feaf4ac` has 434. A second scan of each produced an identical result. Wikipedia iOS at `599e4a6` was added on 2026-09-27 from Lethen `08a45bc`, scanned as an app (`--project Wikipedia.xcodeproj --schemes Wikipedia` for the generic iOS Simulator destination): 3,189 findings in about 3.5 minutes, identical on a second scan. Its build runs `swiftlint --fix` when SwiftLint is installed, which rewrites 14 source files after they are indexed, so `corpus/scan.sh` force-checks out the pinned commit before every scan. The adjudicated sample and the precision scorecard are in [validation/precision-corpus.md](validation/precision-corpus.md).
