@@ -2010,4 +2010,14 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
     }
+
+    /// The macro's generated extension must not keep its own class alive.
+    func testReportsUnusedObservableClass() throws {
+        try analyze(retainPublic: true) {
+            assertNotReferenced(.class("FixtureClass227"))
+            assertReferenced(.class("FixtureClass227Used")) {
+                self.assertReferenced(.varInstance("name"))
+            }
+        }
+    }
 }

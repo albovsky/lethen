@@ -199,3 +199,20 @@ Wikipedia iOS: 261 rows removed (256 assign-only properties, 5 unused types or p
 Alamofire, swift-nio, and Wikipedia iOS re-scanned: no rows added or removed. The corpus does not
 pass the new flag, and without it a scan builds exactly as before. `SPMConfigurationsTest` covers
 the flag on a package with a function called only under `#if DEBUG` and one called only without it.
+### Implicit declarations retained through their parent
+
+Alamofire and swift-nio: no change. Wikipedia iOS: 24 rows removed, 5 added.
+
+- The 5 added rows are types now reported whole: `SearchEntry` and `LockscreenSearchEntry`
+  (widgets), `SessionsFunnel.SessionData`, and `UserHistoryFunnel` with its extension. Before, each
+  was kept alive by a compiler-generated memberwise initializer retained as its own root (for
+  example `SearchWidgetView.init(entry:)` referencing `SearchEntry`), even though nothing called
+  that initializer. The 24 removed rows are members of those types, which the type-level findings
+  now cover.
+- All 5 are FP of the "code compiled out of the scanned build" class: `SearchWidget` and
+  `LockscreenSearchWidget` are listed in the widget bundle only under `#if DEBUG`, and
+  `SessionsFunnel.appDidBecomeActive()` and `UserHistoryFunnel.shared.logSnapshot()` are called
+  only from `WMFAppViewController`'s launch path, which the Test configuration compiles out. The
+  change removed a false keep-alive that happened to hide them; scanning the configuration the app
+  ships is what fixes them.
+- No added row is a genuine use through generated code, so no retention pattern needed a fixture.
