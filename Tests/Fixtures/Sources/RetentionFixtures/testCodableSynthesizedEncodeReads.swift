@@ -65,6 +65,15 @@ struct FixtureStruct226Passed: Encodable {
     }
 }
 
+struct FixtureStruct226Appended: Encodable {
+    // Control: an unindexed call that does not encode (a collection append, print) is not evidence.
+    let appendedButNotEncoded: Int
+
+    init(appendedButNotEncoded: Int) {
+        self.appendedButNotEncoded = appendedButNotEncoded
+    }
+}
+
 struct FixtureStruct226Custom: Encodable {
     // Control: an explicit encode(to:) replaces the synthesized one, so nothing reads it.
     let notEncodedByCustom: Int
@@ -101,6 +110,10 @@ public class FixtureClass226Retainer {
     public func hold() {
         _ = FixtureStruct226Unencoded(neverEncoded: 5)
         keep(FixtureStruct226Passed(passedButNotEncoded: 6))
+        var list: [FixtureStruct226Appended] = []
+        list.append(FixtureStruct226Appended(appendedButNotEncoded: 9))
+        print(FixtureStruct226Appended(appendedButNotEncoded: 10))
+        _ = list
     }
 
     func keep(_ value: FixtureStruct226Passed) {

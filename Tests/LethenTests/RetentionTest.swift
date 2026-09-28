@@ -2002,6 +2002,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct226Passed")) {
                 self.assertAssignOnlyProperty(.varInstance("passedButNotEncoded"))
             }
+            assertReferenced(.struct("FixtureStruct226Appended")) {
+                self.assertAssignOnlyProperty(.varInstance("appendedButNotEncoded"))
+            }
             assertReferenced(.struct("FixtureStruct226Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
             }
