@@ -244,6 +244,7 @@ A `// periphery:ignore` comment on a declaration that is actually used. Turn off
 - **Used:** the shortest chain of references from a retained declaration, or from top-level code, to it.
 - **Retained:** the rule that retained it, such as `XCTestRetainer`, `PubliclyAccessibleRetainer` with `--retain-public`, or an ignore comment.
 - **Not reported:** the comment command that ignores it, or the enclosing declaration that is reported instead.
+- **Confidence:** for every reported declaration, `Confidence: certain.` or `Confidence: likely` with the reason, such as a name that appears in a string literal.
 
 ```sh
 lethen explain functionWithSimpleReturnType
@@ -294,7 +295,7 @@ Entries are keyed by the declaration's symbol identifier, so a baselined result 
 
 `--stats` prints a report after the scan: the time spent in each phase (setup, build, index (planning which source files to read from the index store, then its two Swift passes), analysis, building the results, and output), the number of Swift source files indexed, their lines of code (blank and comment-only lines excluded), the declarations indexed, and indexing plus analysis throughput in lines per second. The report goes to standard error even with `--quiet`, so `json`, `csv`, and the other formats on standard output stay machine-readable. Lines are counted only when `--stats` is given, so other scans do not pay for it. Use it with a managed SwiftPM scan to see the cost of its clean build, or with `--skip-build` to time indexing and analysis alone.
 
-The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location, and a `confidence` of `certain` or `likely`; the CSV format ends with a `Confidence` column. Results are sorted with `certain` first.
+The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location, a `confidence` of `certain` or `likely`, and a one-sentence `reason` such as `no references in the scanned modules` or `assigned but never read`; the CSV format ends with a `Confidence` column. Results are sorted with `certain` first. The `xcode`, `github-actions`, `github-markdown`, `gitlab-codequality`, and `codeclimate` formats append `[likely: <why>]` to `likely` results.
 
 ### Reusing a build in CI
 

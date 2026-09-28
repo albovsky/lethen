@@ -86,7 +86,7 @@ final class OutputFormatterTest: XCTestCase {
     }
 
     func testJsonFormatsWriteKeysInSortedOrder() throws {
-        XCTAssertEqual(try keys(format(.json, [unusedClass()])), ["accessibility", "attributes", "confidence", "hints", "ids", "kind", "location", "modifiers", "modules", "name"])
+        XCTAssertEqual(try keys(format(.json, [unusedClass()])), ["accessibility", "attributes", "confidence", "hints", "ids", "kind", "location", "modifiers", "modules", "name", "reason"])
         XCTAssertEqual(try keys(format(.gitlabCodeQuality, [unusedClass()], relativeResults: true)), ["check_name", "description", "fingerprint", "location", "lines", "begin", "path", "severity"])
         XCTAssertEqual(try keys(format(.codeclimate, [unusedClass()], relativeResults: true)), ["description", "fingerprint", "location", "lines", "begin", "path", "severity"])
     }
@@ -108,6 +108,17 @@ final class OutputFormatterTest: XCTestCase {
         let lines = try format(.csv, [unusedClass()], relativeResults: true).components(separatedBy: "\n")
         XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence")
         XCTAssertTrue(lines[1].hasSuffix(",unused,certain"), lines[1])
+    }
+
+    func testJsonFormatIncludesReason() throws {
+        let result = ScanResult(declaration: declaration(name: "Foo", kind: .class, usr: "s:Foo"), annotation: .unused, reason: "no references in the scanned modules")
+        let object = try XCTUnwrap(json(format(.json, [result])).first)
+        XCTAssertEqual(object["reason"] as? String, "no references in the scanned modules")
+    }
+
+    func testXcodeFormatMarksLikelyResults() throws {
+        let likely = ScanResult(declaration: declaration(name: "Foo", kind: .class, usr: "s:Foo"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        XCTAssertEqual(try format(.xcode, [likely], relativeResults: true), "Sources/A.swift:3:5: warning: Unused class 'Foo' [likely: its name appears in a string literal]")
     }
 
     func testCsvFormatQuotesFieldsContainingDelimitersAndQuotes() throws {

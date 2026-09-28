@@ -91,9 +91,33 @@ public enum ScanResultBuilder {
                     declaration: result.declaration,
                     annotation: result.annotation,
                     confidence: assessment.confidence,
-                    confidenceReason: assessment.reason
+                    confidenceReason: assessment.reason,
+                    reason: reason(for: result.declaration, annotation: result.annotation, graph: graph)
                 )
             }
+    }
+
+    /// One sentence a reader can act on without running `lethen explain`.
+    static func reason(for declaration: Declaration, annotation: ScanResult.Annotation, graph: SourceGraph) -> String {
+        switch annotation {
+        case .unused:
+            if declaration.kind == .module {
+                return "no declaration of the module is used in this file"
+            }
+            let referencing = Set(graph.references(to: declaration).compactMap(\.parent))
+            if referencing.isEmpty {
+                return "no references in the scanned modules"
+            }
+            return "referenced only from \(referencing.count) unused declaration\(referencing.count == 1 ? "" : "s")"
+        case .assignOnlyProperty:
+            return "assigned but never read"
+        case .redundantProtocol:
+            return "conformed to but never used as a type"
+        case let .redundantPublicAccessibility(modules):
+            return "not referenced outside \(modules.sorted().joined(separator: ", "))"
+        case .superfluousIgnoreCommand:
+            return "referenced from used code"
+        }
     }
 
     /// Checks if a declaration has references from code that is not part of the command ignored set.

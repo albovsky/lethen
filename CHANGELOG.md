@@ -15,6 +15,7 @@
 - Xcode projects that use file system synchronized groups are parsed faster: the group tree is walked once per project instead of three times per target.
 - The repository has a precision corpus: `corpus/projects.json` pins Alamofire, swift-nio, and Wikipedia iOS, `corpus/scan.sh` scans one at its pinned commit, and `corpus/diff.sh` compares the result with the findings committed under `corpus/expected/`, so an analysis change shows exactly which findings it adds or removes on real code. The nightly `Precision corpus` CI job scans every project and fails on any unadjudicated difference. `docs/validation/precision-corpus.md` publishes the adjudicated sample and the precision scorecard.
 - Every result has a confidence, `certain` or `likely`. It is `likely` when the declaration is accessible from Objective-C without `--retain-objc-accessible` or `--retain-objc-annotated`, or when its name appears in a string literal in the scanned sources, such as a selector string. JSON output has a `confidence` key, CSV output ends with a `Confidence` column, and every format lists `certain` results first. Confidence does not change what is reported or what a baseline filters.
+- JSON results have a `reason`, one sentence on why the declaration is reported, such as `no references in the scanned modules` or `referenced only from 2 unused declarations`. Text formats append `[likely: <why>]` to `likely` results, and `lethen explain` prints the confidence of every reported declaration.
 
 ##### Bug Fixes
 

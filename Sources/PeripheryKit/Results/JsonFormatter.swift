@@ -29,6 +29,7 @@ final class JsonFormatter: OutputFormatter {
                 "ids": result.declaration.usrs.sorted(),
                 "hints": [describe(result.annotation)],
                 "location": locationDescription(location),
+                "reason": result.reason,
             ]
             jsonObject.append(object)
 
@@ -45,6 +46,7 @@ final class JsonFormatter: OutputFormatter {
                         "ids": [ref.usr],
                         "hints": [redundantConformanceHint(with: inherited)],
                         "location": locationDescription(ref.location),
+                        "reason": "conforms to a protocol that is never used as a type",
                     ]
                     jsonObject.append(object)
                 }

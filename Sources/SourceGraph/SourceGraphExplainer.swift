@@ -70,10 +70,26 @@ public struct SourceGraphExplainer {
         } else {
             lines.append("Reported as unused.")
             lines += unusedReasons(for: declaration)
+            lines += hints(for: declaration)
+            lines.append(confidenceLine(for: declaration))
+            return lines
         }
 
-        lines += hints(for: declaration)
+        let hintLines = hints(for: declaration)
+        lines += hintLines
+        if !hintLines.isEmpty {
+            lines.append(confidenceLine(for: declaration))
+        }
         return lines
+    }
+
+    private func confidenceLine(for declaration: Declaration) -> String {
+        switch graph.assessConfidence(of: declaration).reason {
+        case let reason?:
+            "Confidence: likely, because \(reason). Check by hand before removing it."
+        case nil:
+            "Confidence: certain."
+        }
     }
 
     private func retentionSource(of declaration: Declaration) -> String {
