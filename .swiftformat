@@ -1,6 +1,7 @@
 --swiftversion 6.0
 
 --exclude **/.build/
+--exclude .corpus/
 --exclude Tests/Fixtures/
 --exclude Tests/AccessibilityTests/AccessibilityProject/
 --exclude Tests/XcodeTests/UIKitProject/

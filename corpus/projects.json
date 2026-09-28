@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Alamofire",
+    "url": "https://github.com/Alamofire/Alamofire.git",
+    "commit": "bda9ed57d72988a3a2ada33d824583541f86eac6",
+    "kind": "spm",
+    "arguments": ["--retain-public"]
+  },
+  {
+    "name": "swift-nio",
+    "url": "https://github.com/apple/swift-nio.git",
+    "commit": "feaf4ac57e27e411e83e88ee2f9b1789ddf08d0b",
+    "kind": "spm",
+    "arguments": ["--retain-public"]
+  }
+]

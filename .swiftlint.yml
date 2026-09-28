@@ -1,5 +1,6 @@
 excluded:
   - "**/.build"
+  - .corpus
   - Tests/Fixtures
   - Tests/AccessibilityTests/AccessibilityProject
   - Tests/XcodeTests/UIKitProject
