@@ -4,13 +4,32 @@
     "url": "https://github.com/Alamofire/Alamofire.git",
     "commit": "bda9ed57d72988a3a2ada33d824583541f86eac6",
     "kind": "spm",
-    "arguments": ["--retain-public"]
+    "arguments": [
+      "--retain-public"
+    ]
   },
   {
     "name": "swift-nio",
     "url": "https://github.com/apple/swift-nio.git",
     "commit": "feaf4ac57e27e411e83e88ee2f9b1789ddf08d0b",
     "kind": "spm",
-    "arguments": ["--retain-public"]
+    "arguments": [
+      "--retain-public"
+    ]
+  },
+  {
+    "name": "wikipedia-ios",
+    "url": "https://github.com/wikimedia/wikipedia-ios.git",
+    "commit": "599e4a634b8f24f324c9def932b75f03d57b87e7",
+    "kind": "xcode",
+    "arguments": [
+      "--project",
+      "Wikipedia.xcodeproj",
+      "--schemes",
+      "Wikipedia",
+      "--",
+      "-destination",
+      "generic/platform=iOS Simulator"
+    ]
   }
 ]
