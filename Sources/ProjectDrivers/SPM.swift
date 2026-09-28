@@ -161,6 +161,13 @@ public enum SPM {
             })
         }
 
+        /// Whether the index store the build with these arguments writes exists.
+        func hasIndexStore(additionalArguments: [String]) throws -> Bool {
+            let store = try SPMIndexStoreLocator.indexStorePath(binPath: binaryDirectory(additionalArguments: additionalArguments))
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: store.string, isDirectory: &isDirectory) && isDirectory.boolValue
+        }
+
         public func indexStorePath(additionalArguments: [String]) throws -> FilePath {
             let binary = try binaryDirectory(additionalArguments: additionalArguments)
             let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)

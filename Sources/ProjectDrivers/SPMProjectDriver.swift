@@ -16,6 +16,14 @@ public final class SPMProjectDriver {
             throw LethenError.usageError("The --schemes option has no effect with Swift Package Manager projects.")
         }
 
+        let unknown = configuration.configurations.filter { !["debug", "release"].contains($0) }
+        if !unknown.isEmpty {
+            throw LethenError.usageError("--configurations accepts 'debug' and 'release' for Swift packages, not \(unknown.joined(separator: ", ")).")
+        }
+        if !configuration.configurations.isEmpty, configuration.buildArguments.contains(where: { $0 == "-c" || $0 == "--configuration" || $0.hasPrefix("--configuration=") }) {
+            throw LethenError.usageError("--configurations already selects the build configuration; remove -c/--configuration from the build arguments.")
+        }
+
         let pkg = SPM.Package(configuration: configuration, shell: shell, logger: logger)
         self.init(pkg: pkg, configuration: configuration, logger: logger)
     }
@@ -31,6 +39,7 @@ extension SPMProjectDriver: ProjectDriver {
     public func build() throws {
         if !configuration.skipBuild {
             if configuration.cleanBuild {
+                // `swift package clean` removes every configuration's products, so once is enough.
                 try pkg.clean(additionalArguments: configuration.buildArguments)
             }
 
@@ -40,7 +49,15 @@ extension SPMProjectDriver: ProjectDriver {
             }
 
             try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
-                try pkg.build(additionalArguments: configuration.buildArguments, onOutputLine: onOutputLine)
+                for arguments in buildArgumentSets {
+                    try pkg.build(additionalArguments: arguments, onOutputLine: onOutputLine)
+                }
+                // A build that cannot reuse its tree runs `swift package clean`, which also removes the
+                // products of the configurations built before it. Build those again; with their products
+                // gone, they cannot clean in turn.
+                for arguments in buildArgumentSets.dropLast() where try !pkg.hasIndexStore(additionalArguments: arguments) {
+                    try pkg.build(additionalArguments: arguments, onOutputLine: onOutputLine)
+                }
             }
         }
     }
@@ -49,7 +66,7 @@ extension SPMProjectDriver: ProjectDriver {
         let indexStorePaths: Set<FilePath> = if !configuration.indexStorePath.isEmpty {
             Set(configuration.indexStorePath)
         } else {
-            try [pkg.indexStorePath(additionalArguments: configuration.buildArguments)]
+            try Set(buildArgumentSets.map { try pkg.indexStorePath(additionalArguments: $0) })
         }
 
         // Load package description once and reuse it
@@ -74,6 +91,13 @@ extension SPMProjectDriver: ProjectDriver {
     }
 
     // MARK: - Private
+
+    /// One argument set per configuration, or the plain build arguments.
+    private var buildArgumentSets: [[String]] {
+        configuration.configurations.isEmpty
+            ? [configuration.buildArguments]
+            : configuration.configurations.map { configuration.buildArguments + ["-c", $0] }
+    }
 
     private func testTargetNames(from description: PackageDescription) -> Set<String> {
         description.targets.filter(\.isTestTarget).mapSet(\.name)

@@ -38,6 +38,9 @@ public final class Configuration {
     @Setting(key: "build_arguments", defaultValue: [])
     public var buildArguments: [String]
 
+    @Setting(key: "configurations", defaultValue: [])
+    public var configurations: [String]
+
     @Setting(key: "xcode_list_arguments", defaultValue: [])
     public var xcodeListArguments: [String]
 
@@ -234,7 +237,7 @@ public final class Configuration {
         $disableUnusedImportAnalysis, $superfluousIgnoreComments, $retainUnusedImportedModules,
         $externalEncodableProtocols, $externalCodableProtocols, $externalTestCaseClasses, $verbose, $quiet, $color,
         $disableUpdateCheck, $strict, $stats, $indexStorePath,
-        $skipBuild, $skipSchemesValidation, $cleanBuild, $buildArguments, $xcodeListArguments, $relativeResults,
+        $skipBuild, $skipSchemesValidation, $cleanBuild, $buildArguments, $configurations, $xcodeListArguments, $relativeResults,
         $jsonPackageManifestPath, $retainCodableProperties, $retainEncodableProperties, $retainEquatableProperties,
         $retainHashableProperties, $baseline, $writeBaseline,
         $writeResults, $genericProjectConfig, $bazel, $bazelFilter, $bazelQuery, $bazelIndexStore, $bazelCheckVisibility,

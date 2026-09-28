@@ -58,6 +58,20 @@ final class ScanCommandConfigurationTest: XCTestCase {
         }
     }
 
+    func testConfigurationsAreRejectedOutsideSwiftPackages() throws {
+        let configuration = Configuration()
+        configuration.configurations = ["debug", "release"]
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+        for kind in [ProjectKind.bazel, .generic(genericProjectConfig: FilePath("generic.json"))] {
+            let project = Project(kind: kind, configuration: configuration, shell: ShellImpl(logger: logger), logger: logger)
+            XCTAssertThrowsError(try project.driver()) { error in
+                guard case let LethenError.usageError(message) = error else { return XCTFail("\(kind): \(error)") }
+
+                XCTAssertTrue(message.contains("--configurations"), message)
+            }
+        }
+    }
+
     func testNoColorForcesNeverOverColorOption() throws {
         let configuration = try makeConfiguration(["--color", "always", "--no-color"])
         XCTAssertEqual(configuration.color, .never)
