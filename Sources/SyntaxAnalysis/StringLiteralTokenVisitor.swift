@@ -1,8 +1,10 @@
 import SwiftSyntax
 
-/// Collects the identifier-like words of every string literal in a file. A declaration whose name
-/// is such a word may be looked up dynamically (selectors, `NSClassFromString`, key paths in
-/// strings), which lowers Lethen's confidence that it is unused.
+/// Collects the identifiers of every string literal shaped like a symbol reference: a selector
+/// (`"handleTap:"`), a qualified name (`"Module.ClassName"`), a key path (`"user.name"`), or a bare
+/// identifier. A declaration with such a name may be looked up dynamically (`NSSelectorFromString`,
+/// `NSClassFromString`, key-value coding), which lowers Lethen's confidence that it is unused.
+/// Literals with spaces or interpolation are prose, such as log messages, and are skipped.
 public final class StringLiteralTokenVisitor: SyntaxVisitor {
     public private(set) var tokens: Set<String> = []
 
@@ -11,30 +13,36 @@ public final class StringLiteralTokenVisitor: SyntaxVisitor {
     }
 
     override public func visit(_ node: StringLiteralExprSyntax) -> SyntaxVisitorContinueKind {
+        var text = ""
         for segment in node.segments {
-            guard case let .stringSegment(text) = segment else { continue }
+            guard case let .stringSegment(segment) = segment else { return .visitChildren }
 
-            tokens.formUnion(Self.identifiers(in: text.content.text))
+            text += segment.content.text
+        }
+        if let identifiers = Self.symbolIdentifiers(in: text) {
+            tokens.formUnion(identifiers)
         }
         return .visitChildren
     }
 
-    static func identifiers(in text: String) -> [String] {
+    /// The identifiers of a symbol-shaped string, or nil when the string is not one.
+    static func symbolIdentifiers(in text: String) -> [String]? {
         var identifiers: [String] = []
         var current = ""
 
         for character in text {
-            let isStart = character.isLetter || character == "_"
-            if isStart || (!current.isEmpty && character.isNumber) {
+            if character.isLetter || character == "_" || (!current.isEmpty && character.isNumber) {
                 current.append(character)
-            } else if !current.isEmpty {
+            } else if character == "." || character == ":", !current.isEmpty {
                 identifiers.append(current)
                 current = ""
+            } else {
+                return nil
             }
         }
         if !current.isEmpty {
             identifiers.append(current)
         }
-        return identifiers
+        return identifiers.isEmpty ? nil : identifiers
     }
 }

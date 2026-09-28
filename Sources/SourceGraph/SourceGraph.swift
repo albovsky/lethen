@@ -58,12 +58,20 @@ public final class SourceGraph {
             return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot see references made from Objective-C")
         }
 
-        if literalTokens.contains(Self.baseName(of: declaration.name)) {
+        if Self.dynamicallyNamedKinds.contains(declaration.kind), literalTokens.contains(Self.baseName(of: declaration.name)) {
             return .init(confidence: .likely, reason: "its name appears in a string literal")
         }
 
         return .init(confidence: .certain, reason: nil)
     }
+
+    /// Kinds a runtime lookup by name can reach: types, methods, properties, and enum cases. Not
+    /// parameters, locals, imports, or extensions.
+    private static let dynamicallyNamedKinds: Set<Declaration.Kind> = [
+        .class, .struct, .enum, .protocol, .enumelement,
+        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic,
+        .varClass, .varGlobal, .varInstance, .varStatic,
+    ]
 
     /// The name without argument labels: `load(from:)` becomes `load`.
     public static func baseName(of name: String) -> String {

@@ -1942,6 +1942,12 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertConfidence(.functionMethodInstance("namedInSelectorString()"), .likely)
                 self.assertNotReferenced(.functionMethodInstance("notNamedAnywhere()"))
                 self.assertConfidence(.functionMethodInstance("notNamedAnywhere()"), .certain)
+                self.assertNotReferenced(.functionMethodInstance("namedInProse()"))
+                self.assertConfidence(.functionMethodInstance("namedInProse()"), .certain)
+                self.assertReferenced(.functionMethodInstance("use(namedParameter:)")) {
+                    // A parameter cannot be looked up by name at run time.
+                    self.assertConfidence(.varParameter("namedParameter"), .certain)
+                }
             }
         }
     }

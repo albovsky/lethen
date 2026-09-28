@@ -186,7 +186,7 @@ report_exclude:
 
 Each result is a declaration (class, struct, enum, protocol, function, property, initializer, typealias, and so on) with one hint. Only the outermost unused declaration is reported: an unused class is one result, not one per member.
 
-Every result also has a confidence. It is `likely` when a dynamic feature could reach the declaration without a reference Lethen can see: the declaration is accessible from Objective-C and neither `--retain-objc-accessible` nor `--retain-objc-annotated` is set, or its name (without argument labels) appears as a word in a string literal anywhere in the scanned sources, as in a selector string or `NSClassFromString("Name")`. Otherwise it is `certain`. Confidence never changes what is reported or what a baseline filters; results are listed with `certain` ones first, in location order within each tier.
+Every result also has a confidence. It is `likely` when a dynamic feature could reach the declaration without a reference Lethen can see: the declaration is accessible from Objective-C and neither `--retain-objc-accessible` nor `--retain-objc-annotated` is set, or it is a type, method, property, or enum case whose name (without argument labels) appears in a string literal shaped like a symbol reference anywhere in the scanned sources: a selector such as `"handleTap:"`, a name such as `"MyApp.Store"` for `NSClassFromString`, or a key path such as `"user.name"`. Literals with spaces or interpolation, such as log messages, do not count, and parameters and imports are never `likely` for this reason. Otherwise it is `certain`. Confidence never changes what is reported or what a baseline filters; results are listed with `certain` ones first, in location order within each tier.
 
 ### Unused declarations
 
