@@ -1,0 +1,112 @@
+name: Action smoke
+# Runs the repository's GitHub Action (action.yml) as a user would, on Linux and macOS,
+# against Tests/ActionSmokeProject, whose one unused function is the only expected result.
+# Pull requests that touch the action, its scripts, the release tooling, or the smoke
+# package run it twice per platform: built from the pull request (`version: source`) and
+# with the latest release (`version: latest`). The nightly schedule runs the latest release,
+# and a manual run takes any version. The jobs are not part of Required checks.
+on:
+  pull_request:
+    paths:
+      - action.yml
+      - .github/scripts/action-*.sh
+      - .github/scripts/release-*.sh
+      - .github/workflows/action-smoke.yml
+      - .github/workflows/release*.yml
+      - Tests/ActionSmokeProject/**
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The action's version input (a release version, latest, or source)
+        required: true
+        default: latest
+        type: string
+permissions: {}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+jobs:
+  smoke:
+    name: Action smoke
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [Linux, macOS]
+        version: ${{ fromJSON(github.event_name == 'pull_request' && '["source", "latest"]' || format('["{0}"]', inputs.version || 'latest')) }}
+        include:
+          # Lethen on Linux needs Swift 6.3 or later on PATH, which the hosted image lacks.
+          - os: Linux
+            runs-on: ubuntu-24.04
+            container: swift:6.4
+          - os: macOS
+            runs-on: macos-26
+    runs-on: ${{ matrix.runs-on }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      EXPECTED_ANNOTATION: "::warning file=Tests/ActionSmokeProject/Sources/ActionSmoke/main.swift,line=2,col=6,title=unused::Unused function 'unusedFunction()'"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install curl
+        if: matrix.os == 'Linux'
+        run: |
+          if ! command -v curl > /dev/null; then
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl > /dev/null
+          fi
+      - name: Scan without strict
+        id: report
+        uses: ./
+        with:
+          version: ${{ matrix.version }}
+          working-directory: Tests/ActionSmokeProject
+          strict: false
+      - name: Check the annotation and outputs
+        shell: bash
+        env:
+          COUNT: ${{ steps.report.outputs.count }}
+          RESULTS_FILE: ${{ steps.report.outputs.results-file }}
+        run: |
+          set -euo pipefail
+          test "$COUNT" = 1 || { echo "::error::count is '$COUNT', expected 1"; exit 1; }
+          cat "$RESULTS_FILE"
+          test "$(cat "$RESULTS_FILE")" = "$EXPECTED_ANNOTATION" \
+            || { echo "::error::The results file does not hold exactly the expected annotation"; exit 1; }
+      - name: Scan with strict
+        id: strict
+        continue-on-error: true
+        uses: ./
+        with:
+          version: ${{ matrix.version }}
+          working-directory: Tests/ActionSmokeProject
+      - name: Check that the strict scan failed
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.strict.outcome }}
+          COUNT: ${{ steps.strict.outputs.count }}
+        run: |
+          test "$OUTCOME" = failure || { echo "::error::The strict scan's outcome is '$OUTCOME', expected failure"; exit 1; }
+          test "$COUNT" = 1 || { echo "::error::count is '$COUNT', expected 1"; exit 1; }
+      - name: Scan with a baseline
+        id: baseline
+        uses: ./
+        with:
+          version: ${{ matrix.version }}
+          working-directory: Tests/ActionSmokeProject
+          baseline: baseline.json
+          format: json
+      - name: Check that the baseline hid the result
+        shell: bash
+        env:
+          COUNT: ${{ steps.baseline.outputs.count }}
+          RESULTS_FILE: ${{ steps.baseline.outputs.results-file }}
+        run: |
+          test "$COUNT" = 0 || { echo "::error::count is '$COUNT', expected 0"; exit 1; }
+          case "$RESULTS_FILE" in
+            *.json) ;;
+            *) echo "::error::The json results file is $RESULTS_FILE"; exit 1 ;;
+          esac

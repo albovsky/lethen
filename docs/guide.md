@@ -331,15 +331,43 @@ lethen scan --skip-build --index-store-path "$DERIVED_DATA/Index.noindex/DataSto
 
 ### GitHub Actions
 
+The repository is also a GitHub Action. It installs the release binary for the runner, verifies it against the release's `SHA256SUMS`, caches it in the runner's tool cache, and runs the scan with annotations on the pull request's changed lines:
+
+```yaml
+- uses: actions/checkout@v7
+- name: Scan for unused code
+  uses: albovsky/lethen@<version>
+  with:
+    baseline: baseline.json
+```
+
+The action is part of every release after 3.9.0; pin the release tag, or a commit, and `version` defaults to the Lethen release with that tag. Its inputs:
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `version` | the action's own version | A release version, `latest` for the newest stable release, or `source` to build the action's checkout of Lethen |
+| `args` | none | Further `lethen scan` arguments with shell quoting, such as `--schemes App --targets App` |
+| `working-directory` | `.` | Where to scan from; annotations still point at files from the repository root |
+| `baseline` | none | A baseline file, relative to the working directory |
+| `strict` | `true` | Fail the step when any result is reported |
+| `format` | `github-actions` | The output format |
+| `min-confidence` | the scan's default | `certain` fails the check only on `certain` results and leaves `likely` ones, such as declarations reachable from Objective-C or named in a string literal, to a local scan |
+
+The `count` output is the number of results after the baseline and confidence filters, and `results-file` is the path of the results in the chosen format, for example to upload as an artifact. The scan always runs with `--relative-results --disable-update-check`, and settings from `.periphery.yml` still apply.
+
+macOS release binaries are Apple silicon only, so use an Apple silicon runner such as `macos-26`. On Linux the release binary needs a Swift 6.3 or later toolchain on `PATH`, which it also uses to build the project; the action checks for `swift` but does not install it, so run the job in a container such as `swift:6.4` or install Swift in an earlier step.
+
+A baseline takes two steps: run `lethen scan --write-baseline baseline.json` once locally and commit the file, then pass it as `baseline`, so pull requests fail only on new results.
+
+Without the action, run the command yourself:
+
 ```yaml
 - name: Scan for unused code
   run: |
     lethen scan --format github-actions --relative-results --baseline baseline.json --strict --disable-update-check
 ```
 
-Add `--min-confidence certain` to fail the check only on `certain` results and leave `likely` ones, such as declarations reachable from Objective-C or named in a string literal, to a local scan.
-
-Annotations appear on the pull request's changed lines. Pass `--disable-update-check` in CI; the optional update check otherwise contacts GitHub's releases API once per scan and can be disabled permanently with `disable_update_check: true` in the configuration file.
+Add `--min-confidence certain` to fail only on `certain` results. Pass `--disable-update-check` in CI; the optional update check otherwise contacts GitHub's releases API once per scan and can be disabled permanently with `disable_update_check: true` in the configuration file.
 
 ### GitLab
 
