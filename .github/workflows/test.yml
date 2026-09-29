@@ -350,6 +350,11 @@ jobs:
       - name: Summarize precision
         if: always()
         run: python3 corpus/precision.py --markdown --stdout >> "$GITHUB_STEP_SUMMARY"
+      # A sampled finding without a verdict fails the job the way unadjudicated drift does, so
+      # the published figure never covers only part of the sample.
+      - name: Require a verdict for every sampled finding
+        if: always()
+        run: python3 corpus/precision.py --check
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

@@ -3,6 +3,17 @@
   "sample_rate": 0.01015,
   "adjudications": [
     {
+      "path": "WMF Framework/ActionButton.swift",
+      "line": 3,
+      "column": 7,
+      "kind": "class",
+      "name": "ActionButton",
+      "verdict": "TP",
+      "note": "The name occurs only at its declaration and its `Themeable` extension (ActionButton.swift:38): no Swift or Objective-C reference, no subclass, and no `customClass=\"ActionButton\"` in any storyboard or xib. The pbxproj only lists the file in three targets' Sources.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "WMF Framework/ArticleSummary.swift",
       "line": 26,
       "column": 9,
@@ -25,6 +36,39 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-30"
+    },
+    {
+      "path": "WMF Framework/CacheItem+CoreDataProperties.swift",
+      "line": 17,
+      "column": 27,
+      "kind": "var.instance",
+      "name": "mustHaveCacheGroups",
+      "verdict": "TP",
+      "note": "The `@NSManaged` accessor for the `CacheItem.mustHaveCacheGroups` relationship is never read. The only other occurrences are the Core Data models (Cache 2.xcdatamodel, NewCache.xcdatamodel) and the mapping model, which use the relationship by name at runtime and do not need the Swift accessor, and the uncalled generated `addToMustHaveCacheGroups`/`removeFromMustHaveCacheGroups` accessors (:41-51). Caveat: this is regenerable Core Data boilerplate; the model relationship stays.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "WMF Framework/Localization/WMFLocalizationWrapper.swift",
+      "line": 22,
+      "column": 29,
+      "kind": "var.static",
+      "name": "relatedPagesTitle",
+      "verdict": "FP",
+      "note": "Objective-C reads this `@objc static` property as `[WMFCommonStringsWrapper relatedPagesTitle]` at WMFContentGroup+WMFFeedContentDisplaying.m:18.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "WMF Framework/MWKDataStore+LegacyPageViews.swift",
+      "line": 60,
+      "column": 17,
+      "kind": "function.method.instance",
+      "name": "getLegacyPageViews(from:to:needsLatLong:)",
+      "verdict": "TP",
+      "note": "This witnesses `LegacyPageViewsDataDelegate.getLegacyPageViews` (WMFYearInReviewDataController.swift:784), which is called only at YearInReviewLocationSlideDataController.swift:30. That delegate comes only from `populateYearInReviewReportData` (WMFYearInReviewDataController.swift:459), which no app code calls, and nothing passes `MWKDataStore` as that delegate (only WMFDataTests stubs do). Caveat: the `LegacyPageViewsDataDelegate` conformance (MWKDataStore+LegacyPageViews.swift:59) must be removed with it.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "WMF Framework/PermanentlyPersistableURLCache.swift",
@@ -61,6 +105,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-25"
+    },
+    {
+      "path": "WMF Framework/Theme.swift",
+      "line": 54,
+      "column": 22,
+      "kind": "var.static",
+      "name": "wmf_red_600",
+      "verdict": "FP",
+      "note": "Objective-C calls this `@objc static` property as `[UIColor wmf_red_600]` at WMFSettingsMenuItem.m:45, 85 and 177.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "WMF Framework/TimelineView.swift",
@@ -100,6 +155,17 @@
       "reference": "wikipedia-ios-6"
     },
     {
+      "path": "WMFComponents/Sources/WMFComponents/Components/Activity Tab/WMFActivityTabViewModel.swift",
+      "line": 89,
+      "column": 20,
+      "kind": "var.instance",
+      "name": "calloutCloseButtonAccesibilityHint",
+      "verdict": "TP",
+      "note": "`LocalizedStrings.calloutCloseButtonAccesibilityHint` is set only in the init (:153), from the one call site at WMFAppViewController+Extensions.swift:1227, and nothing in WMFComponents or elsewhere reads it. `LocalizedStrings` is a plain struct, not Codable. Caveat: the init parameter and the call-site argument must be removed with it.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "WMFComponents/Sources/WMFComponents/Components/Activity Tab/WMFTopViewedEditsView.swift",
       "line": 7,
       "column": 25,
@@ -134,6 +200,17 @@
       "adjudicated_on": "2026-09-28",
       "lethen_commit": "1fec976",
       "reference": "enum-case-14"
+    },
+    {
+      "path": "WMFComponents/Sources/WMFComponents/Components/Editors/Common Views/Input Views/WMFEditorInputView.swift",
+      "line": 380,
+      "column": 32,
+      "kind": "var.parameter",
+      "name": "sender",
+      "verdict": "FP",
+      "note": "`close(_:)` is a target-action method registered as `#selector(close(_:))` at WMFEditorInputView.swift:82, so the `sender` parameter is part of the selector signature.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "WMFComponents/Sources/WMFComponents/Components/Shared/Buttons/WMFMediumButton.swift",
@@ -484,6 +561,17 @@
       "reference": "enum-case-42"
     },
     {
+      "path": "WMFData/Sources/WMFData/Data Controllers/Article Tabs/WMFArticleTabsDataController.swift",
+      "line": 175,
+      "column": 17,
+      "kind": "var.instance",
+      "name": "isBeforeAssignmentEndDate",
+      "verdict": "TP",
+      "note": "The only read is at :213 inside `assignExperimentV2IfNeeded()` (:208), which has no caller anywhere in the checkout (rg finds only its declaration). This is transitive dead code: the property is dead together with that method.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "WMFData/Sources/WMFData/Data Controllers/Settings/WMFSettingsDataController.swift",
       "line": 89,
       "column": 29,
@@ -494,6 +582,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-7"
+    },
+    {
+      "path": "WMFData/Sources/WMFData/Data Controllers/Shared/WMFRandomDataController.swift",
+      "line": 98,
+      "column": 16,
+      "kind": "var.instance",
+      "name": "pageid",
+      "verdict": "TP",
+      "note": "`WMFRandomArticle.pageid` is set only by decoding and the init (:119), and no app, WMFData or WMFComponents source reads it. Caveat: WMFDataTests asserts it (WMFRandomDataControllerTests.swift:51), and WMFDataTests and WMFComponentsTests pass `pageid:` to the init, but those test plans are not built by the scheme. Removing the non-optional property also stops decoding from requiring the `pageid` key.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "WMFData/Sources/WMFData/Data Controllers/Year In Review/Slide Data Controllers/WMFYearInReviewMostReadCategoriesSlideDataController.swift",
@@ -508,6 +607,17 @@
       "reference": "wikipedia-ios-22"
     },
     {
+      "path": "WMFData/Sources/WMFData/Data Controllers/Year In Review/Slide Data Controllers/WMFYearInReviewSaveCountSlideDataController.swift",
+      "line": 8,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "id",
+      "verdict": "TP",
+      "note": "The property is read only in this class's `makeCDSlide` (:40). Like the other slide controllers, that runs only from `populateYearInReviewReportData` (WMFYearInReviewDataController.swift:477, :543), which no app code calls, and the `YearInReviewSlideDataControllerProtocol.id` requirement is never read through the protocol. Caveat: this is transitive dead code, the requirement (WMFYearInReviewSlideDataControllerProtocol.swift:11) has to go too, and WMFDataTests reads it (YearInReviewSlideDataControllersTests.swift:58) but is not in the scheme's test plan.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "WMFData/Sources/WMFData/Models/GlobalUserInfo/GlobalUserInfoResponse.swift",
       "line": 17,
       "column": 9,
@@ -520,6 +630,17 @@
       "reference": "wikipedia-ios-27"
     },
     {
+      "path": "WMFData/Sources/WMFData/Models/Image Recommendations/WMFImageRecommendationAPIResponse.swift",
+      "line": 60,
+      "column": 13,
+      "kind": "var.instance",
+      "name": "sectionTitle",
+      "verdict": "TP",
+      "note": "`ImageSuggestion.sectionTitle` is optional and is set only by decoding. The one consumer, `getImageSuggestionData` (WMFGrowthTasksDataController.swift:146-151), copies the other fields but not this one. The internal response type is only decoded (`performDecodableGET`, :76) and never encoded, so removing the field changes nothing.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "WMFData/Sources/WMFDataMocks/WMFMockGrowthTasksService.swift",
       "line": 2,
       "column": 1,
@@ -530,6 +651,28 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-2"
+    },
+    {
+      "path": "WMFTestKitchen/Sources/WMFTestKitchen/Config/StreamConfig.swift",
+      "line": 4,
+      "column": 16,
+      "kind": "var.instance",
+      "name": "streamName",
+      "verdict": "TP",
+      "note": "The stored property is set only by synthesized decoding (the `\"stream\"` key). App code (EventPlatformClient.swift:384-391, TestKitchenClient.swift:57-58) looks configs up by dictionary key, never reads `streamName`, and never encodes `StreamConfig`. Caveat: only WMFTestKitchenTests asserts it (WMFTestKitchenTests.swift:22, :42), outside the scheme, and removing it stops decoding from requiring `stream`.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Wikipedia/Code/Advanced Settings/InsertMediaImageSizeSettingsViewController.swift",
+      "line": 5,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "title",
+      "verdict": "TP",
+      "note": "The requirement of the fileprivate `ViewModel` protocol is never read through the protocol. `cellForRowAt` downcasts each element and reads `title` on the concrete `ImageSizeViewModel`/`MeasureViewModel` (:138, :147). Dropping the requirement leaves both stored properties and the reads intact.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Wikipedia/Code/ArticleCacheDBWriter.swift",
@@ -556,6 +699,17 @@
       "reference": "enum-case-45"
     },
     {
+      "path": "Wikipedia/Code/ArticleToolbarController.swift",
+      "line": 20,
+      "column": 27,
+      "kind": "var.parameter",
+      "name": "controller",
+      "verdict": "TP",
+      "note": "This is a requirement of the internal, non-`@objc` `ArticleToolbarHandling`. The only conformer's witness, `editArticle(from:)` at ArticleViewController+ArticleToolbarHandling.swift:111, calls `showEditorForFullSource()` and ignores the sender. Caveat: the parameter can only be removed together with the requirement and the call at ArticleToolbarController.swift:269.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Wikipedia/Code/BatchEditSelectView.swift",
       "line": 100,
       "column": 25,
@@ -566,6 +720,17 @@
       "adjudicated_on": "2026-09-28",
       "lethen_commit": "1fec976",
       "reference": "enum-case-46"
+    },
+    {
+      "path": "Wikipedia/Code/ClientErrorFunnel.swift",
+      "line": 53,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "logEvent(message:)",
+      "verdict": "TP",
+      "note": "This internal, non-`@objc` method has no caller: rg `logEvent(message` finds only the declaration, and no Objective-C code uses `WMFClientErrorFunnel` beyond the Swift declaration. Other code calls only `logHTTPError(info:)` (Session.swift:389, :744, WMFAppViewController+Extensions.swift:822).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Wikipedia/Code/CollectionViewHeader.swift",
@@ -604,6 +769,17 @@
       "reference": "wikipedia-ios-11"
     },
     {
+      "path": "Wikipedia/Code/ColumnarCollectionViewController.swift",
+      "line": 355,
+      "column": 32,
+      "kind": "var.parameter",
+      "name": "collectionView",
+      "verdict": "TP",
+      "note": "This witnesses `ColumnarCollectionViewLayoutDelegate.collectionView(_:estimatedHeightForFooterInSection:forColumnWidth:)` (WMF Framework/ColumnarCollectionViewLayout.swift:4), a non-`@objc` protocol of the app's own framework. No subclass overrides the method, and the only other conformer (ExploreCardViewController.swift:559) also ignores `collectionView`. Caveat: the parameter can only be removed together with the requirement, both witnesses and the call at ColumnarCollectionViewLayoutInfo.swift:50.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Wikipedia/Code/DiffListContextViewModel.swift",
       "line": 204,
       "column": 171,
@@ -629,6 +805,17 @@
     },
     {
       "path": "Wikipedia/Code/DonateFunnel.swift",
+      "line": 478,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "logYearInReviewDidTapNext(slideLoggingID:)",
+      "verdict": "TP",
+      "note": "The only caller is the `YearInReviewCoordinator` witness of `WMFYearInReviewLoggingDelegate.logYearInReviewDidTapNext` (YearInReviewCoordinator.swift:169-170). That requirement is invoked only from `WMFYearInReviewViewModel.tappedNext()` (WMFYearInReviewViewModel.swift:110-112), which no app or WMFComponents source calls; only WMFComponentsTests do (WMFYearInReviewViewModelTests.swift:120 etc.), and those are not built by the scheme. Caveat: this is transitive dead code.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Wikipedia/Code/DonateFunnel.swift",
       "line": 565,
       "column": 65,
       "kind": "var.parameter",
@@ -638,6 +825,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-29"
+    },
+    {
+      "path": "Wikipedia/Code/ExploreCardViewController.swift",
+      "line": 559,
+      "column": 27,
+      "kind": "var.parameter",
+      "name": "collectionView",
+      "verdict": "TP",
+      "note": "This witness of the non-`@objc` `ColumnarCollectionViewLayoutDelegate` footer-estimate requirement (ColumnarCollectionViewLayout.swift:4) returns a constant. The only other implementation (ColumnarCollectionViewController.swift:355, not overridden) also ignores `collectionView`. Caveat: acting requires changing the requirement, both witnesses and the call at ColumnarCollectionViewLayoutInfo.swift:50 together.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Wikipedia/Code/ExploreViewController.swift",
@@ -686,6 +884,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-4"
+    },
+    {
+      "path": "Wikipedia/Code/NSDate+WMFPOTDTitle.m",
+      "line": 2,
+      "column": 1,
+      "kind": "module",
+      "name": "WMF",
+      "verdict": "FP",
+      "note": "This is an Objective-C file that uses the imported module: `@import WMF.NSDateFormatter_WMFExtensions` supplies `+[NSDateFormatter wmf_englishHyphenatedYearMonthDayFormatter]` (declared in NSDateFormatter+WMFExtensions.h:55, part of WMF.h), which is called at NSDate+WMFPOTDTitle.m:13. Lethen does not see Objective-C uses.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Wikipedia/Code/NotificationsCenterCommonViewModel+ActionExtensions.swift",
@@ -759,6 +968,17 @@
       "adjudicated_on": "2026-09-28",
       "lethen_commit": "1fec976",
       "reference": "enum-case-52"
+    },
+    {
+      "path": "Wikipedia/Code/ReadingListsController.swift",
+      "line": 497,
+      "column": 22,
+      "kind": "var.instance",
+      "name": "maxListsPerUser",
+      "verdict": "FP",
+      "note": "Objective-C sets this `@objc public` property at MWKDataStore.m:951 (`self.readingListsController.maxListsPerUser = ...`, from the reading-lists config at :949), and the setter persists the value to the view context (:503-507). The getter is unread, but the property cannot be removed.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Wikipedia/Code/ReadingListsViewController.swift",
@@ -857,6 +1077,39 @@
       "reference": "enum-case-56"
     },
     {
+      "path": "Wikipedia/Code/WMFAppViewController+Extensions.swift",
+      "line": 129,
+      "column": 18,
+      "kind": "function.method.instance",
+      "name": "presentVariantAlert(for:remainingCodes:completion:)",
+      "verdict": "FP",
+      "note": "Called from `presentLanguageVariantAlerts(completion:)` (WMFAppViewController+Extensions.swift:124), which `resumeApp(_:)` calls (WMFAppViewController.swift:980) on the launch path that starts at SceneDelegate.swift:64 inside the `#else` of `#if TEST`; the scanned Test configuration defines `TEST`, so the whole chain is compiled out (the class of wikipedia-ios-2, 7, 14).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Wikipedia/Code/WMFAppViewController+Extensions.swift",
+      "line": 694,
+      "column": 16,
+      "kind": "function.method.instance",
+      "name": "setupWMFDataCoreDataStore()",
+      "verdict": "FP",
+      "note": "Called from `migrateIfNecessary()` (WMFAppViewController.swift:915) on the launch path from `launchApp(in:waitToResumeApp:)`, whose only caller is SceneDelegate.swift:64 inside the `#else` of `#if TEST`, compiled out of the scanned Test configuration (the class of wikipedia-ios-2, 7, 14).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Wikipedia/Code/WMFAppViewController+Extensions.swift",
+      "line": 724,
+      "column": 18,
+      "kind": "function.method.instance",
+      "name": "migrateSavedArticleInfoWithBackgroundTask()",
+      "verdict": "FP",
+      "note": "Called from `setupWMFDataCoreDataStore()` (WMFAppViewController+Extensions.swift:705), which the launch path calls (WMFAppViewController.swift:915); that path starts at SceneDelegate.swift:64 inside the `#else` of `#if TEST`, compiled out of the scanned Test configuration (the class of wikipedia-ios-2, 7, 14).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Wikipedia/Code/WMFAppViewController.swift",
       "line": 819,
       "column": 18,
@@ -867,6 +1120,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-14"
+    },
+    {
+      "path": "Wikipedia/Code/WMFAppViewController.swift",
+      "line": 1814,
+      "column": 18,
+      "kind": "function.method.instance",
+      "name": "updatePrimaryWikiHasTempAccountsStatusIfNecessary()",
+      "verdict": "FP",
+      "note": "Called from `performTasksThatShouldOccurAfterBecomeActiveAndResume()` (WMFAppViewController.swift:479), reached from `finishResumingApp()` (:1073) on the launch path that starts at SceneDelegate.swift:64 inside the `#else` of `#if TEST`, compiled out of the scanned Test configuration (the class of wikipedia-ios-2, 7, 14).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Wikipedia/Code/WMFPasswordResetter.swift",

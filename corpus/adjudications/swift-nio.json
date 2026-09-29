@@ -104,6 +104,17 @@
     },
     {
       "path": "Sources/NIOFS/Internal/System Calls/Mocking.swift",
+      "line": 177,
+      "column": 14,
+      "kind": "var.global",
+      "name": "forceWindowsPaths",
+      "verdict": "TP",
+      "note": "Internal global `forceWindowsPaths` (Mocking.swift:177-183) is never read on any branch: grep finds only this declaration, the identical _NIOFileSystem copy, and the separate `MockingDriver.forceWindowsPaths` static (:159) that it wraps, which is what any mocking code would name.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Sources/NIOFS/Internal/System Calls/Mocking.swift",
       "line": 314,
       "column": 15,
       "kind": "function.free",
@@ -139,6 +150,17 @@
       "reference": "enum-case-8"
     },
     {
+      "path": "Sources/NIOPerformanceTester/RunIfActiveBenchmark.swift",
+      "line": 22,
+      "column": 17,
+      "kind": "var.instance",
+      "name": "loop",
+      "verdict": "TP",
+      "note": "Private `RunIfActiveBenchmark.loop` is never assigned or read: `setUp()` and `run()` use a local `eventLoop` from `MultiThreadedEventLoopGroup.singleton.any()` (RunIfActiveBenchmark.swift:41, :61) instead.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Sources/NIOPosix/BSDSocketAPICommon.swift",
       "line": 42,
       "column": 10,
@@ -149,6 +171,39 @@
       "adjudicated_on": "2026-09-28",
       "lethen_commit": "1fec976",
       "reference": "enum-case-9"
+    },
+    {
+      "path": "Sources/NIOPosix/BSDSocketAPIPosix.swift",
+      "line": 221,
+      "column": 17,
+      "kind": "function.method.static",
+      "name": "pwrite(socket:pointer:size:offset:)",
+      "verdict": "TP",
+      "note": "No `NIOBSDSocket.pwrite(socket:...)` call exists on any platform; `NonBlockingFileIO.swift:557/564` call `Windows.pwrite`/`Posix.pwrite(descriptor:...)` directly. It witnesses `_BSDSocketProtocol`'s requirement (BSDSocketAPICommon.swift:321, conformance :357), so acting on it means dropping the requirement and the Windows witness (BSDSocketAPIWindows.swift:556) too, as with swift-nio-19.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Sources/NIOPosix/DatagramVectorReadManager.swift",
+      "line": 35,
+      "column": 10,
+      "kind": "enum",
+      "name": "ReadResult",
+      "verdict": "FP",
+      "note": "Platform-conditional use: `DatagramVectorReadManager.ReadResult` is the return type of `readFromSocket`/`buildMessages` (DatagramVectorReadManager.swift:112, :181), whose only caller is `vectorReadFromSocket()` under `#if os(Linux) || os(FreeBSD) || os(Android)` (SocketChannel.swift:862-876, closure typed `-> DatagramVectorReadManager.ReadResult`).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Sources/NIOPosix/IO.swift",
+      "line": 42,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "map(_:)",
+      "verdict": "FP",
+      "note": "Windows-only use: `NonBlockingFileIO.swift:578` calls `result.map { ssize_t($0) }` on the `IOResult<Int>` from `Posix.write` inside `#if os(Windows)`, which is inactive on the macOS scan.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Sources/NIOPosix/PendingWritesManager.swift",
@@ -163,6 +218,28 @@
       "reference": "swift-nio-11"
     },
     {
+      "path": "Sources/NIOPosix/PipePair.swift",
+      "line": 162,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "recvmsg(pointer:storage:storageLen:controlBytes:)",
+      "verdict": "TP",
+      "note": "`PipePair.recvmsg` just throws `_operationUnsupported` and is never called: the only `.recvmsg(pointer:...)` call (SocketChannel.swift:819) is on `DatagramChannel`'s concrete `Socket`, and `BaseStreamSocketChannel` never calls it generically. It witnesses `SocketProtocol` (SocketProtocols.swift:58), so the requirement must go too (cf. swift-nio-19).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Sources/NIOPosix/PipePair.swift",
+      "line": 184,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "recvmmsg(msgs:)",
+      "verdict": "TP",
+      "note": "`PipePair.recvmmsg` just throws and is never called: the only `.recvmmsg(msgs:)` call (DatagramVectorReadManager.swift:150) is on a concrete `Socket`, and nothing calls it through `SocketProtocol`. Removing it needs the `SocketProtocol` requirement (SocketProtocols.swift:74) removed too (cf. swift-nio-19).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Sources/NIOPosix/SelectableChannel.swift",
       "line": 27,
       "column": 20,
@@ -173,6 +250,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "swift-nio-23"
+    },
+    {
+      "path": "Sources/NIOPosix/SelectorKqueue.swift",
+      "line": 32,
+      "column": 16,
+      "kind": "var.static",
+      "name": "_none",
+      "verdict": "TP",
+      "note": "Private `KQueueEventFilterSet._none` (Darwin/OpenBSD-only file) is never used: the `._none` at SelectorKqueue.swift:182/306/334 all have type `SelectorEventSet` (`oldInterested ?? ._none`, `var selectorEvent: SelectorEventSet`), resolving to SelectorGeneric.swift:77.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Sources/NIOPosix/ThreadPosix.swift",
@@ -235,6 +323,28 @@
       "reference": "swift-nio-10"
     },
     {
+      "path": "Sources/_NIOFileSystem/Internal/System Calls/Syscall.swift",
+      "line": 484,
+      "column": 20,
+      "kind": "var.static",
+      "name": "logical",
+      "verdict": "TP",
+      "note": "`FTSOpenOptions.logical` has no use anywhere in the checkout (grep finds only this declaration and the identical NIOFS copy); callers use `.noChangeDir`/`.physical`.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Sources/_NIOFileSystem/Internal/Utilities.swift",
+      "line": 18,
+      "column": 22,
+      "kind": "class",
+      "name": "Ref",
+      "verdict": "TP",
+      "note": "`@usableFromInline internal final class Ref` has no use in _NIOFileSystem (no `@inlinable` code or other code names it; grep finds only :18 and the `Sendable` extension at :28, plus the unrelated NIOFS copy), and no test target imports _NIOFileSystem.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Tests/NIOCoreTests/ByteBufferTest.swift",
       "line": 3448,
       "column": 63,
@@ -272,6 +382,17 @@
       "reference": "swift-nio-8"
     },
     {
+      "path": "Tests/NIOCoreTests/XCTest+Extensions.swift",
+      "line": 72,
+      "column": 6,
+      "kind": "function.free",
+      "name": "withTemporaryFile(content:_:)",
+      "verdict": "FP",
+      "note": "Linux-only use: called 15 times from Tests/NIOCoreTests/LinuxTest.swift (e.g. :29-30, :54, :179), all inside `#if os(Linux) || os(Android)` blocks (:20), which are inactive on the macOS scan.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Tests/NIOFSIntegrationTests/FileSystemTests.swift",
       "line": 924,
       "column": 9,
@@ -282,6 +403,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "swift-nio-9"
+    },
+    {
+      "path": "Tests/NIOFSIntegrationTests/FileSystemTests.swift",
+      "line": 991,
+      "column": 9,
+      "kind": "var.parameter",
+      "name": "line",
+      "verdict": "TP",
+      "note": "Idiomatic but unused: the private `testCopyCancelledPartWayThrough(_:_:_:triggerCancel:line:)` overload (FileSystemTests.swift:986-1053) never reads `line`, and none of its callers (:950, :957, :977) passes `line:`.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Tests/NIOFSIntegrationTests/FileSystemTests.swift",
@@ -320,6 +452,50 @@
       "reference": "swift-nio-5"
     },
     {
+      "path": "Tests/NIOHTTP1Tests/TestUtils.swift",
+      "line": 61,
+      "column": 6,
+      "kind": "function.free",
+      "name": "withPipe(_:)",
+      "verdict": "TP",
+      "note": "The sync `withPipe` is called only from `withCrossConnectedPipeChannels` (NIOHTTP1Tests/TestUtils.swift:852-853), which is itself dead (only caller `forEachCrossConnectedStreamChannelPair` :896, reached only from the uncalled `forEachActiveChannelType` :691).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/NIOHTTP1Tests/TestUtils.swift",
+      "line": 499,
+      "column": 6,
+      "kind": "function.free",
+      "name": "assertSuccess(_:file:line:)",
+      "verdict": "TP",
+      "note": "NIOHTTP1Tests' module-local `assertSuccess` has no call site in NIOHTTP1Tests (grep finds only the declaration at TestUtils.swift:499); the NIOPosixTests copy is a separate module.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/NIOHTTP1Tests/TestUtils.swift",
+      "line": 510,
+      "column": 13,
+      "kind": "class",
+      "name": "FulfillOnFirstEventHandler",
+      "verdict": "TP",
+      "note": "Only instantiated in `withCrossConnectedSockAddrChannels` (NIOHTTP1Tests/TestUtils.swift:772), which is reachable only via `withCrossConnectedTCPChannels`/`...UnixDomainSocketChannels` -> `forEachCrossConnectedStreamChannelPair` (:895-897) -> `forEachActiveChannelType` (:691), and `forEachActiveChannelType` has no caller in NIOHTTP1Tests: a dead copy of the NIOPosixTests helpers.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/NIOHTTP1Tests/TestUtils.swift",
+      "line": 828,
+      "column": 6,
+      "kind": "function.free",
+      "name": "withCrossConnectedPipeChannels(forceSeparateEventLoops:file:line:_:)",
+      "verdict": "TP",
+      "note": "Only caller is `forEachCrossConnectedStreamChannelPair` (NIOHTTP1Tests/TestUtils.swift:896), whose only caller `forEachActiveChannelType` (:691) is never called in NIOHTTP1Tests; the NIOPosixTests copy is a separate module.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Tests/NIOPosixTests/CodecTest.swift",
       "line": 63,
       "column": 19,
@@ -342,6 +518,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "swift-nio-20"
+    },
+    {
+      "path": "Tests/NIOPosixTests/StreamChannelsTest.swift",
+      "line": 1224,
+      "column": 5,
+      "kind": "var.parameter",
+      "name": "line",
+      "verdict": "TP",
+      "note": "Private `assertNoSelectorChanges(fd:selector:file:line:)` (StreamChannelsTest.swift:1220-1268) reads `line` in none of its kqueue/epoll/io_uring `#if` branches, and its only caller (:635) doesn't pass it.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Tests/NIOPosixTests/SyscallAbstractionLayer.swift",
@@ -381,6 +568,28 @@
     },
     {
       "path": "Tests/NIOPosixTests/SyscallAbstractionLayer.swift",
+      "line": 758,
+      "column": 9,
+      "kind": "var.parameter",
+      "name": "file",
+      "verdict": "TP",
+      "note": "Idiomatic but unused: `SALContext.makeBoundServerSocketChannel(localAddress:file:line:)` (:756-794, a struct extension method) never reads `file`; callers in SALChannelTests.swift (:385, :461, :768, :850) don't pass it.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/NIOPosixTests/SyscallAbstractionLayer.swift",
+      "line": 759,
+      "column": 9,
+      "kind": "var.parameter",
+      "name": "line",
+      "verdict": "TP",
+      "note": "Idiomatic but unused: `SALContext.makeBoundServerSocketChannel(localAddress:file:line:)` (:756-794, a struct extension method, not a witness) never reads `line`; callers in SALChannelTests.swift (:385, :461, :768, :850) don't pass it.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/NIOPosixTests/SyscallAbstractionLayer.swift",
       "line": 1139,
       "column": 10,
       "kind": "function.method.instance",
@@ -404,6 +613,39 @@
       "reference": "swift-nio-30"
     },
     {
+      "path": "Tests/NIOPosixTests/TestUtils.swift",
+      "line": 806,
+      "column": 5,
+      "kind": "var.parameter",
+      "name": "file",
+      "verdict": "TP",
+      "note": "Idiomatic but unused: `withCrossConnectedTCPChannels(forceSeparateEventLoops:file:line:_:)` (TestUtils.swift:803-814) never reads `file` (not forwarded to `withCrossConnectedSockAddrChannels`), and no caller passes `file:`.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/NIOPosixTests/TestUtils.swift",
+      "line": 807,
+      "column": 5,
+      "kind": "var.parameter",
+      "name": "line",
+      "verdict": "TP",
+      "note": "Idiomatic but unused: `withCrossConnectedTCPChannels(forceSeparateEventLoops:file:line:_:)` (TestUtils.swift:803-814) forwards only `forceSeparateEventLoops` and `body`; `line` is never read and no caller passes `line:`.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/NIOPosixTests/TestUtils.swift",
+      "line": 820,
+      "column": 5,
+      "kind": "var.parameter",
+      "name": "line",
+      "verdict": "TP",
+      "note": "Idiomatic but unused: `withCrossConnectedUnixDomainSocketChannels(...file:line:_:)` (TestUtils.swift:816-830) never reads `line` (not forwarded to `withCrossConnectedSockAddrChannels`), and no caller passes `line:`.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Tests/NIOTestUtilsTests/NIOHTTP1TestServerTest.swift",
       "line": 49,
       "column": 5,
@@ -414,6 +656,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "swift-nio-15"
+    },
+    {
+      "path": "Tests/NIOWebSocketTests/WebSocketClientEndToEndTests.swift",
+      "line": 417,
+      "column": 50,
+      "kind": "var.parameter",
+      "name": "opcode",
+      "verdict": "TP",
+      "note": "Private `encodeFrame(dataString:opcode:)` hard-codes `opcode: .binary` (WebSocketClientEndToEndTests.swift:428) and never reads `opcode`, even though the caller at :455 passes `.text`; not a witness or function value.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     }
   ]
 }
