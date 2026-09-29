@@ -426,3 +426,109 @@ swift-nio's tests, because the analysis reads one file's syntax.
 | swift-nio | Sources/NIOTestUtils/ByteToMessageDecoderVerifier.swift:257 | `type: T.Type` | FP |
 
 </details>
+
+### Parameters of retained public API
+
+Alamofire and swift-nio re-scanned on Linux (Swift 6.4.0, `swift-6.4-RELEASE`, x86_64 Ubuntu
+24.04) with Lethen before and after the change, both with the metatype change above: 12 Alamofire
+rows and 55 swift-nio rows removed, none added. One more Alamofire row, `decoder` in
+`WebSocketRequest.swift`, is compiled on Apple platforms only; it is a parameter of a public
+function, removed by the same rule, and dropped from the expectation by inspection. The other
+parameter rows only macOS compiles (swift-nio's `SelectorKqueue.swift`) belong to internal
+functions and stay. Wikipedia iOS was not re-scanned: it is scanned without `--retain-public`,
+and the change applies only to retained public API. The nightly macOS job confirms all three.
+
+Under `--retain-public` (or for a module listed in `--retain-public-targets`), an unused parameter
+is no longer reported when its function, any function in its override chain, or the protocol
+that declares its requirement is retained public API: public or open, and not in an `_spi` group
+listed in `--no-retain-spi`. Removing such a parameter breaks the API, so the finding cannot be
+acted on. This removes the sampled Alamofire-12, 16 and 28 (witnesses of the public
+`Authenticator` requirements) and swift-nio-1 and 28 (`ByteBufferView._failEarlyRangeCheck`,
+public witnesses of a `Collection` requirement), and public API such as `ByteToMessageDecoder`'s
+`decoderAdded(context:)`, deprecated `file:line:` overloads kept for source compatibility,
+`isolation actor: isolated (any Actor)? = #isolation`, and `@_spi(Testing)` helpers that
+`--retain-public` already retains.
+
+The rule costs true positives, as the plan expected. Alamofire-18 and 22 were adjudicated TP:
+`NSLoggingEventMonitor.request(_:didValidateRequest:response:temporaryURL:destinationURL:withResult:)`
+is a stale near-miss of an `EventMonitor` requirement, but it is a public method, so its four
+unused parameters are now hidden with it. `WebSocketRequest.streamDecodable(_:on:using:handler:)`
+ignores its `decoder` argument, a real bug that is now hidden too. Under `--retain-public` the
+functions themselves were already kept, so these findings could only be acted on by breaking
+the API. Scans without `--retain-public` analyze these parameters as before.
+
+<details>
+<summary>Removed rows (68)</summary>
+
+| Project | Location | Parameter | Verdict |
+| --- | --- | --- | --- |
+| Alamofire | Source/Core/WebSocketRequest.swift:420 | `decoder` | TP, now hidden |
+| Alamofire | Source/Features/AuthenticationInterceptor.swift:84 | `credential` | FP |
+| Alamofire | Source/Features/AuthenticationInterceptor.swift:84 | `session` | FP |
+| Alamofire | Source/Features/AuthenticationInterceptor.swift:109 | `urlRequest` | FP |
+| Alamofire | Source/Features/AuthenticationInterceptor.swift:109 | `error` | FP |
+| Alamofire | Tests/AuthenticationInterceptorTests.swift:81 | `credential` | FP |
+| Alamofire | Tests/AuthenticationInterceptorTests.swift:82 | `session` | FP |
+| Alamofire | Tests/AuthenticationInterceptorTests.swift:105 | `urlRequest` | FP |
+| Alamofire | Tests/AuthenticationInterceptorTests.swift:107 | `error` | FP |
+| Alamofire | Tests/NSLoggingEventMonitor.swift:223 | `urlRequest` | TP, now hidden |
+| Alamofire | Tests/NSLoggingEventMonitor.swift:223 | `response` | TP, now hidden |
+| Alamofire | Tests/NSLoggingEventMonitor.swift:223 | `temporaryURL` | TP, now hidden |
+| Alamofire | Tests/NSLoggingEventMonitor.swift:223 | `destinationURL` | TP, now hidden |
+| swift-nio | Sources/NIOCore/AsyncChannel/AsyncChannel.swift:334 | `actor` | FP |
+| swift-nio | Sources/NIOCore/AsyncChannel/AsyncChannel.swift:428 | `actor` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-aux.swift:69 | `as` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-binaryEncodedLengthPrefix.swift:72 | `reservedCapacity` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-views.swift:157 | `index` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-views.swift:157 | `bounds` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-views.swift:160 | `index` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-views.swift:160 | `bounds` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-views.swift:163 | `range` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-views.swift:163 | `bounds` | FP |
+| swift-nio | Sources/NIOCore/ChannelHandlers.swift:30 | `error` | FP |
+| swift-nio | Sources/NIOCore/CircularBuffer.swift:282 | `index` | FP |
+| swift-nio | Sources/NIOCore/CircularBuffer.swift:282 | `bounds` | FP |
+| swift-nio | Sources/NIOCore/CircularBuffer.swift:285 | `index` | FP |
+| swift-nio | Sources/NIOCore/CircularBuffer.swift:285 | `bounds` | FP |
+| swift-nio | Sources/NIOCore/CircularBuffer.swift:288 | `range` | FP |
+| swift-nio | Sources/NIOCore/CircularBuffer.swift:288 | `bounds` | FP |
+| swift-nio | Sources/NIOCore/Codec.swift:187 | `context` | FP |
+| swift-nio | Sources/NIOCore/Codec.swift:193 | `context` | FP |
+| swift-nio | Sources/NIOCore/Codec.swift:221 | `context` | FP |
+| swift-nio | Sources/NIOCore/Codec.swift:224 | `context` | FP |
+| swift-nio | Sources/NIOCore/EventLoop+Deprecated.swift:20 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoop+Deprecated.swift:21 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoop+Deprecated.swift:31 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoop+Deprecated.swift:32 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:20 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:21 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:31 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:32 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:41 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:42 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:51 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:52 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:61 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:62 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:72 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:73 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:83 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:84 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:95 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:96 | `line` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:106 | `file` | FP |
+| swift-nio | Sources/NIOCore/EventLoopFuture+Deprecated.swift:107 | `line` | FP |
+| swift-nio | Sources/NIOFS/FileHandleProtocol.swift:291 | `range` | FP |
+| swift-nio | Sources/NIOFS/FileSystemError+Syscall.swift:1137 | `lastAccessTime` | FP |
+| swift-nio | Sources/NIOFS/FileSystemError+Syscall.swift:1138 | `lastDataModificationTime` | FP |
+| swift-nio | Sources/NIOHTTP1/HTTPDecoder.swift:812 | `context` | FP |
+| swift-nio | Sources/NIOHTTP1/HTTPDecoder.swift:817 | `context` | FP |
+| swift-nio | Sources/NIOPosix/Bootstrap.swift:225 | `timeout` | FP |
+| swift-nio | Sources/NIOPosix/Bootstrap.swift:671 | `cleanupExistingSocketFile` | FP |
+| swift-nio | Sources/NIOPosix/MultiThreadedEventLoopGroup.swift:670 | `actor` | FP |
+| swift-nio | Sources/NIOTestUtils/NIOHTTP1TestServer.swift:478 | `deadline` | FP |
+| swift-nio | Sources/_NIOFileSystem/FileHandleProtocol.swift:291 | `range` | FP |
+| swift-nio | Sources/_NIOFileSystem/FileSystemError+Syscall.swift:1137 | `lastAccessTime` | FP |
+| swift-nio | Sources/_NIOFileSystem/FileSystemError+Syscall.swift:1138 | `lastDataModificationTime` | FP |
+
+</details>

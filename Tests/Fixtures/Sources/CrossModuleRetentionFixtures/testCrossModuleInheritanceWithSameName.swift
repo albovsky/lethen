@@ -13,3 +13,21 @@ class FixtureClass129Retainer {
 
 // Control: public in a module that is not listed, so it is reported.
 public class FixtureClass228Reported {}
+
+// A witness in a target that is not listed of a requirement in a listed target: its unused parameter is retained.
+class FixtureClass236Witness: FixtureProtocol236 {
+    func handle(value: Int, context: String) {
+        print(value)
+    }
+}
+
+// Control: public in a module that is not listed, so its unused parameter is reported.
+public func fixtureFunction236Reported(unused: Int) {}
+
+// periphery:ignore
+class FixtureClass236Retainer {
+    func retain() {
+        _ = FixtureClass236Witness()
+        fixtureFunction236Reported(unused: 0)
+    }
+}

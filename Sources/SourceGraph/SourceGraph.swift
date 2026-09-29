@@ -198,6 +198,23 @@ public final class SourceGraph {
         retainedDeclarations.contains(declaration) || references(to: declaration).contains { $0.kind == .retained }
     }
 
+    /// Whether `PubliclyAccessibleRetainer` retains the declaration: it is public or open, `--retain-public` is set
+    /// or its module is listed in `--retain-public-targets`, and it has no `_spi` group listed in `--no-retain-spi`.
+    public func isRetainedPublicAPI(_ declaration: Declaration) -> Bool {
+        guard declaration.accessibility.value == .public || declaration.accessibility.value == .open else { return false }
+
+        let isRetainedModule = configuration.retainPublic
+            || !declaration.location.file.modules.isDisjoint(with: configuration.retainPublicTargets)
+        guard isRetainedModule else { return false }
+        guard !configuration.noRetainSPI.isEmpty else { return true }
+
+        return !declaration.attributes.contains { attribute in
+            guard attribute.name == "_spi", let group = attribute.arguments else { return false }
+
+            return configuration.noRetainSPI.contains(group)
+        }
+    }
+
     public func add(_ declaration: Declaration) {
         allDeclarations.insert(declaration)
         allDeclarationsByKind[declaration.kind, default: []].insert(declaration)

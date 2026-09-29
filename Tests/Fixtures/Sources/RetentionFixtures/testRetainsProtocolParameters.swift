@@ -1,6 +1,6 @@
 import Foundation
 
-public protocol FixtureProtocol104 {
+protocol FixtureProtocol104 {
     // param1 used in single conformance
     func func1(param1: String, param2: String)
     // Unused
@@ -20,49 +20,63 @@ public protocol FixtureProtocol104 {
 }
 
 extension FixtureProtocol104 {
-    public func func3(param: String) {
+    func func3(param: String) {
         print(param)
     }
 
-    public func func4(param: String) {}
-    public func func4(param: Int) {}
+    func func4(param: String) {}
+    func func4(param: Int) {}
 }
 
 public class FixtureClass104Class1: FixtureProtocol104 {
-    public func func1(param1: String, param2: String) {}
-    public func func2(param: String) {}
+    func func1(param1: String, param2: String) {}
+    func func2(param: String) {}
 
-    public static func func5(param: String) {
+    static func func5(param: String) {
         print(param)
     }
 
-    public func func6(param: String) {}
-    public func func7(_: String) {}
+    func func6(param: String) {}
+    func func7(_: String) {}
 }
 
 public class FixtureClass104Class2: FixtureProtocol104 {
-    public func func1(param1: String, param2: String) {
+    func func1(param1: String, param2: String) {
         print(param1)
     }
 
-    public func func2(param: String) {}
+    func func2(param: String) {}
 
-    public func func4(param: String) {
+    func func4(param: String) {
         print(param)
     }
 
-    public func func4(param: Int) {}
+    func func4(param: Int) {}
 
-    public static func func5(param: String) {
+    static func func5(param: String) {
         print(param)
     }
 
-    public func func6(param: String) {}
-    public func func7(_: String) {}
+    func func6(param: String) {}
+    func func7(_: String) {}
 }
 
 public class FixtureClass104Class3: FixtureClass104Class2 {
-    override public func func6(param: String) {
+    override func func6(param: String) {
         print(param)
     }
+}
+
+// The protocol and its witnesses are internal, so their parameters follow the conformance rules rather than the rule
+// for retained public API. Calling each requirement keeps every witness in use.
+public func fixtureFunction104Use() {
+    let conformance: FixtureProtocol104 = FixtureClass104Class1()
+    conformance.func1(param1: "", param2: "")
+    conformance.func2(param: "")
+    conformance.func3(param: "")
+    conformance.func4(param: "")
+    conformance.func4(param: 0)
+    type(of: conformance).func5(param: "")
+    conformance.func6(param: "")
+    conformance.func7("")
 }
