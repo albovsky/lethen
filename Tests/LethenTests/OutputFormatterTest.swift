@@ -88,7 +88,7 @@ final class OutputFormatterTest: XCTestCase {
     }
 
     func testJsonFormatsWriteKeysInSortedOrder() throws {
-        XCTAssertEqual(try keys(format(.json, [unusedClass()])), ["accessibility", "attributes", "confidence", "hints", "ids", "kind", "location", "modifiers", "modules", "name", "reason"])
+        XCTAssertEqual(try keys(format(.json, [unusedClass()])), ["accessibility", "attributes", "confidence", "confidenceReason", "hints", "ids", "kind", "location", "modifiers", "modules", "name", "reason"])
         XCTAssertEqual(try keys(format(.gitlabCodeQuality, [unusedClass()], relativeResults: true)), ["check_name", "description", "fingerprint", "location", "lines", "begin", "path", "severity"])
         XCTAssertEqual(try keys(format(.codeclimate, [unusedClass()], relativeResults: true)), ["description", "fingerprint", "location", "lines", "begin", "path", "severity"])
     }
@@ -104,6 +104,23 @@ final class OutputFormatterTest: XCTestCase {
         let likely = ScanResult(declaration: declaration(name: "Foo", kind: .class, usr: "s:Foo"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
         let objects = try json(format(.json, [unusedClass(), likely]))
         XCTAssertEqual(objects.map { $0["confidence"] as? String }, ["certain", "likely"])
+    }
+
+    func testJsonFormatIncludesConfidenceReason() throws {
+        let likely = ScanResult(declaration: declaration(name: "Foo", kind: .class, usr: "s:Foo"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        let output = try format(.json, [unusedClass(named: "Bar", usr: "s:Bar"), likely])
+        let objects = try json(output)
+        XCTAssertEqual(objects.map { $0["confidenceReason"] as? String }, [nil, "its name appears in a string literal"])
+        XCTAssertTrue(objects[0]["confidenceReason"] is NSNull, "A certain result carries the key with a null value")
+        XCTAssertTrue(output.contains(#""confidenceReason" : null"#), output)
+    }
+
+    func testJsonFormatGivesRedundantConformancesTheProtocolsConfidenceReason() throws {
+        let redundant = redundantProtocol(inherited: [])
+        let likely = ScanResult(declaration: redundant.declaration, annotation: redundant.annotation, confidence: .likely, confidenceReason: "it is accessible from Objective-C, and Lethen cannot see references made from Objective-C")
+        let objects = try json(format(.json, [likely]))
+        XCTAssertGreaterThan(objects.count, 1)
+        XCTAssertEqual(Set(objects.map { $0["confidenceReason"] as? String }), [likely.confidenceReason])
     }
 
     func testCsvFormatEndsWithConfidenceColumn() throws {
@@ -203,7 +220,7 @@ final class OutputFormatterTest: XCTestCase {
 
     /// Object keys in the order they appear in the raw output.
     private func keys(_ text: String) throws -> [String] {
-        let regex = try NSRegularExpression(pattern: #""([a-z_]+)" *:"#)
+        let regex = try NSRegularExpression(pattern: #""([A-Za-z_]+)" *:"#)
         return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
             Range($0.range(at: 1), in: text).map { String(text[$0]) }
         }

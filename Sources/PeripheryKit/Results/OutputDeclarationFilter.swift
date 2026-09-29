@@ -2,6 +2,7 @@ import Configuration
 import FilenameMatcher
 import Foundation
 import Logger
+import SourceGraph
 import SystemPackage
 
 public final class OutputDeclarationFilter {
@@ -37,6 +38,8 @@ public final class OutputDeclarationFilter {
             }
         }
 
+        declarations = filterByConfidence(declarations)
+
         if configuration.reportInclude.isEmpty, configuration.reportExclude.isEmpty {
             return declarations.sorted { ($0.confidence, $0.declaration) < ($1.confidence, $1.declaration) }
         }
@@ -68,5 +71,25 @@ public final class OutputDeclarationFilter {
                 return false
             }
             .sorted { ($0.confidence, $0.declaration) < ($1.confidence, $1.declaration) }
+    }
+
+    // MARK: - Private
+
+    /// Drops results below `--min-confidence` and says on standard error how many it dropped. Runs
+    /// after the baseline, so a baseline still matches `likely` results, and before the report globs.
+    private func filterByConfidence(_ declarations: [ScanResult]) -> [ScanResult] {
+        let minimum = configuration.minConfidence
+        let threshold: Confidence = switch minimum {
+        case .certain: .certain
+        case .likely: .likely
+        }
+        let kept = declarations.filter { $0.confidence <= threshold }
+        let hiddenCount = declarations.count - kept.count
+
+        if hiddenCount > 0 {
+            logger.note("--min-confidence \(minimum.rawValue) hid \(hiddenCount) \(hiddenCount == 1 ? "result" : "results").")
+        }
+
+        return kept
     }
 }
