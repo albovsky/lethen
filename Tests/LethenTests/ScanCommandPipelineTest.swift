@@ -99,15 +99,18 @@ final class ScanCommandPipelineTest: XCTestCase {
 
         let standardError = try captureOutput(of: STDERR_FILENO) {
             standardOutput = try captureOutput(of: STDOUT_FILENO) {
-                try run(["--relative-results", "--disable-update-check"])
+                try run(["--disable-update-check"])
             }
         }
 
+        // Absolute paths: on macOS the temporary directory is reached through a symlink, so paths
+        // relative to the resolved working directory climb out of it.
+        let file = projectRoot.appending("Sources/A.swift").string
         XCTAssertEqual(standardOutput, """
 
-        Sources/A.swift:2:1: warning: Unused class 'Foo'
-        Sources/A.swift:3:1: warning: Unused class 'Baz'
-        Sources/A.swift:1:1: warning: Unused class 'Bar'
+        \(file):2:1: warning: Unused class 'Foo'
+        \(file):3:1: warning: Unused class 'Baz'
+        \(file):1:1: warning: Unused class 'Bar'
 
         """)
         XCTAssertEqual(standardError, "3 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.\n")
@@ -201,11 +204,11 @@ final class ScanCommandPipelineTest: XCTestCase {
         StubScan.results = [result("Foo", line: 1, reason: "no references in the scanned modules")]
 
         let standardOutput = try captureOutput(of: STDOUT_FILENO) {
-            try run(["--relative-results", "--disable-update-check", "--verbose"])
+            try run(["--disable-update-check", "--verbose"])
         }
 
         XCTAssertTrue(standardOutput.contains("""
-        Sources/A.swift:1:1: warning: Unused class 'Foo'
+        \(projectRoot.appending("Sources/A.swift").string):1:1: warning: Unused class 'Foo'
             reason: no references in the scanned modules
 
         """), standardOutput)
