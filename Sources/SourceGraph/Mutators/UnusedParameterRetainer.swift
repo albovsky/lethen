@@ -83,6 +83,11 @@ final class UnusedParameterRetainer: SourceGraphMutator {
             } else if didResolveBase {
                 if hasExternalRelatedReferences(from: baseFunctionDecl) {
                     retainAllUnusedParams(inMethods: allFunctionDecls)
+                } else if isWitnessOfHiddenExternalRequirement(baseFunctionDecl) {
+                    retainFixedSignatureParams(
+                        inFunctions: allFunctionDecls,
+                        as: "a parameter of a witness of a hidden standard library requirement"
+                    )
                 } else {
                     let params = allFunctionDecls.flatMap(\.unusedParameters)
                     retain(params: params, usedIn: allFunctionDecls)
@@ -95,6 +100,40 @@ final class UnusedParameterRetainer: SourceGraphMutator {
 
     private func hasExternalRelatedReferences(from decl: Declaration) -> Bool {
         decl.relatedEquivalentReferences.contains { graph.isExternal($0) }
+    }
+
+    /// Requirements of the standard library that the index hides because their names begin with an underscore, so a
+    /// witness of one records no relation to it. Only requirements with parameters are listed.
+    private static let hiddenExternalRequirementNames: Set<String> = [
+        "_conditionallyBridgeFromObjectiveC(_:result:)", // _ObjectiveCBridgeable
+        "_copyContents(initializing:)", // Sequence
+        "_customContainsEquatableElement(_:)", // Sequence
+        "_customIndexOfEquatableElement(_:)", // Collection
+        "_customLastIndexOfEquatableElement(_:)", // Collection
+        "_customRemoveLast(_:)", // RangeReplaceableCollection
+        "_failEarlyRangeCheck(_:bounds:)", // Collection
+        "_forceBridgeFromObjectiveC(_:result:)", // _ObjectiveCBridgeable
+        "_maskingAdd(_:_:)", // SignedInteger
+        "_maskingSubtract(_:_:)", // SignedInteger
+        "_rawHashValue(seed:)", // Hashable
+        "_step(after:from:by:)", // Strideable
+        "_unconditionallyBridgeFromObjectiveC(_:)", // _ObjectiveCBridgeable
+        "_withUnsafeMutableBufferPointerIfSupported(_:)", // MutableCollection
+        "_writeASCII(_:)", // TextOutputStream
+        "init(_truncatingBits:)", // FixedWidthInteger
+    ]
+
+    /// A witness of a requirement in `hiddenExternalRequirementNames` looks like a plain method, so match it by name on
+    /// a type that conforms, directly or through a refined protocol, to an external protocol.
+    private func isWitnessOfHiddenExternalRequirement(_ decl: Declaration) -> Bool {
+        guard Self.hiddenExternalRequirementNames.contains(decl.name),
+              decl.relatedEquivalentReferences.isEmpty,
+              let parentDecl = decl.parent
+        else { return false }
+
+        return graph.inheritedTypeReferences(of: parentDecl).contains {
+            $0.declarationKind == .protocol && graph.isExternal($0)
+        }
     }
 
     /// Functions only: parameters of closures stored in public properties keep the rules for internal code.

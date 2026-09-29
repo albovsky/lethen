@@ -1803,6 +1803,60 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testRetainsExternalWitnessParameters() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct238")) {
+                self.assertReferenced(.functionMethodInstance("_failEarlyRangeCheck(_:bounds:)")) {
+                    self.assertReferenced(.varParameter("index"))
+                    self.assertReferenced(.varParameter("bounds"))
+                }
+                self.assertReferenced(.functionMethodInstance("distance(from:to:)")) {
+                    self.assertReferenced(.varParameter("start"))
+                    self.assertReferenced(.varParameter("end"))
+                }
+                self.assertReferenced(.functionMethodInstance("helper(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("_helper(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+            }
+            assertReferenced(.struct("FixtureStruct238Extension")) {
+                self.assertReferenced(.functionMethodInstance("_failEarlyRangeCheck(_:bounds:)")) {
+                    self.assertReferenced(.varParameter("index"))
+                    self.assertReferenced(.varParameter("bounds"))
+                }
+            }
+            assertReferenced(.struct("FixtureStruct238Refined")) {
+                self.assertReferenced(.functionMethodInstance("_failEarlyRangeCheck(_:bounds:)", line: 50)) {
+                    self.assertReferenced(.varParameter("range"))
+                    self.assertReferenced(.varParameter("bounds"))
+                }
+                self.assertReferenced(.functionMethodInstance("_failEarlyRangeCheck(_:bounds:)", line: 53)) {
+                    self.assertUsedParameter("index")
+                    self.assertUsedParameter("bounds")
+                }
+            }
+            assertReferenced(.struct("FixtureStruct238Hashable")) {
+                self.assertReferenced(.functionMethodInstance("hash(into:)")) {
+                    self.assertReferenced(.varParameter("hasher"))
+                }
+                self.assertReferenced(.functionMethodInstance("_rawHashValue(seed:)")) {
+                    self.assertReferenced(.varParameter("seed"))
+                }
+            }
+            assertReferenced(.struct("FixtureStruct238Internal")) {
+                self.assertReferenced(.functionMethodInstance("internalRequirement(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("_failEarlyRangeCheck(_:bounds:)")) {
+                    self.assertNotReferenced(.varParameter("index"))
+                    self.assertNotReferenced(.varParameter("bounds"))
+                }
+            }
+        }
+    }
+
     func testReportsNoRetainSPIParameters() throws {
         try analyze(retainPublic: true, noRetainSPI: ["Internal"]) {
             assertReferenced(.class("FixtureClass235")) {

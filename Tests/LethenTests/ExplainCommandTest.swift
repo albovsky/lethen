@@ -65,6 +65,12 @@ final class ExplainCommandTest: FixtureSourceGraphTestCase {
         XCTAssertTrue(output.contains("retained by UnusedParameterRetainer, as a parameter of a function referenced as a value"), output)
     }
 
+    func testHiddenExternalWitnessParameterNamesTheRule() throws {
+        let output = try explain("FixtureStruct238._failEarlyRangeCheck.bounds", "--retain-public")
+
+        XCTAssertTrue(output.contains("retained by UnusedParameterRetainer, as a parameter of a witness of a hidden standard library requirement"), output)
+    }
+
     func testUnknownNameIsAUsageError() {
         XCTAssertThrowsError(try explain("noSuchDeclarationAnywhere")) { error in
             guard case let LethenError.usageError(message) = error else {

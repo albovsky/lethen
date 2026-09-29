@@ -590,3 +590,24 @@ signature is not fixed.
 | swift-nio | Tests/NIOCoreTests/ByteBufferTest.swift:3494 | `count` | FP | swift-nio-22, as above. |
 | swift-nio | Tests/NIOPosixTests/CodecTest.swift:35 | `oldSize` | FP | `testDecoderIsNotQuadratic_reallocHook` is passed as `reallocate:` (CodecTest.swift:199). |
 | swift-nio | Tests/NIOPosixTests/HappyEyeballsTest.swift:255 | `family` | FP | `defaultChannelBuilder` is passed by name as a channel builder (HappyEyeballsTest.swift:268); the other uses call it inside closures. |
+
+### Witnesses of hidden standard library requirements
+
+Alamofire and swift-nio re-scanned on Linux (Swift 6.4.0, `swift-6.4-RELEASE`, x86_64 Ubuntu
+24.04) with Lethen before and after the change: no rows added or removed. Wikipedia iOS was not
+re-scanned, because it builds only on macOS and the Mac was offline; none of its expected rows is a
+parameter of a function with one of the listed names, and the change only stops reporting such
+parameters.
+
+The index records no relation from a witness to a requirement of the standard library whose name
+begins with an underscore, such as `Collection._failEarlyRangeCheck(_:bounds:)`, so the witness
+looked like an ordinary method and its parameters were reported even though the protocol fixes
+them. Lethen now matches the standard library's underscored requirements that take parameters by
+name, on a type that conforms, directly or through a refined protocol, to a protocol from another
+module. The swift-nio witnesses that showed the problem (swift-nio-1 and 28) are public and were
+already removed by the retained public API rule. A first version kept every underscored method with
+no recorded relation on such a type; it hid `NIOAsyncChannelHandler._deliverReads(context:)`, a
+private helper that witnesses nothing, because the class conforms to `Sendable`. So the rule is
+limited to the named requirements, and the fixture `testRetainsExternalWitnessParameters` keeps an
+underscored helper, a plain helper, an internal requirement and a near miss on a type with no
+external conformance reported.
