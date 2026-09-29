@@ -116,7 +116,7 @@ use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphe
 
 ### Continuous integration
 
-In a GitHub Actions workflow, the repository itself is the action. From the first release after 3.9.0, `uses: albovsky/lethen@<version>` installs that release's verified binary and annotates unused code on the pull request; `baseline:` limits failures to new results. On Linux the job needs a Swift 6.3 or later toolchain, for example the `swift:6.4` container. The [guide](docs/guide.md#github-actions) lists the inputs and the equivalent `lethen scan` command for other CI systems.
+In a GitHub Actions workflow, the repository itself is the action. From the first release after 3.9.0, `uses: albovsky/lethen@<version>` installs that release's verified binary and annotates unused code on the pull request; `baseline:` limits failures to new results. On Linux the job needs a Swift 6.3 or later toolchain, for example the `swift:6.4-noble` container. The [guide](docs/guide.md#github-actions) lists the inputs and the equivalent `lethen scan` command for other CI systems.
 
 See the [user guide](docs/guide.md) for scanning each project type, what every result means and why declarations are retained, comment commands, baselines, output formats, and continuous integration. The [historical upstream guide](docs/UPSTREAM-README.md) is kept for reference.
 
