@@ -23,6 +23,7 @@
 
 ##### Bug Fixes
 
+- Metatype parameters that select a generic type, such as `_ type: T.Type = T.self` or `as: (T1, T2).Type = (T1, T2).self`, are no longer reported as unused. Such a parameter was already treated as used without a default value, but a default value, a tuple of generic parameters, or a generic parameter of the enclosing type (or of an extended type declared in the same file) was missed. On the precision corpus this removes 16 false positives from Alamofire and 68 from swift-nio. Metatypes of concrete types are still reported.
 - Result builder methods are retained by their base name, so `buildPartialBlock`, a `buildBlock` with several parameters, and labeled overloads such as `buildExpression(_:scale:)` are no longer reported as unused. Methods with those names on a type that is not a `@resultBuilder` are still reported.
 - Property wrapper initializers the compiler calls, `init(wrappedValue:…)` with any further labels and `init(projectedValue:)`, are no longer reported as unused. Other initializers of a property wrapper are still reported.
 - Document classes named by `NSDocumentClass` in an Info.plist's `CFBundleDocumentTypes` are retained, like the principal and scene classes already were, so a document-based app's `NSDocument` subclass is no longer reported as unused.

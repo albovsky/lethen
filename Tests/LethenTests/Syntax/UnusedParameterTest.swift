@@ -79,6 +79,35 @@ final class UnusedParameterTest: XCTestCase {
         assertUsed(label: "param3", name: "param3", in: "myFunc(param1:param2:param3:)")
     }
 
+    func testMetatypeParamWithDefaultValue() {
+        analyze()
+        assertUsed(label: "_", name: "type", in: "decode(_:from:)")
+        assertUsed(label: "_", name: "type", in: "decodeOptional(_:from:)")
+        assertUsed(label: "_", name: "type", in: "decodeIgnoringInput(_:input:)")
+        assertUnused(label: "input", name: "input", in: "decodeIgnoringInput(_:input:)")
+    }
+
+    func testTupleMetatypeParam() {
+        analyze()
+        assertUsed(label: "as", name: "type", in: "read(as:)")
+        assertUsed(label: "as", name: "type", in: "readOptional(as:)")
+    }
+
+    func testMetatypeParamOfEnclosingGeneric() {
+        analyze()
+        assertUsed(label: "_", name: "type", in: "init(_:)")
+        assertUsed(label: "_", name: "type", in: "inner(_:)")
+        assertUsed(label: "_", name: "type", in: "make(_:)")
+    }
+
+    func testConcreteMetatypeParam() {
+        analyze()
+        assertUnused(label: "_", name: "type", in: "concrete(_:)")
+        assertUnused(label: "_", name: "type", in: "unrelated(_:value:)")
+        assertUnused(label: "_", name: "type", in: "protocolMetatype(_:)")
+        assertUnused(label: "_", name: "type", in: "genericArgument(_:value:)")
+    }
+
     func testIgnoredParameter() {
         analyze()
         assertUsed(label: "_", name: "_", in: "myFunc(_:)")
