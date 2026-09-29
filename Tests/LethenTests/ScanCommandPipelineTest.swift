@@ -353,6 +353,143 @@ final class ScanCommandPipelineTest: XCTestCase {
         XCTAssertTrue(StubScan.configurations.isEmpty)
     }
 
+    func testGuidedSetupRetainsPublicForLibraryOnlyPackage() throws {
+        try makePackage()
+        let manifest = try makeManifest(products: ["library", "plugin"])
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            // Decline to save the configuration; nothing else is asked.
+            try run(["--setup", "--disable-update-check", "--format", "json", "--json-package-manifest-path", manifest], input: ["n"])
+        }
+
+        XCTAssertTrue(output.contains("Assuming all 'public' declarations are in use (--retain-public): the package's products are libraries"), output)
+        XCTAssertFalse(output.contains("Assume all 'public' declarations are in use?"), output)
+        XCTAssertTrue(try XCTUnwrap(StubScan.configurations.first).retainPublic)
+    }
+
+    func testGuidedSetupReportsPublicForExecutableOnlyPackage() throws {
+        try makePackage()
+        let manifest = try makeManifest(products: ["executable"])
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            try run(["--setup", "--disable-update-check", "--format", "json", "--json-package-manifest-path", manifest], input: ["n"])
+        }
+
+        XCTAssertTrue(output.contains("Reporting unused 'public' declarations: the package's products are executables"), output)
+        XCTAssertFalse(output.contains("Assume all 'public' declarations are in use?"), output)
+        XCTAssertFalse(try XCTUnwrap(StubScan.configurations.first).retainPublic)
+    }
+
+    func testGuidedSetupAsksAboutPublicForPackageWithLibraryAndExecutable() throws {
+        try makePackage()
+        let manifest = try makeManifest(products: ["library", "executable"])
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            try run(["--setup", "--disable-update-check", "--format", "json", "--json-package-manifest-path", manifest], input: ["n", "n"])
+        }
+
+        XCTAssertTrue(output.contains("Assume all 'public' declarations are in use?"), output)
+        XCTAssertFalse(try XCTUnwrap(StubScan.configurations.first).retainPublic)
+    }
+
+    func testGuidedSetupDoesNotAskAboutPublicWhenRetainPublicIsPassed() throws {
+        try makePackage()
+        let manifest = try makeManifest(products: ["library", "executable"])
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            try run(["--setup", "--retain-public", "--disable-update-check", "--format", "json", "--json-package-manifest-path", manifest], input: ["n"])
+        }
+
+        XCTAssertTrue(output.contains("Assuming all 'public' declarations are in use, as --retain-public was passed"), output)
+        XCTAssertFalse(output.contains("Assume all 'public' declarations are in use?"), output)
+        XCTAssertTrue(try XCTUnwrap(StubScan.configurations.first).retainPublic)
+    }
+
+    func testGuidedSetupForBazelSavesBazelSoTheBareCommandWorks() throws {
+        try "".write(toFile: projectRoot.appending("MODULE.bazel").string, atomically: true, encoding: .utf8)
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            // Continue past the MODULE.bazel snippet, report public declarations, then save.
+            try run(["--setup", "--disable-update-check", "--format", "json"], input: ["", "n", "y"])
+        }
+
+        guard case .bazel = try XCTUnwrap(StubScan.projectKinds.first) else {
+            return XCTFail("Expected a Bazel project, got: \(StubScan.projectKinds)")
+        }
+
+        let saved = try String(contentsOfFile: projectRoot.appending(".periphery.yml").string, encoding: .utf8)
+        XCTAssertTrue(saved.contains("bazel: true"), saved)
+        XCTAssertTrue(output.contains("Executing command:\nlethen scan\n"), output)
+
+        // The saved configuration alone selects Bazel again.
+        let configuration = try ScanCommand.parse(["--project-root", projectRoot.string]).makeConfiguration()
+        XCTAssertTrue(configuration.bazel)
+    }
+
+    func testGuidedSetupForBazelPrintsBazelOptionWithoutSaving() throws {
+        try "".write(toFile: projectRoot.appending("MODULE.bazel").string, atomically: true, encoding: .utf8)
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            // Continue past the MODULE.bazel snippet, report public declarations, then decline to save.
+            try run(["--setup", "--disable-update-check"], input: ["", "n", "n"])
+        }
+
+        XCTAssertTrue(output.contains("Executing command:\nlethen scan --bazel\n"), output)
+        XCTAssertFalse(projectRoot.appending(".periphery.yml").exists)
+    }
+
+    func testNonInteractiveGuidedSetupPrintsCommandInsteadOfAsking() throws {
+        try makePackage()
+        let manifest = try makeManifest(products: ["library"])
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            XCTAssertThrowsError(try runNonInteractive(["--setup", "--disable-update-check", "--json-package-manifest-path", manifest])) { error in
+                guard case let .guidedSetupError(message) = error as? LethenError else {
+                    return XCTFail("Expected a guided setup error, got: \(error)")
+                }
+
+                XCTAssertTrue(message.hasPrefix("The guided setup needs an interactive terminal"), message)
+            }
+        }
+
+        XCTAssertTrue(output.contains("Detected Swift Package project"), output)
+        XCTAssertTrue(output.contains("Assuming all 'public' declarations are in use (--retain-public)"), output)
+        XCTAssertTrue(output.contains("\nlethen scan --retain-public\n"), output)
+        XCTAssertFalse(output.contains("?"), output)
+        XCTAssertTrue(StubScan.configurations.isEmpty)
+        XCTAssertFalse(projectRoot.appending(".periphery.yml").exists)
+    }
+
+    func testNonInteractiveGuidedSetupLeavesUnknownAnswersToTheUser() throws {
+        try makePackage()
+        try "".write(toFile: projectRoot.appending("MODULE.bazel").string, atomically: true, encoding: .utf8)
+        let manifest = try makeManifest(products: ["library", "executable"])
+
+        let output = try captureOutput(of: STDOUT_FILENO) {
+            XCTAssertThrowsError(try runNonInteractive(["--setup", "--disable-update-check", "--json-package-manifest-path", manifest]))
+        }
+
+        XCTAssertTrue(output.contains("Detected Swift Package project"), output)
+        XCTAssertTrue(output.contains("Detected Bazel project"), output)
+        XCTAssertTrue(output.contains("Add --retain-public if the project is a framework or library"), output)
+        XCTAssertTrue(output.contains("\nlethen scan\n"), output)
+        XCTAssertTrue(output.contains("\nlethen scan --bazel\n"), output)
+        XCTAssertFalse(output.contains("snippet"), output)
+        XCTAssertTrue(StubScan.configurations.isEmpty)
+    }
+
+    func testNonInteractiveGuidedSetupWithoutProjectIsAnError() throws {
+        _ = try captureOutput(of: STDOUT_FILENO) {
+            XCTAssertThrowsError(try runNonInteractive(["--setup", "--disable-update-check"])) { error in
+                guard case let .guidedSetupError(message) = error as? LethenError else {
+                    return XCTFail("Expected a guided setup error, got: \(error)")
+                }
+
+                XCTAssertTrue(message.hasPrefix("Failed to identify a project in the current directory"), message)
+            }
+        }
+    }
+
     // MARK: - Private
 
     private final class StubScan: ScanRunning {
@@ -382,6 +519,15 @@ final class ScanCommandPipelineTest: XCTestCase {
         try command.run(scanning: StubScan.self, readInput: { remaining.isEmpty ? nil : remaining.removeFirst() })
     }
 
+    /// Runs with standard input that is not a terminal; the guided setup must not read it.
+    private func runNonInteractive(_ arguments: [String]) throws {
+        let command = try ScanCommand.parse(["--project-root", projectRoot.string] + arguments)
+        try command.run(scanning: StubScan.self, isInteractive: false, readInput: {
+            XCTFail("The non-interactive guided setup read input")
+            return nil
+        })
+    }
+
     private func updateChecker(_ arguments: [String]) throws -> UpdateChecker {
         let configuration = try ScanCommand.parse(["--project-root", projectRoot.string] + arguments).makeConfiguration()
         return UpdateChecker(logger: Logger(quiet: true, verbose: false, colorMode: .never), configuration: configuration)
@@ -389,6 +535,17 @@ final class ScanCommandPipelineTest: XCTestCase {
 
     private func makePackage() throws {
         try "// swift-tools-version:6.0\n".write(toFile: projectRoot.appending("Package.swift").string, atomically: true, encoding: .utf8)
+    }
+
+    /// Writes a package description with one product of each kind, as `swift package describe` reports it.
+    private func makeManifest(products kinds: [String]) throws -> String {
+        let products = kinds.enumerated().map { index, kind in
+            ["name": "Product\(index)", "targets": [], "type": [kind: kind == "library" ? ["automatic"] as Any : NSNull()]] as [String: Any]
+        }
+        let data = try JSONSerialization.data(withJSONObject: ["targets": [], "products": products] as [String: Any])
+        let path = projectRoot.appending("package.json")
+        try data.write(to: path.url)
+        return path.string
     }
 
     private func makeXcodeProject(_ name: String) throws {

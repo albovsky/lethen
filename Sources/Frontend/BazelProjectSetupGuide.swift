@@ -1,3 +1,4 @@
+import Configuration
 import Foundation
 import Logger
 import ProjectDrivers
@@ -5,10 +6,17 @@ import Shared
 import SystemPackage
 
 final class BazelProjectSetupGuide: SetupGuideHelpers, SetupGuide {
-    static func detect(logger: Logger) -> Self? {
+    private let configuration: Configuration
+
+    static func detect(configuration: Configuration, logger: Logger) -> Self? {
         guard BazelProjectDriver.isSupported else { return nil }
 
-        return Self(logger: logger)
+        return Self(configuration: configuration, logger: logger)
+    }
+
+    required init(configuration: Configuration, logger: Logger) {
+        self.configuration = configuration
+        super.init(logger: logger)
     }
 
     var projectKindName: String {
@@ -31,10 +39,17 @@ final class BazelProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         print(logger.colorize("\nEnter to continue when ready ", .bold), terminator: "")
         _ = readInput()
 
+        // A saved configuration must select Bazel too, or the bare 'lethen scan' printed after saving would
+        // look for another project kind.
+        configuration.bazel = true
         return .bazel
     }
 
     var commandLineOptions: [String] {
+        ["--bazel"]
+    }
+
+    var suggestedCommandLineOptions: [String] {
         ["--bazel"]
     }
 }
