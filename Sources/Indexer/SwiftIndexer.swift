@@ -720,6 +720,8 @@ final class SwiftIndexer: Indexer {
             }
 
             var refs = [Reference]()
+            // Only these kinds carry the call role on every call site; a subscript access, for one, has none.
+            let isCall = !Self.callableKinds.contains(kind) || occurrence.roles.contains(.call)
 
             for relation in relations {
                 if !relation.roles.isDisjoint(with: [.baseOf, .calledBy, .containedBy, .extendedBy]) {
@@ -733,6 +735,7 @@ final class SwiftIndexer: Indexer {
                             usr: occurrenceUsr,
                             location: location
                         )
+                        ref.isCall = isCall
                         refs.append(ref)
                         referencesByUsr[referencerUsr, default: []].insert(ref)
                     }
@@ -747,6 +750,7 @@ final class SwiftIndexer: Indexer {
                     usr: occurrenceUsr,
                     location: location
                 )
+                ref.isCall = isCall
                 refs.append(ref)
 
                 // The index store doesn't contain any relations for this reference, save it so that we can attempt
@@ -762,6 +766,18 @@ final class SwiftIndexer: Indexer {
         private func transformLocation(_ input: (line: Int, column: Int)) -> Location? {
             Location(file: sourceFile, line: input.line, column: input.column)
         }
+
+        private static let callableKinds: Set<Declaration.Kind> = [
+            .functionFree,
+            .functionMethodInstance,
+            .functionMethodStatic,
+            .functionMethodClass,
+            .functionConstructor,
+            .functionOperator,
+            .functionOperatorInfix,
+            .functionOperatorPostfix,
+            .functionOperatorPrefix,
+        ]
 
         static func shouldProcessOccurrence(_ occurrence: SymbolOccurrence) -> Bool {
             occurrence.symbol.language == .swift

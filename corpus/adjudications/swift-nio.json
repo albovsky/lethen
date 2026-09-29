@@ -256,7 +256,8 @@
       "note": "`testReserveCapacityLarger_memcpyHook` is passed as a function value (`copy: testReserveCapacityLarger_memcpyHook` at ByteBufferTest.swift:2525 and :2547), so its signature is fixed by `ByteBufferAllocator`'s `copy` function type (Sources/NIOCore/ByteBuffer-core.swift:184).",
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
-      "reference": "swift-nio-22"
+      "reference": "swift-nio-22",
+      "retired": "No longer reported after #67"
     },
     {
       "path": "Tests/NIOCoreTests/XCTest+AsyncAwait.swift",

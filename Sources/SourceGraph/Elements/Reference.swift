@@ -43,6 +43,10 @@ public final class Reference {
     public var role: Role = .unknown
     public var hasGenericValueArguments = false
     public var valueArgumentReferences: Set<Reference> = []
+    /// False only when the index shows a function referenced without being called, such as one passed or assigned as
+    /// a value, whose signature is then fixed by the function type it converts to. References built from anything
+    /// other than index evidence keep the default.
+    public var isCall = true
 
     private let hashValueCache: Int
 
