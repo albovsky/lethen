@@ -190,6 +190,13 @@ Each result is a declaration (class, struct, enum, protocol, function, property,
 
 Every result also has a confidence. It is `likely` when a dynamic feature could reach the declaration without a reference Lethen can see: the declaration is accessible from Objective-C and neither `--retain-objc-accessible` nor `--retain-objc-annotated` is set, or it is a type, method, property, or enum case whose name (without argument labels) appears in a string literal shaped like a symbol reference anywhere in the scanned sources: a selector such as `"handleTap:"`, a name such as `"MyApp.Store"` for `NSClassFromString`, or a key path such as `"user.name"`. Literals with spaces or interpolation, such as log messages, do not count, and parameters and imports are never `likely` for this reason. Otherwise it is `certain`. Confidence never changes what a baseline filters, and it changes what is reported only under `--min-confidence certain` (see [continuous integration](#output-formats-and-continuous-integration)); results are listed with `certain` ones first, in location order within each tier.
 
+The default `xcode` format ends with a summary on standard error, such as ``3 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.`` The baseline hint is left out when `--baseline` or `--write-baseline` is given, `--quiet` suppresses the line, and other formats never print it. `--verbose` adds each result's reason, the sentence JSON gives as `reason`, as an indented line under it:
+
+```
+Sources/Store.swift:12:10: warning: Unused function 'reload()'
+    reason: no references in the scanned modules
+```
+
 ### Unused declarations
 
 The declaration cannot be reached from any entry point. Lethen treats the following as used without being asked, because Swift or a framework reaches them without a visible reference:
@@ -301,7 +308,7 @@ Entries are keyed by the declaration's symbol identifier, so a baselined result 
 
 `--format` selects one of `xcode` (default, readable and Xcode-parseable), `json`, `csv`, `checkstyle`, `codeclimate`, `github-actions`, `github-markdown`, and `gitlab-codequality`. `--write-results path` writes the output to a file as well. `--relative-results` prints paths relative to the current directory and is required by `github-actions`. `--quiet` suppresses progress, and `--strict` makes the exit status 1 when anything is reported.
 
-`--min-confidence certain` reports only `certain` results; the default, `likely`, reports everything. The filter runs after `--baseline` and before `--report-include` and `--report-exclude`, so it also decides what `--strict` counts and what `--write-baseline` records: a baseline written under `--min-confidence certain` leaves `likely` results out, and they reappear in a later scan without the option. A line on standard error, such as `--min-confidence certain hid 3 results.`, says how many results it hid; `--quiet` suppresses it. Set it in the configuration file with `min_confidence: certain`. This is the shape for a CI gate that fails only on results Lethen is sure about:
+`--min-confidence certain` reports only `certain` results; the default, `likely`, reports everything. The filter runs after `--baseline` and before `--report-include` and `--report-exclude`, so it also decides what `--strict` counts and what `--write-baseline` records: a baseline written under `--min-confidence certain` leaves `likely` results out, and they reappear in a later scan without the option. A line on standard error, such as `--min-confidence certain hid 3 results.`, says how many results it hid, and in the `xcode` format the summary line carries it instead; `--quiet` suppresses it. Set it in the configuration file with `min_confidence: certain`. This is the shape for a CI gate that fails only on results Lethen is sure about:
 
 ```sh
 lethen scan --min-confidence certain --strict

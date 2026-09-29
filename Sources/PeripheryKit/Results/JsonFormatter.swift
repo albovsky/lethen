@@ -48,7 +48,7 @@ final class JsonFormatter: OutputFormatter {
                         "ids": [ref.usr],
                         "hints": [redundantConformanceHint(with: inherited)],
                         "location": locationDescription(ref.location),
-                        "reason": "conforms to a protocol that is never used as a type",
+                        "reason": redundantConformanceReason,
                     ]
                     jsonObject.append(object)
                 }
