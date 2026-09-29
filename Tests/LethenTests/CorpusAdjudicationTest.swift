@@ -24,7 +24,6 @@ final class CorpusAdjudicationTest: XCTestCase {
         let note: String
         let adjudicatedOn: String
         let lethenCommit: String
-        let reference: String?
         let retired: String?
 
         var key: String { "\(path):\(line):\(column) \(kind) \(name)" }
