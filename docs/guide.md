@@ -84,7 +84,18 @@ Change to the project directory and run the guided setup:
 lethen scan --setup
 ```
 
-It detects the project type, asks a few questions (schemes, Objective-C, whether public declarations count as used), offers to save the answers to `.periphery.yml`, prints the full command, and runs it. Guided setup needs an interactive terminal; in CI, pass the options directly.
+It detects the project type, asks a few questions (schemes, Objective-C, whether public declarations count as used), offers to save the answers to `.periphery.yml`, prints the full command, and runs it. It skips a question the project already answers: a Swift package whose products are all libraries keeps its public declarations (`--retain-public`), one whose products are all executables reports them, and passing `--retain-public` settles the question too. For Bazel it saves `bazel: true`, so `lethen scan` alone selects Bazel afterwards.
+
+Guided setup asks its questions only on an interactive terminal. When standard input is not one, as in CI or a script, it prints each detected project with the command to run and exits with an error instead of scanning:
+
+```
+* Detected Swift Package project
+* Assuming all 'public' declarations are in use (--retain-public): the package's products are libraries, which other code imports
+* Command to run:
+lethen scan --retain-public
+```
+
+Values only you can choose, such as an Xcode scheme, appear as placeholders like `<scheme>`. In CI, pass the options directly.
 
 Without `--setup`, lethen looks for a project in this order: `--project` (Xcode), `--generic-project-config`, `--bazel`, then what it finds in `--project-root` (the current directory by default): a `Package.swift`, otherwise a single `.xcworkspace` or `.xcodeproj` directly inside it, otherwise a `MODULE.bazel`. Projects in subdirectories, such as `Pods` and example projects, are never picked, and a workspace is preferred over the projects it references. When several candidates remain, or a `MODULE.bazel` sits beside an Xcode project, lethen stops and lists the `--project` or `--bazel` option to pass.
 

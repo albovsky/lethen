@@ -133,6 +133,18 @@ public final class XcodeProjectSetupGuide: SetupGuideHelpers, SetupGuide {
         return options
     }
 
+    public var suggestedCommandLineOptions: [String] {
+        // A workspace is the one that defines the schemes when there is one, as identifyWorkspace assumes.
+        let candidates = workspacePaths.isEmpty ? projectPaths : workspacePaths
+        let project = if candidates.count == 1, let path = candidates.first {
+            "\"\(path.relativeTo(.current).string.withEscapedQuotes)\""
+        } else {
+            "<path>"
+        }
+
+        return ["--project \(project)", "--schemes <scheme>"]
+    }
+
     // MARK: - Private
 
     private func getPodSchemes(in project: XcodeProjectlike) throws -> Set<String> {

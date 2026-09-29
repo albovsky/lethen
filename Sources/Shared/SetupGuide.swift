@@ -5,6 +5,29 @@ public protocol SetupGuide {
     func perform() throws -> ProjectKind
     var commandLineOptions: [String] { get }
     var projectKindName: String { get }
+    /// The options to suggest without asking anything, for a terminal that cannot answer questions.
+    /// Placeholders in angle brackets mark values only the user can choose.
+    var suggestedCommandLineOptions: [String] { get }
+    /// Whether public declarations count as used, when the project itself answers the question.
+    var detectedRetainPublic: DetectedAnswer<Bool>? { get }
+}
+
+public extension SetupGuide {
+    var detectedRetainPublic: DetectedAnswer<Bool>? {
+        nil
+    }
+}
+
+/// An answer the guided setup found in the project, so it does not ask the question.
+public struct DetectedAnswer<Value> {
+    public let value: Value
+    /// Why the project gives this answer, as a clause the guided setup prints after the answer.
+    public let reason: String
+
+    public init(value: Value, reason: String) {
+        self.value = value
+        self.reason = reason
+    }
 }
 
 public enum SetupSelection {

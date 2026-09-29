@@ -219,6 +219,38 @@ public enum SPM {
 
 public struct PackageDescription: Decodable {
     public let targets: [Target]
+    /// The package's products; absent from hand-written manifest JSON that lists only targets.
+    public let products: [PackageProduct]?
+}
+
+public struct PackageProduct: Decodable {
+    public let name: String
+    /// The product type SwiftPM reports, such as `library`, `executable`, `plugin`, or `macro`.
+    public let kind: String
+
+    enum CodingKeys: String, CodingKey {
+        case name, type
+    }
+
+    /// SwiftPM encodes the type as an object with one key, such as `{"library": ["automatic"]}`.
+    private struct TypeKey: CodingKey {
+        let stringValue: String
+        let intValue: Int? = nil
+
+        init(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue _: Int) {
+            nil
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        kind = try container.nestedContainer(keyedBy: TypeKey.self, forKey: .type).allKeys.first?.stringValue ?? ""
+    }
 }
 
 public struct Target: Decodable {
