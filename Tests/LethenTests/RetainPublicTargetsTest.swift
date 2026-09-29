@@ -24,4 +24,29 @@ final class RetainPublicTargetsTest: SPMSourceGraphTestCase {
             self.assertNotReferenced(.class("FixtureClass228Reported"))
         }
     }
+
+    func testRetainsParametersOfPublicAPIOfListedTargetsOnly() {
+        module("CrossModuleRetentionSupportFixtures") {
+            self.assertReferenced(.functionFree("fixtureFunction236(unused:)")) {
+                self.assertReferenced(.varParameter("unused"))
+            }
+            self.assertReferenced(.protocol("FixtureProtocol236")) {
+                self.assertReferenced(.functionMethodInstance("handle(value:context:)")) {
+                    self.assertReferenced(.varParameter("context"))
+                }
+            }
+        }
+
+        module("CrossModuleRetentionFixtures") {
+            self.assertReferenced(.class("FixtureClass236Witness")) {
+                self.assertReferenced(.functionMethodInstance("handle(value:context:)")) {
+                    self.assertUsedParameter("value")
+                    self.assertReferenced(.varParameter("context"))
+                }
+            }
+            self.assertReferenced(.functionFree("fixtureFunction236Reported(unused:)")) {
+                self.assertNotReferenced(.varParameter("unused"))
+            }
+        }
+    }
 }

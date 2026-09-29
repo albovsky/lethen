@@ -28,7 +28,12 @@ final class UnusedParameterRetainer: SourceGraphMutator {
                 let extFuncDecls = relatedFuncDecls.filter { $0.parent?.kind.isExtensionKind ?? false }
                 let conformingDecls = relatedFuncDecls.subtracting(extFuncDecls)
 
-                if conformingDecls.isEmpty {
+                if graph.isRetainedPublicAPI(protoDecl) {
+                    // The requirement is retained public API, so clients outside the scan may call it through any
+                    // conformance, and its signature cannot change without breaking them.
+                    let overrideDecls = conformingDecls.flatMap { graph.allOverrideDeclarations(fromBase: $0) }
+                    retainPublicAPIParams(inFunctions: conformingDecls + overrideDecls + extFuncDecls + [protoFuncDecl])
+                } else if conformingDecls.isEmpty {
                     // This protocol function declaration is not implemented, though it may still be referenced from an
                     // existential type. Leaving the function parameters as unused would put produce awkward results.
                     let allFunctionDecls = extFuncDecls + [protoFuncDecl]
@@ -64,10 +69,11 @@ final class UnusedParameterRetainer: SourceGraphMutator {
             let allFunctionDecls = overrideFunctionDecls + [baseFunctionDecl]
             visitedDecls.formUnion(allFunctionDecls)
 
-            if didResolveBase {
-                if baseFunctionDecl.accessibility.value == .open, configuration.retainPublic {
-                    retainAllUnusedParams(inMethods: allFunctionDecls)
-                } else if hasExternalRelatedReferences(from: baseFunctionDecl) {
+            if allFunctionDecls.contains(where: isRetainedPublicFunction) {
+                // Overrides share one signature, so a retained public function anywhere in the chain fixes it.
+                retainPublicAPIParams(inFunctions: allFunctionDecls)
+            } else if didResolveBase {
+                if hasExternalRelatedReferences(from: baseFunctionDecl) {
                     retainAllUnusedParams(inMethods: allFunctionDecls)
                 } else {
                     let params = allFunctionDecls.flatMap(\.unusedParameters)
@@ -81,6 +87,20 @@ final class UnusedParameterRetainer: SourceGraphMutator {
 
     private func hasExternalRelatedReferences(from decl: Declaration) -> Bool {
         decl.relatedEquivalentReferences.contains { graph.isExternal($0) }
+    }
+
+    /// Functions only: parameters of closures stored in public properties keep the rules for internal code.
+    private func isRetainedPublicFunction(_ decl: Declaration) -> Bool {
+        decl.kind.isFunctionKind && graph.isRetainedPublicAPI(decl)
+    }
+
+    private func retainPublicAPIParams(inFunctions functionDecls: [Declaration]) {
+        let params = Set(functionDecls.flatMap(\.unusedParameters).filter { !graph.isRetained($0) })
+        params.forEach { graph.markRetained($0) }
+
+        if graph.recordsRetentionSources {
+            graph.recordRetentionSource("\(Self.self), as a parameter of retained public API", for: params)
+        }
     }
 
     private func retainAllUnusedParams(inMethods methodDeclarations: [Declaration]) {

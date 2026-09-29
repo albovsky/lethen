@@ -53,6 +53,12 @@ final class ExplainCommandTest: FixtureSourceGraphTestCase {
         XCTAssertTrue(certain.contains("Confidence: certain."), certain)
     }
 
+    func testRetainedPublicAPIParameterNamesTheRule() throws {
+        let output = try explain("FixtureClass234.publicFunc.unused", "--retain-public")
+
+        XCTAssertTrue(output.contains("retained by UnusedParameterRetainer, as a parameter of retained public API"), output)
+    }
+
     func testUnknownNameIsAUsageError() {
         XCTAssertThrowsError(try explain("noSuchDeclarationAnywhere")) { error in
             guard case let LethenError.usageError(message) = error else {

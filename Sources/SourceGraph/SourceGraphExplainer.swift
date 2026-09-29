@@ -62,7 +62,8 @@ public struct SourceGraphExplainer {
         } else if graph.ignoredDeclarations.contains(declaration) {
             let parent = declaration.parent.map { " (\(Self.label($0)) at \($0.location))" } ?? ""
             lines.append("Not reported separately: its enclosing declaration\(parent) is reported instead.")
-        } else if graph.retainedDeclarations.contains(declaration) {
+        } else if graph.retainedDeclarations.contains(declaration) || graph.retentionSources[declaration] != nil {
+            // Members are retained through a reference from their parent, so only a recorded source names the rule.
             lines.append("Used: retained by \(retentionSource(of: declaration)).")
         } else if graph.usedDeclarations.contains(declaration) {
             lines.append("Used, through this chain of references:")
