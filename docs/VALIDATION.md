@@ -63,3 +63,19 @@ that fails to clone, build, or scan, or that yields no findings, fails the run. 
 were generated on 2026-09-26 with Apple Swift 6.4 (swiftlang-6.4.0.34.1) on macOS 27 from Lethen
 at `bc8c5b5`, both scanned with `--retain-public`: Alamofire at `bda9ed5` has 124 findings and
 swift-nio at `feaf4ac` has 434. A second scan of each produced an identical result. Wikipedia iOS at `599e4a6` was added on 2026-09-27 from Lethen `08a45bc`, scanned as an app (`--project Wikipedia.xcodeproj --schemes Wikipedia` for the generic iOS Simulator destination): 3,189 findings in about 3.5 minutes, identical on a second scan. Its build runs `swiftlint --fix` when SwiftLint is installed, which rewrites 14 source files after they are indexed, so `corpus/scan.sh` force-checks out the pinned commit before every scan. The adjudicated sample and the precision scorecard are in [validation/precision-corpus.md](validation/precision-corpus.md).
+
+For an analysis change, per project:
+
+1. `corpus/scan.sh <name>`, then `corpus/diff.sh <name>` to see the rows the change adds and removes.
+2. Adjudicate every changed row (TP, FP or UNSURE with evidence) in a "Corpus diffs by change"
+   section of the scorecard document.
+3. `corpus/accept.sh <name>` records the expectation and lists the sampled findings that need a
+   verdict and the verdicts whose findings are no longer reported.
+4. In `corpus/adjudications/<name>.json`, add an entry for each listed finding
+   (`corpus/sample.py <name> --pending` prints them ready to complete) and add a `retired` note,
+   naming the change, to each verdict whose finding is gone. Never delete a verdict.
+5. `corpus/precision.py --markdown` regenerates the scorecard and the README figure, and
+   `corpus/precision.py --check` passes once the sample is fully adjudicated.
+
+`CorpusAdjudicationTest` fails when an adjudication file is malformed, names a finding that is not
+reported without marking it retired, or when the committed scorecard is out of date.
