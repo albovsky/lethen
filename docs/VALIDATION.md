@@ -78,4 +78,6 @@ For an analysis change, per project:
    `corpus/precision.py --check` passes once the sample is fully adjudicated.
 
 `CorpusAdjudicationTest` fails when an adjudication file is malformed, names a finding that is not
-reported without marking it retired, or when the committed scorecard is out of date.
+reported without marking it retired, or when the committed scorecard is out of date. The nightly
+corpus job publishes the scorecard in its run summary and fails when a sampled finding has no
+verdict (`corpus/precision.py --check`), as it fails on unadjudicated drift.

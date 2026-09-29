@@ -16,6 +16,17 @@
     },
     {
       "path": "Source/Core/RequestTaskMap.swift",
+      "line": 89,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "count",
+      "verdict": "TP",
+      "note": "Internal `RequestTaskMap.count` is read only by `eventCount` (RequestTaskMap.swift:97), itself unused (Alamofire-29); nothing else reads `requestTaskMap.count` (Session.swift and tests only use `isEmpty` and the disassociate methods), and the struct conforms to no protocol.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Source/Core/RequestTaskMap.swift",
       "line": 96,
       "column": 9,
       "kind": "var.instance",
@@ -25,6 +36,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "Alamofire-29"
+    },
+    {
+      "path": "Source/Core/WebSocketRequest.swift",
+      "line": 121,
+      "column": 17,
+      "kind": "var.instance",
+      "name": "end",
+      "verdict": "TP",
+      "note": "Internal `let` on public `PingResponse.Pong`, set only via the memberwise init at WebSocketRequest.swift:297 and never read in Source or Tests; same as sibling `latency` (Alamofire-7), and not public so no external reader.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Source/Core/WebSocketRequest.swift",
@@ -65,6 +87,17 @@
     },
     {
       "path": "Source/Features/Combine.swift",
+      "line": 312,
+      "column": 19,
+      "kind": "typealias",
+      "name": "Failure",
+      "verdict": "TP",
+      "note": "Typealias inside `private final class Inner: Subscription` of `DataStreamPublisher`; `Subscription` has no `Failure` associated type and nothing in `Inner` (Combine.swift:311-342) references `Failure` (outer uses are qualified `DataStreamPublisher.Failure`, :304). Same as Alamofire-9.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Source/Features/Combine.swift",
       "line": 461,
       "column": 19,
       "kind": "typealias",
@@ -101,6 +134,17 @@
       "reference": "Alamofire-2"
     },
     {
+      "path": "Source/Features/URLEncodedFormEncoder.swift",
+      "line": 364,
+      "column": 13,
+      "kind": "var.instance",
+      "name": "localizedDescription",
+      "verdict": "TP",
+      "note": "Internal member on `URLEncodedFormEncoder.Error`, which conforms only to `Swift.Error` (not `LocalizedError`), so it only shadows Foundation's `Error.localizedDescription` for statically typed receivers; the error is only thrown (URLEncodedFormEncoder.swift:454) and handled as `any Error`, and no `.localizedDescription` read on that concrete type exists anywhere.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Tests/AFError+AlamofireTests.swift",
       "line": 31,
       "column": 9,
@@ -111,6 +155,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "Alamofire-25"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 73,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isBodyPartFileSizeQueryFailedWithError",
+      "verdict": "TP",
+      "note": "`AFError.isBodyPartFileSizeQueryFailedWithError` test helper; the name only appears at its declaration and at the reason-level member it forwards to (AFError+AlamofireTests.swift:74, :232); no reader anywhere.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Tests/AFError+AlamofireTests.swift",
@@ -138,6 +193,50 @@
     },
     {
       "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 152,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isDataFileReadFailed",
+      "verdict": "TP",
+      "note": "`AFError.isDataFileReadFailed` test helper; the name only appears at its declaration and at the reason-level member it forwards to (AFError+AlamofireTests.swift:153, :315); no reader anywhere.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 157,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isMissingContentType",
+      "verdict": "TP",
+      "note": "`AFError.isMissingContentType` test helper; the name only appears at its declaration and at the reason-level member it forwards to (AFError+AlamofireTests.swift:158, :320); no reader anywhere.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 179,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isHostURLError",
+      "verdict": "TP",
+      "note": "Test helper on `AFError`; only occurrence of the name in the checkout is its declaration (AFError+AlamofireTests.swift:179).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 188,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isMissingURL",
+      "verdict": "TP",
+      "note": "`ParameterEncodingFailureReason.isMissingURL` is read only at AFError+AlamofireTests.swift:32 inside the unused `AFError.isMissingURLFailed` helper (Alamofire-25); dead once that is removed.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
       "line": 242,
       "column": 9,
       "kind": "var.instance",
@@ -147,6 +246,28 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "Alamofire-14"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 257,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isOutputStreamWriteFailed",
+      "verdict": "TP",
+      "note": "`MultipartEncodingFailureReason.isOutputStreamWriteFailed` is read only at AFError+AlamofireTests.swift:99 inside `AFError.isOutputStreamWriteFailed` (:98), which has no reader anywhere; dead as a cascade.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 310,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isDataFileNil",
+      "verdict": "TP",
+      "note": "`ResponseValidationFailureReason.isDataFileNil` is read only at AFError+AlamofireTests.swift:148 inside `AFError.isDataFileNil` (:147), which has no reader anywhere; dead as a cascade.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Tests/AFError+AlamofireTests.swift",
@@ -183,6 +304,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "Alamofire-4"
+    },
+    {
+      "path": "Tests/AFError+AlamofireTests.swift",
+      "line": 390,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "isPublicKeyPinningFailed",
+      "verdict": "TP",
+      "note": "Test helper on `AFError.ServerTrustFailureReason` inside `#if canImport(Security)` (AFError+AlamofireTests.swift:338-395); only occurrence of the name in the checkout is its declaration, so no platform branch reads it.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Tests/AuthenticationInterceptorTests.swift",
@@ -272,6 +404,61 @@
       "reference": "Alamofire-5"
     },
     {
+      "path": "Tests/InspectorEventMonitor.swift",
+      "line": 35,
+      "column": 13,
+      "kind": "var.instance",
+      "name": "label",
+      "verdict": "TP",
+      "note": "`InspectorEventMonitor.TimelineEvent.label` is only written (InspectorEventMonitor.swift:58); tests read only `.event` and `.date` from timelines (RequestTests.swift:1720, :1768-1772), and the struct is not Codable/Equatable.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/InspectorEventMonitor.swift",
+      "line": 163,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "request(_:didCompleteTask:with:)",
+      "verdict": "TP",
+      "note": "Stale near-miss of `EventMonitor.request(_:didCompleteTask:with:)`, which takes `AFError?` (Source/Features/EventMonitor.swift:128) while this takes `(any Error)?`, so it witnesses nothing (verified with swiftc: a non-matching parameter type falls back to the extension default) and has no direct caller; tests' expected event lists never include it (RequestTests.swift:1678-1685).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/InspectorEventMonitor.swift",
+      "line": 207,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "request(_:didParseResponse:)",
+      "verdict": "TP",
+      "note": "The `DownloadResponse<Data?, AFError>` overload matches no `EventMonitor` requirement (only `DownloadResponse<URL?>` and generic `<Value: Sendable>` exist, EventMonitor.swift:219/222; a concrete overload cannot witness the generic one), and `InspectorEventMonitor` is never called on its concrete type; dispatch goes to the generic `request<Value>` at :211.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/InspectorEventMonitor.swift",
+      "line": 243,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "request(_:didFinishDownloadingUsing:with:)",
+      "verdict": "TP",
+      "note": "Near-miss of `EventMonitor.request(_:didFinishDownloadingUsing:with:)`, which takes `Result<URL, AFError>` (EventMonitor.swift:205) while this takes `Result<URL, any Error>`, so it witnesses nothing and has no direct caller anywhere.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/InspectorEventMonitor.swift",
+      "line": 251,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "request(_:didValidateRequest:response:temporaryURL:destinationURL:withResult:)",
+      "verdict": "TP",
+      "note": "Stale near-miss of `EventMonitor.request(_:didValidateRequest:response:fileURL:withResult:)` (EventMonitor.swift:212-216), so it witnesses no requirement and has no caller; same situation as the NSLoggingEventMonitor copy (Alamofire-18/22).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
       "path": "Tests/NSLoggingEventMonitor.swift",
       "line": 223,
       "column": 97,
@@ -348,6 +535,17 @@
       "lethen_commit": "bc8c5b5",
       "reference": "Alamofire-23",
       "retired": "No longer reported after #57"
+    },
+    {
+      "path": "Tests/RetryPolicyTests.swift",
+      "line": 148,
+      "column": 10,
+      "kind": "function.method.instance",
+      "name": "urlError(with:)",
+      "verdict": "TP",
+      "note": "Internal helper on `BaseRetryPolicyTestCase` (RetryPolicyTests.swift:148); `urlError(` occurs nowhere else in the checkout, and it overrides/witnesses nothing.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     },
     {
       "path": "Tests/ServerTrustEvaluatorTests.swift",
@@ -444,6 +642,39 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "Alamofire-8"
+    },
+    {
+      "path": "Tests/TestHelpers.swift",
+      "line": 178,
+      "column": 17,
+      "kind": "function.method.static",
+      "name": "digestAuth(forUser:password:)",
+      "verdict": "TP",
+      "note": "`Endpoint.digestAuth` is called only from `disabled_testHTTPDigestAuthenticationWithInvalidCredentials`/`...WithValidCredentials` (AuthenticationTests.swift:154, :182), which lack the `test` prefix so XCTest never runs them and have no callers; dead as a cascade of those disabled tests (cf. Alamofire-8/10).",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/TestHelpers.swift",
+      "line": 496,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "origin",
+      "verdict": "FP",
+      "note": "`TestResponse: Decodable` is decoded via synthesized `init(from:)`, which reads the required (non-optional) `origin` key; ~170 `serializingDecodable(TestResponse.self)` call sites (e.g. ConcurrencyTests.swift:55) rely on it, and removing the property relaxes that response-shape validation.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
+    },
+    {
+      "path": "Tests/WebSocketTests.swift",
+      "line": 716,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "string",
+      "verdict": "TP",
+      "note": "`URLSessionWebSocketTask.Message.string` test accessor (WebSocketTests.swift:716, Apple-only `#if` at :9); no `.string` property read on a `Message` anywhere (the other `.string` reads are on `DecodableValue`, ResponseSerializationTests.swift:630, and `path.string`, TestHelpers.swift:323), unlike sibling `.data` read at :128.",
+      "adjudicated_on": "2026-09-29",
+      "lethen_commit": "4621c91"
     }
   ]
 }
