@@ -141,15 +141,11 @@ public final class UnusedParameterAnalyzer {
         return .unused
     }
 
+    /// A metatype parameter such as `_ type: T.Type = T.self` selects a generic type at the call
+    /// site, so its value is not expected to be read.
     private func isParam(_ param: Parameter, usedForSpecializationIn function: Function) -> Bool {
-        guard let metatype = param.metatype else { return false }
+        guard let baseTypeNames = param.metatypeBaseTypeNames else { return false }
 
-        let parts = metatype.split(separator: ".").map { String($0) }
-
-        guard let genericParam = parts.first,
-              let member = parts.last,
-              member == "Type" else { return false }
-
-        return function.genericParameters.contains(genericParam)
+        return baseTypeNames.contains { function.genericParameters.contains($0) }
     }
 }

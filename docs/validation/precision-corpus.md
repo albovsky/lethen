@@ -311,3 +311,118 @@ three projects with unused named parameters are local variables inside function 
 analysis does not cover, and their subscripts use their parameters or satisfy another module's
 protocol requirement. The fixture `testReportsUnusedSubscriptParameter` covers both new cases and
 the external-requirement control (`Collection.subscript(position:)`).
+
+### Metatype parameters that select a generic type
+
+Alamofire and swift-nio re-scanned on Linux (Swift 6.4.0, `swift-6.4-RELEASE`, x86_64 Ubuntu
+24.04) with Lethen before and after the change: 7 Alamofire rows and 68 swift-nio rows removed,
+none added. The 9 Alamofire rows in `WebSocketRequest.swift`, `Combine.swift`, and the WebSocket
+part of `Concurrency.swift` are compiled on Apple platforms only; each is a `_ type: Value.Type =
+Value.self` parameter of a function generic over `Value`, removed by the same rule, and dropped
+from the expectation by inspection. Wikipedia iOS was not re-scanned: none of its expected
+parameter rows is a metatype, and the change only stops reporting parameters. The nightly macOS
+job confirms all three.
+
+Every removed row is a metatype parameter that callers pass to pick a generic type, such as
+`as: (T1, T2).Type = (T1, T2).self` or `of type: T.Type = T.self`, including the sampled
+Alamofire-1, Alamofire-26, swift-nio-6, and swift-nio-27. These parameters were already treated as
+used, but only without a default value: the type was compared as text, and a default value left
+a trailing space in it. Tuple metatypes and generic parameters of the enclosing type were not
+recognized at all.
+
+Still reported: metatypes of concrete types (`throwing failureType: Error.Type = Error.self`),
+of generic types with arguments (`InlineArray<count, IntegerType>.Type`), and of a generic
+parameter declared on a type in another file, such as the `extension AsyncStream` helpers in
+swift-nio's tests, because the analysis reads one file's syntax.
+
+<details>
+<summary>Removed rows (84)</summary>
+
+| Project | Location | Parameter | Verdict |
+| --- | --- | --- | --- |
+| Alamofire | Source/Core/DataRequest.swift:445 | `type: Value.Type` | FP |
+| Alamofire | Source/Core/DataStreamRequest.swift:474 | `type: T.Type` | FP |
+| Alamofire | Source/Core/DownloadRequest.swift:601 | `type: T.Type` | FP |
+| Alamofire | Source/Core/WebSocketRequest.swift:407 | `type: Value.Type` | FP |
+| Alamofire | Source/Core/WebSocketRequest.swift:418 | `type: Value.Type` | FP |
+| Alamofire | Source/Features/Combine.swift:202 | `type: T.Type` | FP |
+| Alamofire | Source/Features/Combine.swift:232 | `type: T.Type` | FP |
+| Alamofire | Source/Features/Combine.swift:391 | `type: T.Type` | FP |
+| Alamofire | Source/Features/Combine.swift:587 | `type: T.Type` | FP |
+| Alamofire | Source/Features/Combine.swift:616 | `type: T.Type` | FP |
+| Alamofire | Source/Features/Concurrency.swift:269 | `type: Value.Type` | FP |
+| Alamofire | Source/Features/Concurrency.swift:466 | `type: Value.Type` | FP |
+| Alamofire | Source/Features/Concurrency.swift:629 | `type: T.Type` | FP |
+| Alamofire | Source/Features/Concurrency.swift:800 | `type: Value.Type` | FP |
+| Alamofire | Source/Features/Concurrency.swift:816 | `type: Value.Type` | FP |
+| Alamofire | Source/Features/Concurrency.swift:98 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOAsyncSequenceProducer.swift:149 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOAsyncSequenceProducer.swift:186 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOAsyncWriter.swift:213 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOAsyncWriter.swift:243 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOThrowingAsyncSequenceProducer.swift:105 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOThrowingAsyncSequenceProducer.swift:106 | `failureType: Failure.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOThrowingAsyncSequenceProducer.swift:140 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOThrowingAsyncSequenceProducer.swift:141 | `failureType: Failure.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOThrowingAsyncSequenceProducer.swift:175 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOThrowingAsyncSequenceProducer.swift:176 | `failureType: Failure.Type` | FP |
+| swift-nio | Sources/NIOCore/AsyncSequences/NIOThrowingAsyncSequenceProducer.swift:192 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-binaryEncodedLengthPrefix.swift:84 | `as: Integer.Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-int.swift:109 | `as: T.Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-int.swift:33 | `as: T.Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-int.swift:54 | `as: T.Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-int.swift:88 | `as: T.Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1003 | `as: (T1, T2, T3, T4, T5, T6, T7).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:108 | `as: (T1, T2).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1112 | `as: (T1, T2, T3, T4, T5, T6, T7, T8).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1251 | `as: (T1, T2, T3, T4, T5, T6, T7, T8).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1369 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1520 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:160 | `as: (T1, T2, T3).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1647 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1809 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:1945 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:2119 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:2268 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:230 | `as: (T1, T2, T3).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:2457 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:2617 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:2818 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:297 | `as: (T1, T2, T3, T4).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:2987 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:3199 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:3377 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:3600 | `as: (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:386 | `as: (T1, T2, T3, T4).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:464 | `as: (T1, T2, T3, T4, T5).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:47 | `as: (T1, T2).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:567 | `as: (T1, T2, T3, T4, T5).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:658 | `as: (T1, T2, T3, T4, T5, T6).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:775 | `as: (T1, T2, T3, T4, T5, T6).Type` | FP |
+| swift-nio | Sources/NIOCore/ByteBuffer-multi-int.swift:875 | `as: (T1, T2, T3, T4, T5, T6, T7).Type` | FP |
+| swift-nio | Sources/NIOCore/Channel.swift:308 | `as: T.Type` | FP |
+| swift-nio | Sources/NIOCore/Channel.swift:330 | `as: T.Type` | FP |
+| swift-nio | Sources/NIOCore/ChannelPipeline.swift:1665 | `type: Transport.Type` | FP |
+| swift-nio | Sources/NIOCore/EventLoop.swift:1144 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOCore/IntegerBitPacking.swift:29 | `type: Result.Type` | FP |
+| swift-nio | Sources/NIOCore/IntegerBitPacking.swift:47 | `leftType: Left.Type` | FP |
+| swift-nio | Sources/NIOCore/IntegerBitPacking.swift:48 | `rightType: Right.Type` | FP |
+| swift-nio | Sources/NIOCore/NIOAny.swift:189 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOCore/NIOLoopBound.swift:109 | `valueType: NonOptionalValue.Type` | FP |
+| swift-nio | Sources/NIOCore/NIOLoopBound.swift:129 | `as: Value.Type` | FP |
+| swift-nio | Sources/NIOCore/NIOLoopBound.swift:149 | `as: Value.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/AsyncTestingChannel.swift:399 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/AsyncTestingChannel.swift:420 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/AsyncTestingChannel.swift:454 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/AsyncTestingChannel.swift:473 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/AsyncTestingChannel.swift:563 | `to: T.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/AsyncTestingEventLoop.swift:470 | `returnType: ReturnType.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/Embedded.swift:1014 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOEmbedded/Embedded.swift:998 | `type: T.Type` | FP |
+| swift-nio | Sources/NIOFS/Internal/BufferedStream.swift:490 | `elementType: Element.Type` | FP |
+| swift-nio | Sources/NIOPosix/IntegerBitPacking.swift:29 | `type: Result.Type` | FP |
+| swift-nio | Sources/NIOPosix/IntegerBitPacking.swift:47 | `leftType: Left.Type` | FP |
+| swift-nio | Sources/NIOPosix/IntegerBitPacking.swift:48 | `rightType: Right.Type` | FP |
+| swift-nio | Sources/NIOTestUtils/ByteToMessageDecoderVerifier.swift:257 | `type: T.Type` | FP |
+
+</details>

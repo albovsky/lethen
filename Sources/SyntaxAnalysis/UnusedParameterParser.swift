@@ -22,6 +22,7 @@ public struct Function: Item, Hashable {
     public let location: Location
     public let items: [Item]
     public let parameters: [Parameter]
+    /// Generic parameters in scope: the function's own and those of its enclosing declarations.
     public let genericParameters: [String]
     public let attributes: [Attribute]
 }
@@ -56,7 +57,9 @@ public struct Parameter: Item, Hashable {
 
     let label: PartKind
     public let name: PartKind
-    let metatype: String?
+    /// For a metatype parameter such as `T.Type`, `T?.Type` or `(T1, T2).Type`, the names of the
+    /// types its base type is formed from. Nil when the parameter is not a metatype.
+    let metatypeBaseTypeNames: Set<String>?
     let location: Location
 
     public let items: [Item] = []
@@ -100,6 +103,7 @@ struct UnusedParameterParser {
     private let parseProtocols: Bool
     private let file: SourceFile
     private let locationConverter: SourceLocationConverter
+    private let genericParameterNamesByTypeName: [String: [String]]
 
     static func parse(
         file: SourceFile,
@@ -133,6 +137,7 @@ struct UnusedParameterParser {
         self.syntax = syntax
         self.locationConverter = locationConverter
         self.parseProtocols = parseProtocols
+        genericParameterNamesByTypeName = GenericTypeCollector.collect(in: syntax)
     }
 
     func parse() -> [Function] {
@@ -211,19 +216,7 @@ struct UnusedParameterParser {
     }
 
     private func parse(functionParameter syntax: FunctionParameterSyntax) -> Item {
-        var metatype: String?
-
-        if let optionalType = syntax.type.as(OptionalTypeSyntax.self) {
-            if let metatypeSyntax = optionalType.children(viewMode: .sourceAccurate).mapFirst({ $0.as(MetatypeTypeSyntax.self) }) {
-                metatype = metatypeSyntax.description
-            }
-        } else if let optionalType = syntax.type.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) {
-            if let metatypeSyntax = optionalType.children(viewMode: .sourceAccurate).mapFirst({ $0.as(MetatypeTypeSyntax.self) }) {
-                metatype = metatypeSyntax.description
-            }
-        } else if let metatypeSyntax = syntax.type.as(MetatypeTypeSyntax.self) {
-            metatype = metatypeSyntax.description
-        }
+        let metatypeBaseTypeNames = metatype(in: syntax.type).map { typeNames(in: $0.baseType) }
 
         let positionSyntax: SyntaxProtocol = syntax.secondName ?? syntax.firstName
         let location = sourceLocation(of: positionSyntax.positionAfterSkippingLeadingTrivia)
@@ -251,8 +244,36 @@ struct UnusedParameterParser {
 
         return Parameter(label: label,
                          name: name,
-                         metatype: metatype,
+                         metatypeBaseTypeNames: metatypeBaseTypeNames,
                          location: location)
+    }
+
+    private func metatype(in type: TypeSyntax) -> MetatypeTypeSyntax? {
+        if let optionalType = type.as(OptionalTypeSyntax.self) {
+            return metatype(in: optionalType.wrappedType)
+        } else if let optionalType = type.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) {
+            return metatype(in: optionalType.wrappedType)
+        } else if let metatypeType = type.as(MetatypeTypeSyntax.self), metatypeType.metatypeSpecifier.text == "Type" {
+            return metatypeType
+        }
+
+        return nil
+    }
+
+    /// The names of the plain types a metatype's base type is formed from: `T` for `T` and `T?`, and
+    /// `T1` and `T2` for `(T1, T2)`. Types with generic arguments and member types contribute nothing.
+    private func typeNames(in type: TypeSyntax) -> Set<String> {
+        if let identifierType = type.as(IdentifierTypeSyntax.self), identifierType.genericArgumentClause == nil {
+            return [identifierType.name.text]
+        } else if let optionalType = type.as(OptionalTypeSyntax.self) {
+            return typeNames(in: optionalType.wrappedType)
+        } else if let optionalType = type.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) {
+            return typeNames(in: optionalType.wrappedType)
+        } else if let tupleType = type.as(TupleTypeSyntax.self) {
+            return tupleType.elements.reduce(into: Set<String>()) { $0.formUnion(typeNames(in: $1.type)) }
+        }
+
+        return []
     }
 
     private func parse(closureExpr syntax: ClosureExprSyntax, _ collector: Collector<some Any>?) -> Closure? {
@@ -309,7 +330,6 @@ struct UnusedParameterParser {
     private func parse(functionDecl syntax: FunctionDeclSyntax, _ collector: Collector<some Any>?) -> Item? {
         build(function: syntax.signature,
               attributes: syntax.attributes,
-              genericParams: syntax.genericParameterClause,
               body: syntax.body,
               named: syntax.name.text,
               position: syntax.name.positionAfterSkippingLeadingTrivia,
@@ -319,7 +339,6 @@ struct UnusedParameterParser {
     private func parse(initializerDecl syntax: InitializerDeclSyntax, _ collector: Collector<some Any>?) -> Item? {
         build(function: syntax.signature,
               attributes: syntax.attributes,
-              genericParams: syntax.genericParameterClause,
               body: syntax.body,
               named: "init",
               position: syntax.initKeyword.positionAfterSkippingLeadingTrivia,
@@ -336,7 +355,6 @@ struct UnusedParameterParser {
 
         return build(function: syntax.parameterClause,
                      attributes: syntax.attributes,
-                     genericParams: syntax.genericParameterClause,
                      body: hasBody ? syntax.accessorBlock : nil,
                      named: "subscript",
                      position: syntax.subscriptKeyword.positionAfterSkippingLeadingTrivia,
@@ -378,14 +396,13 @@ struct UnusedParameterParser {
 
         return Parameter(label: part(labelSyntax),
                          name: part(nameSyntax),
-                         metatype: nil,
+                         metatypeBaseTypeNames: nil,
                          location: sourceLocation(of: nameSyntax.positionAfterSkippingLeadingTrivia))
     }
 
     private func build(
         function syntax: SyntaxProtocol,
         attributes: AttributeListSyntax?,
-        genericParams: GenericParameterClauseSyntax?,
         body: SyntaxProtocol?,
         named name: String,
         position: AbsolutePosition,
@@ -400,7 +417,7 @@ struct UnusedParameterParser {
         let params = parse(children: syntax.children(viewMode: .sourceAccurate), collecting: Parameter.self)
         let items = parse(node: body, collector)?.items ?? []
         let fullName = buildFullName(for: name, with: params)
-        let genericParamNames = genericParams?.parameters.map(\.name.text) ?? []
+        let genericParamNames = genericParameterNamesInScope(of: syntax)
         let parsedAttributes: [Attribute] = attributes?
             .compactMap(\.self)
             .compactMap {
@@ -425,6 +442,32 @@ struct UnusedParameterParser {
         )
     }
 
+    /// Generic parameters in scope for a function's signature: the function's own, those of outer
+    /// functions and types, and, for an extension, the extended type's when it is declared in the
+    /// same file.
+    private func genericParameterNamesInScope(of syntax: SyntaxProtocol) -> [String] {
+        var names: [String] = []
+        var node = syntax.parent
+
+        while let current = node {
+            if let clause = current.asProtocol(WithGenericParametersSyntax.self)?.genericParameterClause {
+                names.append(contentsOf: clause.parameters.map(\.name.text))
+            } else if let extensionDecl = current.as(ExtensionDeclSyntax.self) {
+                names.append(contentsOf: genericParameterNamesByTypeName[extendedTypeName(of: extensionDecl.extendedType)] ?? [])
+            }
+            node = current.parent
+        }
+
+        return names
+    }
+
+    private func extendedTypeName(of type: TypeSyntax) -> String {
+        if let memberType = type.as(MemberTypeSyntax.self) {
+            return memberType.name.text
+        }
+        return type.as(IdentifierTypeSyntax.self)?.name.text ?? type.trimmedDescription
+    }
+
     private func buildFullName(for function: String, with params: [Parameter]) -> String {
         let strParams = params.map(\.label.text).joined(separator: ":")
         return "\(function)(\(strParams):)"
@@ -435,6 +478,40 @@ struct UnusedParameterParser {
         return Location(file: file,
                         line: location.line,
                         column: location.column)
+    }
+}
+
+/// Collects the generic parameters of each generic type declared in a file, keyed by type name.
+private final class GenericTypeCollector: SyntaxVisitor {
+    private var namesByTypeName: [String: [String]] = [:]
+
+    static func collect(in syntax: SourceFileSyntax) -> [String: [String]] {
+        let collector = GenericTypeCollector(viewMode: .sourceAccurate)
+        collector.walk(syntax)
+        return collector.namesByTypeName
+    }
+
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+        add(node.name, node.genericParameterClause)
+    }
+
+    override func visit(_ node: ClassDeclSyntax) -> SyntaxVisitorContinueKind {
+        add(node.name, node.genericParameterClause)
+    }
+
+    override func visit(_ node: EnumDeclSyntax) -> SyntaxVisitorContinueKind {
+        add(node.name, node.genericParameterClause)
+    }
+
+    override func visit(_ node: ActorDeclSyntax) -> SyntaxVisitorContinueKind {
+        add(node.name, node.genericParameterClause)
+    }
+
+    private func add(_ name: TokenSyntax, _ clause: GenericParameterClauseSyntax?) -> SyntaxVisitorContinueKind {
+        if let clause {
+            namesByTypeName[name.text, default: []].append(contentsOf: clause.parameters.map(\.name.text))
+        }
+        return .visitChildren
     }
 }
 
