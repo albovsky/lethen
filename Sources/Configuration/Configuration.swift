@@ -122,6 +122,9 @@ public final class Configuration {
     @Setting(key: "strict", defaultValue: false)
     public var strict: Bool
 
+    @Setting(key: "min_confidence", defaultValue: .default, setter: { MinimumConfidence(anyValue: $0) })
+    public var minConfidence: MinimumConfidence
+
     @Setting(key: "stats", defaultValue: false)
     public var stats: Bool
 
@@ -239,7 +242,7 @@ public final class Configuration {
         $retainObjcAnnotated, $retainUnusedProtocolFuncParams, $retainSwiftUIPreviews, $disableRedundantPublicAnalysis,
         $disableUnusedImportAnalysis, $superfluousIgnoreComments, $retainUnusedImportedModules,
         $externalEncodableProtocols, $externalCodableProtocols, $externalTestCaseClasses, $verbose, $quiet, $color,
-        $disableUpdateCheck, $strict, $stats, $indexStorePath,
+        $disableUpdateCheck, $strict, $minConfidence, $stats, $indexStorePath,
         $skipBuild, $skipSchemesValidation, $cleanBuild, $buildArguments, $configurations, $xcodeListArguments, $relativeResults,
         $jsonPackageManifestPath, $retainCodableProperties, $retainEncodableProperties, $retainEquatableProperties,
         $retainHashableProperties, $baseline, $writeBaseline,
@@ -366,6 +369,12 @@ extension FilePath: Yams.ScalarRepresentable {
 }
 
 extension ColorOption: Yams.ScalarRepresentable {
+    public func represented() -> Node.Scalar {
+        rawValue.represented()
+    }
+}
+
+extension MinimumConfidence: Yams.ScalarRepresentable {
     public func represented() -> Node.Scalar {
         rawValue.represented()
     }

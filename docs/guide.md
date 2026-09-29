@@ -188,7 +188,7 @@ report_exclude:
 
 Each result is a declaration (class, struct, enum, protocol, function, property, initializer, typealias, and so on) with one hint. Only the outermost unused declaration is reported: an unused class is one result, not one per member.
 
-Every result also has a confidence. It is `likely` when a dynamic feature could reach the declaration without a reference Lethen can see: the declaration is accessible from Objective-C and neither `--retain-objc-accessible` nor `--retain-objc-annotated` is set, or it is a type, method, property, or enum case whose name (without argument labels) appears in a string literal shaped like a symbol reference anywhere in the scanned sources: a selector such as `"handleTap:"`, a name such as `"MyApp.Store"` for `NSClassFromString`, or a key path such as `"user.name"`. Literals with spaces or interpolation, such as log messages, do not count, and parameters and imports are never `likely` for this reason. Otherwise it is `certain`. Confidence never changes what is reported or what a baseline filters; results are listed with `certain` ones first, in location order within each tier.
+Every result also has a confidence. It is `likely` when a dynamic feature could reach the declaration without a reference Lethen can see: the declaration is accessible from Objective-C and neither `--retain-objc-accessible` nor `--retain-objc-annotated` is set, or it is a type, method, property, or enum case whose name (without argument labels) appears in a string literal shaped like a symbol reference anywhere in the scanned sources: a selector such as `"handleTap:"`, a name such as `"MyApp.Store"` for `NSClassFromString`, or a key path such as `"user.name"`. Literals with spaces or interpolation, such as log messages, do not count, and parameters and imports are never `likely` for this reason. Otherwise it is `certain`. Confidence never changes what a baseline filters, and it changes what is reported only under `--min-confidence certain` (see [continuous integration](#output-formats-and-continuous-integration)); results are listed with `certain` ones first, in location order within each tier.
 
 ### Unused declarations
 
@@ -301,9 +301,15 @@ Entries are keyed by the declaration's symbol identifier, so a baselined result 
 
 `--format` selects one of `xcode` (default, readable and Xcode-parseable), `json`, `csv`, `checkstyle`, `codeclimate`, `github-actions`, `github-markdown`, and `gitlab-codequality`. `--write-results path` writes the output to a file as well. `--relative-results` prints paths relative to the current directory and is required by `github-actions`. `--quiet` suppresses progress, and `--strict` makes the exit status 1 when anything is reported.
 
+`--min-confidence certain` reports only `certain` results; the default, `likely`, reports everything. The filter runs after `--baseline` and before `--report-include` and `--report-exclude`, so it also decides what `--strict` counts and what `--write-baseline` records: a baseline written under `--min-confidence certain` leaves `likely` results out, and they reappear in a later scan without the option. A line on standard error, such as `--min-confidence certain hid 3 results.`, says how many results it hid; `--quiet` suppresses it. Set it in the configuration file with `min_confidence: certain`. This is the shape for a CI gate that fails only on results Lethen is sure about:
+
+```sh
+lethen scan --min-confidence certain --strict
+```
+
 `--stats` prints a report after the scan: the time spent in each phase (setup, build, index (planning which source files to read from the index store, then its two Swift passes), analysis, building the results, and output), the number of Swift source files indexed, their lines of code (blank and comment-only lines excluded), the declarations indexed, and indexing plus analysis throughput in lines per second. The report goes to standard error even with `--quiet`, so `json`, `csv`, and the other formats on standard output stay machine-readable. Lines are counted only when `--stats` is given, so other scans do not pay for it. Use it with a managed SwiftPM scan to see the cost of its clean build, or with `--skip-build` to time indexing and analysis alone.
 
-The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location, a `confidence` of `certain` or `likely`, and a one-sentence `reason` such as `no references in the scanned modules` or `assigned but never read`; the CSV format ends with a `Confidence` column. Results are sorted with `certain` first. The `xcode`, `github-actions`, `github-markdown`, `gitlab-codequality`, and `codeclimate` formats append `[likely: <why>]` to `likely` results.
+The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location, a `confidence` of `certain` or `likely`, a `confidenceReason` that says why a result is `likely` (`null` for `certain` results), and a one-sentence `reason` such as `no references in the scanned modules` or `assigned but never read`; the CSV format ends with a `Confidence` column. Results are sorted with `certain` first. The `xcode`, `github-actions`, `github-markdown`, `gitlab-codequality`, and `codeclimate` formats append `[likely: <why>]` to `likely` results.
 
 ### Reusing a build in CI
 
@@ -323,6 +329,8 @@ lethen scan --skip-build --index-store-path "$DERIVED_DATA/Index.noindex/DataSto
   run: |
     lethen scan --format github-actions --relative-results --baseline baseline.json --strict --disable-update-check
 ```
+
+Add `--min-confidence certain` to fail the check only on `certain` results and leave `likely` ones, such as declarations reachable from Objective-C or named in a string literal, to a local scan.
 
 Annotations appear on the pull request's changed lines. Pass `--disable-update-check` in CI; the optional update check otherwise contacts GitHub's releases API once per scan and can be disabled permanently with `disable_update_check: true` in the configuration file.
 

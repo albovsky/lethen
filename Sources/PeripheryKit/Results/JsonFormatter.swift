@@ -21,6 +21,7 @@ final class JsonFormatter: OutputFormatter {
             let object: [AnyHashable: Any] = [
                 "kind": declarationKind(from: result.declaration),
                 "confidence": result.confidence.rawValue,
+                "confidenceReason": result.confidenceReason ?? NSNull(),
                 "modules": location.file.modules.sorted(),
                 "name": result.declaration.name,
                 "modifiers": result.declaration.modifiers.sorted(),
@@ -39,6 +40,7 @@ final class JsonFormatter: OutputFormatter {
                     let object: [AnyHashable: Any] = [
                         "kind": ref.declarationKind.rawValue,
                         "confidence": result.confidence.rawValue,
+                        "confidenceReason": result.confidenceReason ?? NSNull(),
                         "name": ref.name,
                         "modifiers": [String](),
                         "attributes": [String](),

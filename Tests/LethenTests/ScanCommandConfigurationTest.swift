@@ -161,6 +161,25 @@ final class ScanCommandConfigurationTest: XCTestCase {
         }
     }
 
+    func testMinConfidenceDefaultsToLikely() throws {
+        XCTAssertEqual(try makeConfiguration([]).minConfidence, .likely)
+    }
+
+    func testMinConfidenceIsReadFromTheCommandLine() throws {
+        XCTAssertEqual(try makeConfiguration(["--min-confidence", "certain"]).minConfidence, .certain)
+        XCTAssertThrowsError(try ScanCommand.parse(["--min-confidence", "possible"]))
+    }
+
+    func testMinConfidenceRoundTripsThroughConfigurationFile() throws {
+        let written = Configuration()
+        written.minConfidence = .certain
+        let yaml = try written.asYaml()
+        XCTAssertEqual(yaml, "min_confidence: certain\n")
+        try yaml.write(toFile: projectRoot.appending(".periphery.yml").string, atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(try makeConfiguration([]).minConfidence, .certain)
+    }
+
     func testGuidedSetupSkipsConfigurationFile() throws {
         try writeConfigurationFile(at: projectRoot.appending(".periphery.yml"))
 
@@ -207,6 +226,8 @@ final class ScanCommandConfigurationTest: XCTestCase {
             return [option, OutputFormat.allCases.first { $0 != value }!.rawValue]
         case let value as ColorOption:
             return [option, ColorOption.allCases.first { $0 != value }!.rawValue]
+        case let value as MinimumConfidence:
+            return [option, MinimumConfidence.allCases.first { $0 != value }!.rawValue]
         default:
             XCTFail("No command-line value for the '\(setting.key)' setting of type \(type(of: setting.wrappedValue))")
             return nil

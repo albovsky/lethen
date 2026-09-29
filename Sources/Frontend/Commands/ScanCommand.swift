@@ -132,6 +132,9 @@ struct ScanCommand: ParsableCommand {
     @Flag(help: "Exit with non-zero status if any unused code is found")
     var strict: Bool = defaultConfiguration.$strict.defaultValue
 
+    @Option(help: "Lowest confidence to report (certain, likely). 'certain' hides 'likely' results from the output, from '--strict', and from '--write-baseline'")
+    var minConfidence: MinimumConfidence = defaultConfiguration.$minConfidence.defaultValue
+
     @Flag(help: "Print phase timings and the size of the scanned project to standard error after the scan")
     var stats: Bool = defaultConfiguration.$stats.defaultValue
 
@@ -287,6 +290,7 @@ struct ScanCommand: ParsableCommand {
         configuration.apply(\.$color, noColor ? .never : color)
         configuration.apply(\.$disableUpdateCheck, disableUpdateCheck)
         configuration.apply(\.$strict, strict)
+        configuration.apply(\.$minConfidence, minConfidence)
         configuration.apply(\.$stats, stats)
         configuration.apply(\.$indexStorePath, indexStorePath)
         configuration.apply(\.$skipBuild, skipBuild)
@@ -328,6 +332,7 @@ struct ScanCommand: ParsableCommand {
 
 extension OutputFormat: ExpressibleByArgument {}
 extension ColorOption: ExpressibleByArgument {}
+extension MinimumConfidence: ExpressibleByArgument {}
 
 extension FilePath: ArgumentParser.ExpressibleByArgument {
     public init?(argument: String) {

@@ -310,6 +310,7 @@ swift_library(
     srcs = [
         "Configuration/ColorOption.swift",
         "Configuration/Configuration.swift",
+        "Configuration/MinimumConfidence.swift",
         "Configuration/OutputFormat.swift",
     ],
     module_name = "Configuration",

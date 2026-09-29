@@ -75,6 +75,19 @@ final class ScanReportTest: XCTestCase {
         XCTAssertEqual(written, #"{"v1":{"usrs":["s:A","s:B"]}}"#)
     }
 
+    func testWriteBaselineOmitsResultsBelowMinimumConfidence() throws {
+        let configuration = Configuration()
+        configuration.minConfidence = .certain
+        configuration.baseline = try writeBaseline(["s:Old"])
+        configuration.writeBaseline = directory.appending("new.json")
+
+        let report = try ScanReport(results: [result("Old"), result("Kept"), result("Dynamic", confidence: .likely)], configuration: configuration, logger: logger)
+        XCTAssertEqual(report.results.map(\.declaration.name), ["Kept"])
+
+        let written = try String(contentsOfFile: directory.appending("new.json").string, encoding: .utf8)
+        XCTAssertEqual(written, #"{"v1":{"usrs":["s:Kept","s:Old"]}}"#)
+    }
+
     // MARK: - Results file
 
     func testWriteResultsIsWrittenWithNoResults() throws {
@@ -142,6 +155,41 @@ final class ScanReportTest: XCTestCase {
         }
     }
 
+    func testStrictModeCountsOnlyResultsAtMinimumConfidence() throws {
+        let configuration = Configuration()
+        configuration.strict = true
+        configuration.minConfidence = .certain
+
+        let report = try ScanReport(results: [result("A"), result("Dynamic", confidence: .likely), result("B")], configuration: configuration, logger: logger)
+
+        XCTAssertThrowsError(try report.validateStrictMode()) { error in
+            guard case let .foundIssues(count) = error as? LethenError else {
+                return XCTFail("Expected foundIssues, got: \(error)")
+            }
+
+            XCTAssertEqual(count, 2)
+        }
+    }
+
+    func testStrictModeAcceptsOnlyLikelyResultsUnderMinimumConfidenceCertain() throws {
+        let configuration = Configuration()
+        configuration.strict = true
+        configuration.minConfidence = .certain
+
+        let report = try ScanReport(results: [result("Dynamic", confidence: .likely)], configuration: configuration, logger: logger)
+        XCTAssertTrue(report.results.isEmpty)
+        XCTAssertNoThrow(try report.validateStrictMode())
+    }
+
+    /// Control: without `--min-confidence`, a `likely` result still fails strict mode.
+    func testStrictModeCountsLikelyResultsByDefault() throws {
+        let configuration = Configuration()
+        configuration.strict = true
+
+        let report = try ScanReport(results: [result("Dynamic", confidence: .likely)], configuration: configuration, logger: logger)
+        XCTAssertThrowsError(try report.validateStrictMode())
+    }
+
     func testStrictModeAcceptsNoResults() throws {
         let configuration = Configuration()
         configuration.strict = true
@@ -164,9 +212,9 @@ final class ScanReportTest: XCTestCase {
         return path
     }
 
-    private func result(_ name: String) -> ScanResult {
+    private func result(_ name: String, confidence: Confidence = .certain) -> ScanResult {
         let location = Location(file: SourceFile(path: root.appending("Sources/A.swift"), modules: ["App"]), line: 1, column: 1)
         let declaration = Declaration(name: name, kind: .class, usrs: ["s:\(name)"], location: location)
-        return ScanResult(declaration: declaration, annotation: .unused)
+        return ScanResult(declaration: declaration, annotation: .unused, confidence: confidence)
     }
 }
