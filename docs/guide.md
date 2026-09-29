@@ -86,7 +86,7 @@ lethen scan --setup
 
 It detects the project type, asks a few questions (schemes, Objective-C, whether public declarations count as used), offers to save the answers to `.periphery.yml`, prints the full command, and runs it. Guided setup needs an interactive terminal; in CI, pass the options directly.
 
-Without `--setup`, lethen looks for a project in this order: `--project` (Xcode), `--generic-project-config`, `--bazel`, then a `Package.swift` in `--project-root` (the current directory by default).
+Without `--setup`, lethen looks for a project in this order: `--project` (Xcode), `--generic-project-config`, `--bazel`, then what it finds in `--project-root` (the current directory by default): a `Package.swift`, otherwise a single `.xcworkspace` or `.xcodeproj` directly inside it, otherwise a `MODULE.bazel`. Projects in subdirectories, such as `Pods` and example projects, are never picked, and a workspace is preferred over the projects it references. When several candidates remain, or a `MODULE.bazel` sits beside an Xcode project, lethen stops and lists the `--project` or `--bazel` option to pass.
 
 Arguments after `--` go to the underlying build command. Xcode projects usually need a destination:
 

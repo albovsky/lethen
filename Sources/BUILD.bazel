@@ -266,6 +266,7 @@ swift_library(
         "Frontend/GuidedSetup.swift",
         "Frontend/Logger+Extension.swift",
         "Frontend/Project.swift",
+        "Frontend/ProjectDetector.swift",
         "Frontend/SPMProjectSetupGuide.swift",
         "Frontend/Scan.swift",
         "Frontend/ScanReport.swift",

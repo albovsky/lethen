@@ -25,12 +25,27 @@ final class Project {
             kind = .generic(genericProjectConfig: path)
         } else if BazelProjectDriver.isSupported, configuration.bazel {
             kind = .bazel
-        } else if SPM.isSupported {
-            kind = .spm
+        } else {
+            switch try ProjectDetector(directory: .current).detect() {
+            case .spm:
+                kind = .spm
+            case let .xcode(path):
+                kind = .xcode(projectPath: path)
+                if configuration.outputFormat.supportsAuxiliaryOutput {
+                    logger.info("Scanning \(path.lastComponent?.string ?? path.string) found in the current directory (pass '--project' to choose another).")
+                }
+            case .bazel:
+                kind = .bazel
+                if configuration.outputFormat.supportsAuxiliaryOutput {
+                    logger.info("Scanning the Bazel module in the current directory (pass '--bazel' to make this explicit).")
+                }
+            case nil:
+                kind = nil
+            }
         }
 
         guard let kind else {
-            throw LethenError.usageError("Failed to identify project in the current directory. For Xcode projects use the '--project' option, and for SPM projects change to the directory containing the Package.swift.")
+            throw LethenError.usageError("Failed to identify project in the current directory. Run lethen where the Package.swift, the .xcworkspace or .xcodeproj, or the MODULE.bazel is, or pass '--project', '--bazel' or '--generic-project-config'.")
         }
 
         self.init(kind: kind, configuration: configuration, shell: shell, logger: logger)
