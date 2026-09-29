@@ -224,12 +224,11 @@ public struct PackageDescription: Decodable {
 }
 
 public struct PackageProduct: Decodable {
-    public let name: String
     /// The product type SwiftPM reports, such as `library`, `executable`, `plugin`, or `macro`.
     public let kind: String
 
     enum CodingKeys: String, CodingKey {
-        case name, type
+        case type
     }
 
     /// SwiftPM encodes the type as an object with one key, such as `{"library": ["automatic"]}`.
@@ -248,7 +247,6 @@ public struct PackageProduct: Decodable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
         kind = try container.nestedContainer(keyedBy: TypeKey.self, forKey: .type).allKeys.first?.stringValue ?? ""
     }
 }
