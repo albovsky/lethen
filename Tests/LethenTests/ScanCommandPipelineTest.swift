@@ -255,6 +255,45 @@ final class ScanCommandPipelineTest: XCTestCase {
         XCTAssertTrue(StubScan.configurations.isEmpty)
     }
 
+    func testXcodeProjectInTheCurrentDirectoryIsDetected() throws {
+        try makeXcodeProject("App.xcodeproj")
+
+        try run(["--disable-update-check", "--quiet"])
+
+        guard case let .xcode(projectPath) = try XCTUnwrap(StubScan.projectKinds.first) else {
+            return XCTFail("Expected an Xcode project, got: \(StubScan.projectKinds)")
+        }
+
+        XCTAssertEqual(projectPath.lastComponent?.string, "App.xcodeproj")
+    }
+
+    func testExplicitProjectWinsOverAmbiguousDetection() throws {
+        try makeXcodeProject("App.xcodeproj")
+        try makeXcodeProject("Tool.xcodeproj")
+
+        try run(["--project", "Tool.xcodeproj", "--disable-update-check", "--quiet"])
+
+        guard case let .xcode(projectPath) = try XCTUnwrap(StubScan.projectKinds.first) else {
+            return XCTFail("Expected an Xcode project, got: \(StubScan.projectKinds)")
+        }
+
+        XCTAssertEqual(projectPath, "Tool.xcodeproj")
+    }
+
+    func testAmbiguousProjectsAreAUsageErrorListingTheOptions() throws {
+        try makeXcodeProject("App.xcodeproj")
+        try makeXcodeProject("Tool.xcodeproj")
+
+        XCTAssertThrowsError(try run(["--disable-update-check", "--quiet"])) { error in
+            guard case let .usageError(message) = error as? LethenError else {
+                return XCTFail("Expected a usage error, got: \(error)")
+            }
+
+            XCTAssertTrue(message.contains("\n  --project App.xcodeproj\n  --project Tool.xcodeproj"), message)
+        }
+        XCTAssertTrue(StubScan.configurations.isEmpty)
+    }
+
     #if !os(macOS)
         func testXcodeProjectIsAUsageErrorOffMacOS() throws {
             let command = try ScanCommand.parse(["--project-root", projectRoot.string, "--project", "App.xcodeproj", "--disable-update-check", "--quiet"])
@@ -350,6 +389,12 @@ final class ScanCommandPipelineTest: XCTestCase {
 
     private func makePackage() throws {
         try "// swift-tools-version:6.0\n".write(toFile: projectRoot.appending("Package.swift").string, atomically: true, encoding: .utf8)
+    }
+
+    private func makeXcodeProject(_ name: String) throws {
+        let path = projectRoot.appending(name)
+        try FileManager.default.createDirectory(atPath: path.string, withIntermediateDirectories: true)
+        try "// !$*UTF8*$!\n{}\n".write(toFile: path.appending("project.pbxproj").string, atomically: true, encoding: .utf8)
     }
 
     private func result(_ name: String, line: Int, confidence: Confidence = .certain, reason: String = "") -> ScanResult {
