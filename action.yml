@@ -1,0 +1,79 @@
+name: Lethen
+description: Find unused Swift code with Lethen and annotate it on the pull request.
+author: albovsky
+# Installs a released Lethen binary (or builds this checkout of Lethen with `version: source`),
+# then runs `lethen scan` in the working directory. The scripts behind each step are in
+# .github/scripts/action-install.sh and .github/scripts/action-scan.sh. They are reached
+# through GITHUB_ACTION_PATH rather than `github.action_path`, which names the host path
+# even when the job runs in a container.
+inputs:
+  version:
+    description: >-
+      Lethen version to run: a release version such as 3.10.0, `latest` for the newest stable
+      release, or `source` to build Lethen from the action's own checkout with `swift build -c
+      release`. Defaults to the version of the action itself, so `uses: albovsky/lethen@3.10.0`
+      runs Lethen 3.10.0.
+    required: false
+    default: ""
+  args:
+    description: >-
+      Further arguments for `lethen scan`, parsed with shell quoting, for example
+      `--schemes App --targets App`. The format, strictness, baseline and results file are set
+      by the other inputs.
+    required: false
+    default: ""
+  working-directory:
+    description: Directory to scan from, usually the one with Package.swift or the Xcode project.
+    required: false
+    default: "."
+  baseline:
+    description: >-
+      Baseline file written earlier with `lethen scan --write-baseline`, relative to the
+      working directory. Results it records are not reported.
+    required: false
+    default: ""
+  strict:
+    description: Fail the step when any result is reported.
+    required: false
+    default: "true"
+  format:
+    description: >-
+      Output format. `github-actions` turns each result into an annotation on the pull
+      request's changed lines.
+    required: false
+    default: github-actions
+  min-confidence:
+    description: >-
+      Report only results at or above this confidence, `certain` or `likely`. Leave empty for
+      the scan's own default. Requires a Lethen version that has `--min-confidence`.
+    required: false
+    default: ""
+outputs:
+  results-file:
+    description: Path of the file holding the scan's results in the chosen format.
+    value: ${{ steps.scan.outputs.results-file }}
+  count:
+    description: Number of results reported after the baseline and confidence filters.
+    value: ${{ steps.scan.outputs.count }}
+runs:
+  using: composite
+  steps:
+    - name: Install Lethen
+      id: install
+      shell: bash
+      env:
+        LETHEN_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: bash "$GITHUB_ACTION_PATH/.github/scripts/action-install.sh"
+    - name: Scan
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        LETHEN_BIN: ${{ steps.install.outputs.path }}
+        LETHEN_ARGS: ${{ inputs.args }}
+        LETHEN_BASELINE: ${{ inputs.baseline }}
+        LETHEN_STRICT: ${{ inputs.strict }}
+        LETHEN_FORMAT: ${{ inputs.format }}
+        LETHEN_MIN_CONFIDENCE: ${{ inputs.min-confidence }}
+      run: bash "$GITHUB_ACTION_PATH/.github/scripts/action-scan.sh"
