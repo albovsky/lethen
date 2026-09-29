@@ -20,9 +20,15 @@ final class XcodeFormatter: OutputFormatter {
         }
 
         return results.flatMap { result in
-            describe(result, colored: colored).map { location, description in
+            var lines = describe(result, colored: colored).map { location, description in
                 prefix(for: location, colored: colored) + description
             }
+
+            if configuration.verbose, !result.reason.isEmpty {
+                lines.insert("    reason: \(result.reason)", at: 1)
+            }
+
+            return lines
         }
         .joined(separator: "\n")
     }

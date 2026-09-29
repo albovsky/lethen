@@ -9,10 +9,17 @@ public final class OutputDeclarationFilter {
     private let configuration: Configuration
     private let logger: Logger
     private let contextualLogger: ContextualLogger
+    private let notesHiddenResults: Bool
 
-    public required init(configuration: Configuration, logger: Logger) {
+    /// The number of results the last `filter` call dropped for being below `--min-confidence`.
+    public private(set) var hiddenByConfidenceCount = 0
+
+    /// - Parameter notesHiddenResults: Whether `filter` says on standard error how many results
+    ///   `--min-confidence` hid. The scan summary footer says it instead when it is printed.
+    public required init(configuration: Configuration, logger: Logger, notesHiddenResults: Bool = true) {
         self.configuration = configuration
         self.logger = logger
+        self.notesHiddenResults = notesHiddenResults
         contextualLogger = logger.contextualized(with: "report:filter")
     }
 
@@ -73,10 +80,16 @@ public final class OutputDeclarationFilter {
             .sorted { ($0.confidence, $0.declaration) < ($1.confidence, $1.declaration) }
     }
 
+    /// "--min-confidence certain hid 2 results", without a full stop.
+    public static func hiddenByConfidenceDescription(count: Int, minimum: MinimumConfidence) -> String {
+        "--min-confidence \(minimum.rawValue) hid \(count) \(count == 1 ? "result" : "results")"
+    }
+
     // MARK: - Private
 
-    /// Drops results below `--min-confidence` and says on standard error how many it dropped. Runs
-    /// after the baseline, so a baseline still matches `likely` results, and before the report globs.
+    /// Drops results below `--min-confidence` and, unless the footer says it, notes on standard error
+    /// how many it dropped. Runs after the baseline, so a baseline still matches `likely` results, and
+    /// before the report globs.
     private func filterByConfidence(_ declarations: [ScanResult]) -> [ScanResult] {
         let minimum = configuration.minConfidence
         let threshold: Confidence = switch minimum {
@@ -85,9 +98,10 @@ public final class OutputDeclarationFilter {
         }
         let kept = declarations.filter { $0.confidence <= threshold }
         let hiddenCount = declarations.count - kept.count
+        hiddenByConfidenceCount = hiddenCount
 
-        if hiddenCount > 0 {
-            logger.note("--min-confidence \(minimum.rawValue) hid \(hiddenCount) \(hiddenCount == 1 ? "result" : "results").")
+        if notesHiddenResults, hiddenCount > 0 {
+            logger.note(Self.hiddenByConfidenceDescription(count: hiddenCount, minimum: minimum) + ".")
         }
 
         return kept

@@ -90,6 +90,130 @@ final class ScanCommandPipelineTest: XCTestCase {
         XCTAssertFalse(try updateChecker(["--format", "json"]).isEnabled)
     }
 
+    // MARK: - Summary footer
+
+    func testXcodeFormatPrintsFooterOnStandardErrorAndLeavesStandardOutputUnchanged() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 2), result("Bar", line: 1, confidence: .likely), result("Baz", line: 3)]
+        var standardOutput = ""
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            standardOutput = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--disable-update-check"])
+            }
+        }
+
+        // Absolute paths: on macOS the temporary directory is reached through a symlink, so paths
+        // relative to the resolved working directory climb out of it.
+        let file = projectRoot.appending("Sources/A.swift").string
+        XCTAssertEqual(standardOutput, """
+
+        \(file):2:1: warning: Unused class 'Foo'
+        \(file):3:1: warning: Unused class 'Baz'
+        \(file):1:1: warning: Unused class 'Bar'
+
+        """)
+        XCTAssertEqual(standardError, "3 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.\n")
+    }
+
+    func testFooterFoldsInResultsHiddenByMinimumConfidence() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 2), result("Bar", line: 1, confidence: .likely), result("Baz", line: 3, confidence: .likely)]
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            _ = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--min-confidence", "certain", "--disable-update-check"])
+            }
+        }
+
+        XCTAssertEqual(standardError, "1 result; --min-confidence certain hid 2 results. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.\n")
+    }
+
+    func testFooterIsOnlyTheMinimumConfidenceNoteWhenEveryResultIsHidden() throws {
+        try makePackage()
+        StubScan.results = [result("Bar", line: 1, confidence: .likely)]
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            _ = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--min-confidence", "certain", "--disable-update-check"])
+            }
+        }
+
+        XCTAssertEqual(standardError, "--min-confidence certain hid 1 result.\n")
+    }
+
+    func testFooterIsAbsentWithoutResults() throws {
+        try makePackage()
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            _ = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--disable-update-check"])
+            }
+        }
+
+        XCTAssertEqual(standardError, "")
+    }
+
+    func testFooterLeavesOutTheBaselineHintWhenABaselineIsWritten() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 1)]
+        let baselinePath = projectRoot.appending("baseline.json")
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            _ = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--write-baseline", baselinePath.string, "--disable-update-check"])
+            }
+        }
+
+        XCTAssertEqual(standardError, "1 result. `lethen explain <name>` shows why.\n")
+    }
+
+    func testFooterIsAbsentForMachineReadableFormatsAndQuiet() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 1)]
+
+        for arguments in [["--format", "json"], ["--format", "csv"], ["--format", "checkstyle"], ["--quiet"]] {
+            let standardError = try captureOutput(of: STDERR_FILENO) {
+                _ = try captureOutput(of: STDOUT_FILENO) {
+                    try run(arguments + ["--disable-update-check"])
+                }
+            }
+
+            XCTAssertEqual(standardError, "", "\(arguments)")
+        }
+    }
+
+    /// Control: without the footer, `--min-confidence` still says on standard error what it hid.
+    func testMachineReadableFormatsKeepTheMinimumConfidenceNote() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 2), result("Bar", line: 1, confidence: .likely)]
+        var standardOutput = ""
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            standardOutput = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--format", "json", "--min-confidence", "certain", "--disable-update-check"])
+            }
+        }
+
+        XCTAssertEqual(standardError, "--min-confidence certain hid 1 result.\n")
+        XCTAssertFalse(standardOutput.contains("--min-confidence"), standardOutput)
+    }
+
+    func testVerboseXcodeFormatPrintsTheReasonUnderEachResult() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 1, reason: "no references in the scanned modules")]
+
+        let standardOutput = try captureOutput(of: STDOUT_FILENO) {
+            try run(["--disable-update-check", "--verbose"])
+        }
+
+        XCTAssertTrue(standardOutput.contains("""
+        \(projectRoot.appending("Sources/A.swift").string):1:1: warning: Unused class 'Foo'
+            reason: no references in the scanned modules
+
+        """), standardOutput)
+    }
+
     // MARK: - Working directory
 
     func testWorkingDirectoryIsRestoredAfterScan() throws {
@@ -228,9 +352,9 @@ final class ScanCommandPipelineTest: XCTestCase {
         try "// swift-tools-version:6.0\n".write(toFile: projectRoot.appending("Package.swift").string, atomically: true, encoding: .utf8)
     }
 
-    private func result(_ name: String, line: Int) -> ScanResult {
+    private func result(_ name: String, line: Int, confidence: Confidence = .certain, reason: String = "") -> ScanResult {
         let location = Location(file: SourceFile(path: projectRoot.appending("Sources/A.swift"), modules: ["App"]), line: line, column: 1)
         let declaration = Declaration(name: name, kind: .class, usrs: ["s:\(name)"], location: location)
-        return ScanResult(declaration: declaration, annotation: .unused)
+        return ScanResult(declaration: declaration, annotation: .unused, confidence: confidence, reason: reason)
     }
 }

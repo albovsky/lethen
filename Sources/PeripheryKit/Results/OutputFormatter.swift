@@ -14,6 +14,11 @@ public protocol OutputFormatter: AnyObject {
 }
 
 extension OutputFormatter {
+    /// The reason given for each conformance of a redundant protocol.
+    var redundantConformanceReason: String {
+        "conforms to a protocol that is never used as a type"
+    }
+
     func redundantConformanceHint(with inherited: Set<String>) -> String {
         var msg = "redundantConformance"
         if !inherited.isEmpty {

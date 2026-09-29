@@ -96,8 +96,8 @@ final class OutputFormatterTest: XCTestCase {
     func testCsvFormatWritesColumnsInHeaderOrder() throws {
         let lines = try format(.csv, [unusedClass()]).components(separatedBy: "\n")
         XCTAssertEqual(lines.count, 2)
-        XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence")
-        XCTAssertEqual(lines[1], "class,Foo,final,,public,s:Foo,\(root.string)/Sources/A.swift:3:5,unused,certain")
+        XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence,Reason")
+        XCTAssertEqual(lines[1], "class,Foo,final,,public,s:Foo,\(root.string)/Sources/A.swift:3:5,unused,certain,")
     }
 
     func testJsonFormatIncludesConfidence() throws {
@@ -123,10 +123,39 @@ final class OutputFormatterTest: XCTestCase {
         XCTAssertEqual(Set(objects.map { $0["confidenceReason"] as? String }), [likely.confidenceReason])
     }
 
-    func testCsvFormatEndsWithConfidenceColumn() throws {
-        let lines = try format(.csv, [unusedClass()], relativeResults: true).components(separatedBy: "\n")
-        XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence")
-        XCTAssertTrue(lines[1].hasSuffix(",unused,certain"), lines[1])
+    func testCsvFormatEndsWithConfidenceAndReasonColumns() throws {
+        let result = ScanResult(declaration: declaration(name: "Foo", kind: .class, usr: "s:Foo"), annotation: .unused, reason: "no references in the scanned modules")
+        let lines = try format(.csv, [result], relativeResults: true).components(separatedBy: "\n")
+        XCTAssertEqual(lines[0], "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence,Reason")
+        XCTAssertTrue(lines[1].hasSuffix(",unused,certain,no references in the scanned modules"), lines[1])
+    }
+
+    func testCsvFormatGivesRedundantConformancesTheirReason() throws {
+        let lines = try format(.csv, [redundantProtocol()], relativeResults: true).components(separatedBy: "\n")
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertTrue(lines[2].hasSuffix(",certain,conforms to a protocol that is never used as a type"), lines[2])
+    }
+
+    func testXcodeFormatPrintsReasonOnlyWhenVerbose() throws {
+        let reasoned = ScanResult(declaration: declaration(name: "Foo", kind: .class, usr: "s:Foo"), annotation: .unused, reason: "no references in the scanned modules")
+        let unreasoned = ScanResult(declaration: declaration(name: "Bar", kind: .class, usr: "s:Bar"), annotation: .unused)
+        XCTAssertEqual(try format(.xcode, [reasoned], relativeResults: true), "Sources/A.swift:3:5: warning: Unused class 'Foo'")
+        XCTAssertEqual(try format(.xcode, [reasoned, unreasoned], relativeResults: true, verbose: true).components(separatedBy: "\n"), [
+            "Sources/A.swift:3:5: warning: Unused class 'Foo'",
+            "    reason: no references in the scanned modules",
+            "Sources/A.swift:3:5: warning: Unused class 'Bar'",
+        ])
+    }
+
+    /// The reason follows the protocol's own line, ahead of its conformances.
+    func testVerboseXcodeFormatPutsReasonBeforeRedundantConformances() throws {
+        let redundant = redundantProtocol()
+        let result = ScanResult(declaration: redundant.declaration, annotation: redundant.annotation, reason: "conformed to but never used as a type")
+        XCTAssertEqual(try format(.xcode, [result], relativeResults: true, verbose: true).components(separatedBy: "\n"), [
+            "Sources/A.swift:3:5: warning: Redundant protocol 'P' (never used as an existential type)",
+            "    reason: conformed to but never used as a type",
+            "Sources/B.swift:9:1: warning: Redundant protocol conformance 'P' (replace with 'Q')",
+        ])
     }
 
     func testJsonFormatIncludesReason() throws {
@@ -145,10 +174,10 @@ final class OutputFormatterTest: XCTestCase {
         deprecated.declaration.attributes = [DeclarationAttribute(name: "available", arguments: "*, deprecated, message: \"Use Bar\"")]
         let lines = try format(.csv, [deprecated, redundantProtocol(inherited: ["Q", "R"])], relativeResults: true).components(separatedBy: "\n")
         XCTAssertEqual(lines, [
-            "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence",
-            "class,Foo,final,\"available(*, deprecated, message: \"\"Use Bar\"\")\",public,s:Foo,Sources/A.swift:3:5,unused,certain",
-            "protocol,P,,,internal,s:P,Sources/A.swift:3:5,redundantProtocol,certain",
-            "protocol,P,,,,s:Conformance,Sources/B.swift:9:1,\"redundantConformance(replace with: 'Q, R')\",certain",
+            "Kind,Name,Modifiers,Attributes,Accessibility,IDs,Location,Hints,Confidence,Reason",
+            "class,Foo,final,\"available(*, deprecated, message: \"\"Use Bar\"\")\",public,s:Foo,Sources/A.swift:3:5,unused,certain,",
+            "protocol,P,,,internal,s:P,Sources/A.swift:3:5,redundantProtocol,certain,",
+            "protocol,P,,,,s:Conformance,Sources/B.swift:9:1,\"redundantConformance(replace with: 'Q, R')\",certain,conforms to a protocol that is never used as a type",
         ])
     }
 
@@ -207,9 +236,10 @@ final class OutputFormatterTest: XCTestCase {
 
     // MARK: - Private
 
-    private func format(_ format: OutputFormat, _ results: [ScanResult], relativeResults: Bool = false) throws -> String {
+    private func format(_ format: OutputFormat, _ results: [ScanResult], relativeResults: Bool = false, verbose: Bool = false) throws -> String {
         let configuration = Configuration()
         configuration.relativeResults = relativeResults
+        configuration.verbose = verbose
         let formatter = format.formatter.init(configuration: configuration, logger: logger)
         return try XCTUnwrap(formatter.format(results, colored: false))
     }

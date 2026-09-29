@@ -234,6 +234,10 @@ struct ScanCommand: ParsableCommand {
             logger.info(output, canQuiet: false)
         }
 
+        if let footer = report.footer {
+            logger.note(footer)
+        }
+
         try report.writeResults()
         logger.endInterval(interval)
 

@@ -11,6 +11,9 @@ struct ScanReport {
     let results: [ScanResult]
     /// The formatted results for the terminal, colored when the format and the terminal support it.
     let output: String?
+    /// The summary printed on standard error after the xcode format's results, unless quiet: the
+    /// counts, how many `--min-confidence` hid, and where to go next.
+    let footer: String?
 
     private let configuration: Configuration
     private let formatter: OutputFormatter
@@ -25,7 +28,9 @@ struct ScanReport {
             baseline = try JSONDecoder().decode(Baseline.self, from: data)
         }
 
-        let filteredResults = try OutputDeclarationFilter(configuration: configuration, logger: logger).filter(results, with: baseline)
+        let printsFooter = configuration.outputFormat == .xcode && !configuration.quiet
+        let filter = OutputDeclarationFilter(configuration: configuration, logger: logger, notesHiddenResults: !printsFooter)
+        let filteredResults = try filter.filter(results, with: baseline)
 
         if let baselinePath = configuration.writeBaseline {
             let usrs = filteredResults
@@ -42,6 +47,7 @@ struct ScanReport {
 
         self.results = filteredResults
         output = try formatter.format(filteredResults, colored: isColored)
+        footer = printsFooter ? Self.footer(for: filteredResults, hiddenByConfidence: filter.hiddenByConfidenceCount, configuration: configuration) : nil
         self.configuration = configuration
         self.formatter = formatter
         self.isColored = isColored
@@ -61,6 +67,37 @@ struct ScanReport {
         }
 
         try output.write(to: resultsPath.url, atomically: true, encoding: .utf8)
+    }
+
+    /// "3 results, 1 likely. `lethen explain <name>` shows why; …", or only the `--min-confidence`
+    /// note when no result remains. The baseline hint is left out once a baseline is in use.
+    static func footer(for results: [ScanResult], hiddenByConfidence: Int, configuration: Configuration) -> String? {
+        let hidden = hiddenByConfidence > 0
+            ? OutputDeclarationFilter.hiddenByConfidenceDescription(count: hiddenByConfidence, minimum: configuration.minConfidence)
+            : nil
+
+        guard !results.isEmpty else {
+            return hidden.map { $0 + "." }
+        }
+
+        var summary = "\(results.count) \(results.count == 1 ? "result" : "results")"
+        let likelyCount = results.count { $0.confidence == .likely }
+
+        if likelyCount > 0 {
+            summary += ", \(likelyCount) likely"
+        }
+
+        if let hidden {
+            summary += "; \(hidden)"
+        }
+
+        summary += ". `lethen explain <name>` shows why"
+
+        if configuration.baseline == nil, configuration.writeBaseline == nil {
+            summary += "; `--write-baseline baseline.json` records these so the next scan reports only new ones"
+        }
+
+        return summary + "."
     }
 
     /// Throws `foundIssues` in strict mode when any result remains.
