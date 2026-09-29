@@ -44,6 +44,11 @@ final class UnusedParameterRetainer: SourceGraphMutator {
                     let overrideDecls = conformingDecls.flatMap { graph.allOverrideDeclarations(fromBase: $0) }
                     let allFunctionDecls = conformingDecls + overrideDecls + extFuncDecls + [protoFuncDecl]
 
+                    if allFunctionDecls.contains(where: isReferencedAsValue) {
+                        retainFunctionValueParams(inFunctions: allFunctionDecls)
+                        continue
+                    }
+
                     for functionDecl in allFunctionDecls {
                         if configuration.retainUnusedProtocolFuncParams {
                             functionDecl.unusedParameters.forEach { graph.markRetained($0) }
@@ -72,6 +77,9 @@ final class UnusedParameterRetainer: SourceGraphMutator {
             if allFunctionDecls.contains(where: isRetainedPublicFunction) {
                 // Overrides share one signature, so a retained public function anywhere in the chain fixes it.
                 retainPublicAPIParams(inFunctions: allFunctionDecls)
+            } else if allFunctionDecls.contains(where: isReferencedAsValue) {
+                // Likewise, a function type the chain converts to fixes the signature of every function in it.
+                retainFunctionValueParams(inFunctions: allFunctionDecls)
             } else if didResolveBase {
                 if hasExternalRelatedReferences(from: baseFunctionDecl) {
                     retainAllUnusedParams(inMethods: allFunctionDecls)
@@ -95,12 +103,26 @@ final class UnusedParameterRetainer: SourceGraphMutator {
     }
 
     private func retainPublicAPIParams(inFunctions functionDecls: [Declaration]) {
+        retainFixedSignatureParams(inFunctions: functionDecls, as: "a parameter of retained public API")
+    }
+
+    private func retainFunctionValueParams(inFunctions functionDecls: [Declaration]) {
+        retainFixedSignatureParams(inFunctions: functionDecls, as: "a parameter of a function referenced as a value")
+    }
+
+    private func retainFixedSignatureParams(inFunctions functionDecls: [Declaration], as reason: String) {
         let params = Set(functionDecls.flatMap(\.unusedParameters).filter { !graph.isRetained($0) })
         params.forEach { graph.markRetained($0) }
 
         if graph.recordsRetentionSources {
-            graph.recordRetentionSource("\(Self.self), as a parameter of retained public API", for: params)
+            graph.recordRetentionSource("\(Self.self), as \(reason)", for: params)
         }
+    }
+
+    /// A function referenced without a call, such as one passed or assigned as a value, keeps the signature of the
+    /// function type it converts to.
+    private func isReferencedAsValue(_ decl: Declaration) -> Bool {
+        graph.references(to: decl).contains { $0.kind == .normal && !$0.isCall }
     }
 
     private func retainAllUnusedParams(inMethods methodDeclarations: [Declaration]) {

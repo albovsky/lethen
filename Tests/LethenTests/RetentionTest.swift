@@ -1748,6 +1748,61 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testRetainsFunctionValueParameters() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass237")) {
+                self.assertReferenced(.functionMethodInstance("assignedFunc(unused:)")) {
+                    self.assertReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("passedFunc(_:)")) {
+                    self.assertReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodStatic("staticValueFunc(unused:)")) {
+                    self.assertReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("overriddenFunc(_:)")) {
+                    self.assertReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("passedFuncReadingParam(_:)")) {
+                    self.assertUsedParameter("used")
+                }
+                self.assertReferenced(.functionMethodInstance("calledFunc(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("closureWrappedFunc(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionConstructor("init(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionSubscript("subscript(_:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+            }
+            assertReferenced(.class("FixtureClass237Subclass")) {
+                self.assertReferenced(.functionMethodInstance("overriddenFunc(_:)")) {
+                    self.assertReferenced(.varParameter("unused"))
+                }
+            }
+            assertReferenced(.protocol("FixtureProtocol237")) {
+                self.assertReferenced(.functionMethodInstance("valueRequirement(_:)")) {
+                    self.assertReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("calledRequirement(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+            }
+            assertReferenced(.class("FixtureClass237Witness")) {
+                self.assertReferenced(.functionMethodInstance("valueRequirement(_:)")) {
+                    self.assertReferenced(.varParameter("unused"))
+                }
+                self.assertReferenced(.functionMethodInstance("calledRequirement(unused:)")) {
+                    self.assertNotReferenced(.varParameter("unused"))
+                }
+            }
+        }
+    }
+
     func testReportsNoRetainSPIParameters() throws {
         try analyze(retainPublic: true, noRetainSPI: ["Internal"]) {
             assertReferenced(.class("FixtureClass235")) {

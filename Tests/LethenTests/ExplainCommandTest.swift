@@ -59,6 +59,12 @@ final class ExplainCommandTest: FixtureSourceGraphTestCase {
         XCTAssertTrue(output.contains("retained by UnusedParameterRetainer, as a parameter of retained public API"), output)
     }
 
+    func testFunctionValueParameterNamesTheRule() throws {
+        let output = try explain("FixtureClass237.passedFunc.unused", "--retain-public")
+
+        XCTAssertTrue(output.contains("retained by UnusedParameterRetainer, as a parameter of a function referenced as a value"), output)
+    }
+
     func testUnknownNameIsAUsageError() {
         XCTAssertThrowsError(try explain("noSuchDeclarationAnywhere")) { error in
             guard case let LethenError.usageError(message) = error else {

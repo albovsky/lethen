@@ -24,6 +24,19 @@ import XCTest
             }
         }
 
+        func testRetainsSelectorReferencedMethodParameters() throws {
+            try analyze(retainPublic: true) {
+                assertReferenced(.class("FixtureClass238")) {
+                    self.assertReferenced(.functionMethodInstance("selectorTarget(_:)")) {
+                        self.assertReferenced(.varParameter("unused"))
+                    }
+                    self.assertReferenced(.functionMethodInstance("calledTarget(unused:)")) {
+                        self.assertNotReferenced(.varParameter("unused"))
+                    }
+                }
+            }
+        }
+
         func testRetainsObjcAnnotatedClass() throws {
             try analyze(retainObjcAccessible: true) {
                 assertReferenced(.class("FixtureClass21"))
