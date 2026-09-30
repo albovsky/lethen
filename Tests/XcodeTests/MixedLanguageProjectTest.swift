@@ -24,6 +24,9 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
             self.assertReferenced(.functionMethodInstance("renamedInSwift()"))
             self.assertReferenced(.varInstance("readFromObjC"))
             self.assertReferenced(.varStatic("staticReadFromObjC"))
+            // Read with message syntax, which names only the getter.
+            self.assertReferenced(.varInstance("readByMessage"))
+            self.assertReferenced(.varStatic("staticReadByMessage"))
             self.assertReferenced(.functionMethodInstance("calledInExtension()"))
             // Exposed to Objective-C but never called from it.
             self.assertNotReferenced(.functionMethodInstance("notCalledFromObjC(_:)"))
@@ -45,6 +48,15 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         assertReferenced(.enum("EnumUsedFromObjC")) {
             self.assertReferenced(.enumelement("usedCase"))
         }
+    }
+
+    /// Xcode's clang units name no module, so a use from Objective-C counts as a use from another
+    /// module and a public declaration used from Objective-C is not redundantly public; one used only
+    /// from Swift in its own module is.
+    func testPublicDeclarationUsedFromObjectiveCIsNotRedundantlyPublic() {
+        assertReferenced(.class("PublicAllocatedFromObjC"))
+        assertNotRedundantPublicAccessibility(.class("PublicAllocatedFromObjC"))
+        assertRedundantPublicAccessibility(.class("PublicUsedFromSwift"))
     }
 
     /// The reference is in the header's own record, not the `.m` file that includes it.
@@ -78,7 +90,7 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
 
         XCTAssertTrue(output.contains("Used, through this chain of references:"), output)
         XCTAssertTrue(output.contains("Objective-C code at "), output)
-        XCTAssertTrue(output.contains("ObjCCaller.m:20:13 references class AllocatedFromObjC"), output)
+        XCTAssertTrue(output.contains("ObjCCaller.m:22:13 references class AllocatedFromObjC"), output)
 
         let header = try XCTUnwrap(explanation(of: .class("NamedInObjCHeader")))
         XCTAssertTrue(header.contains("ObjCCaller.h:6:28 references class NamedInObjCHeader"), header)

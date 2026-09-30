@@ -17,8 +17,11 @@
     [object calledOnFrameworkClass];
     NSInteger value = object.readFromObjC + CalledFromObjC.staticReadFromObjC;
     (void)value;
+    (void)[object readByMessage];
+    (void)[CalledFromObjC staticReadByMessage];
     (void)[[AllocatedFromObjC alloc] init];
     (void)[[RenamedClassForObjC alloc] init];
+    (void)[[PublicAllocatedFromObjC alloc] init];
     EnumUsedFromObjC enumValue = EnumUsedFromObjCUsedCase;
     (void)enumValue;
 }

@@ -74,15 +74,16 @@ final class ObjCReferenceIndexer: Indexer {
                     continue
                 }
 
-                let reference = Reference(
-                    name: declaration.name,
-                    kind: .normal,
-                    declarationKind: declaration.kind,
-                    usr: usr,
-                    location: Location(file: occurrence.file, line: occurrence.line, column: occurrence.column)
-                )
-                reference.isFromObjectiveC = true
-                references.insert(reference)
+                let location = Location(file: occurrence.file, line: occurrence.line, column: occurrence.column)
+                references.insert(Self.reference(to: declaration, usr: usr, at: location))
+
+                // Message syntax (`[UIColor wmf_blue]`) names only the accessor method, while Swift code
+                // reading the property references the property itself.
+                if declaration.kind.isAccessorKind, let property = declaration.parent, property.kind.isVariableKind,
+                   let propertyUsr = property.usrs.sorted().first
+                {
+                    references.insert(Self.reference(to: property, usr: propertyUsr, at: location))
+                }
             }
 
             graph.add(references)
@@ -93,6 +94,18 @@ final class ObjCReferenceIndexer: Indexer {
     }
 
     // MARK: - Private
+
+    private static func reference(to declaration: Declaration, usr: String, at location: Location) -> Reference {
+        let reference = Reference(
+            name: declaration.name,
+            kind: .normal,
+            declarationKind: declaration.kind,
+            usr: usr,
+            location: location
+        )
+        reference.isFromObjectiveC = true
+        return reference
+    }
 
     private static let forwardDeclarableKinds: Set<SymbolKind> = [.class, .protocol]
 
