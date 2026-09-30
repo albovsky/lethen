@@ -204,6 +204,28 @@ Not worth changing:
   fallback cache. With an exact key present the cache hits fully. Since 8.x no longer
   runs on pull requests, no further work is planned.
 
+## Job time limits
+
+No `Test` job set `timeout-minutes`, so a hung build or test could hold a runner for GitHub's
+default of six hours. Every job now has a limit of at least twice its longest successful run
+among the 240 runs from 2026-09-19 to 2026-09-30, and never under 10 minutes. The reusable
+`Linux release` job keeps the limits set in `release-linux.yml`.
+
+| Job | Median | Longest | Limit |
+|---|---|---|---|
+| Swift 6.4 / Xcode 27 | 9.8 min | 20.4 min | 45 min |
+| macOS | 10.6 min | 23.8 min | 45 min |
+| Linux | 6.9 min | 12.7 min | 30 min |
+| Bazel (both profiles) | 1.7 min | 10.9 min | 30 min |
+| macOS nightly | 20.6 min | 24.4 min | 60 min |
+| Linux nightly | 12.8 min | 14.6 min | 40 min |
+| Precision corpus | 13.2 min | 17.8 min | 60 min |
+| Lint | 0.6 min | 1.1 min | 15 min |
+| Plan, Prune caches, Required checks | under 1 min | 0.6 min | 10 min |
+
+A limit that starts failing healthy runs means the job has grown; raise it with the new
+measurements rather than retrying.
+
 ## Method
 
 `gh api repos/albovsky/lethen/actions/runs/<id>/jobs` provides per-job timestamps. For
