@@ -226,6 +226,28 @@ among the 240 runs from 2026-09-19 to 2026-09-30, and never under 10 minutes. Th
 A limit that starts failing healthy runs means the job has grown; raise it with the new
 measurements rather than retrying.
 
+## macOS 6.3 off pull requests
+
+Across 37 green pull request runs from 2026-09-27 to 2026-09-30, a run took 17.1 minutes
+(median; 19.8 at p90). A macOS job waited 0.1 minutes for a runner (median; 1.3 at p90), so
+the time went into the jobs, not the queue. The longest was macOS 6.3 at 15.3 minutes:
+build 2.5 to 3, `swift test` 9 to 12, scan 2 to 4. Swift 6.4 / Xcode 27 took 12.5 and Linux 9.1.
+
+Pull requests (`pr` profile) now leave out the macOS 6.3 / Xcode 26.4 job. Pushes to master
+and the nightly schedule still run it, and `Required checks` expects it exactly there, as it
+does Bazel 8.x. The generated Bazel rules check, which needs a macOS manifest, moved from
+that job into Swift 6.4 / Xcode 27, the one macOS SwiftPM job every profile runs.
+
+What a pull request still covers: the full suite, fixture scan comparisons and strict
+self-scan on Swift 6.4 / Xcode 27, the full suite on Linux with Swift 6.3 and 6.4, Lint,
+Bazel 9.x on both platforms, and the Linux release tarballs. What moves after the merge: the
+suite and scan under Xcode 26.4 with Swift 6.3 on macOS. A break there shows on the push to
+master. To check a branch first, run the `Test` workflow on it with the `master` profile.
+
+Expected effect: the pull request critical path becomes Swift 6.4 / Xcode 27 (12.5 minutes
+median), about 3 minutes shorter per run, and a pull request queues two macOS jobs instead of
+three.
+
 ## Method
 
 `gh api repos/albovsky/lethen/actions/runs/<id>/jobs` provides per-job timestamps. For
