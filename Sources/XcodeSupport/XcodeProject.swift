@@ -10,6 +10,7 @@ public final class XcodeProject: XcodeProjectlike {
     public let sourceRoot: FilePath
     public let name: String
     public private(set) var targets: Set<XcodeTarget> = []
+    public private(set) var buildConfigurationNames: Set<String> = []
 
     let xcodeProject: XcodeProj
 
@@ -105,6 +106,8 @@ public final class XcodeProject: XcodeProjectlike {
         targets = xcodeProject.pbxproj.nativeTargets
             .mapSet { XcodeTarget(project: self, target: $0) }
             .union(subProjects.flatMapSet { $0.targets })
+        buildConfigurationNames = Set(xcodeProject.pbxproj.rootObject?.buildConfigurationList?.buildConfigurations.map(\.name) ?? [])
+            .union(subProjects.flatMapSet { $0.buildConfigurationNames })
     }
 
     public func schemes(additionalArguments: [String]) throws -> Set<String> {

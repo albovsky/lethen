@@ -65,8 +65,11 @@ final class Project {
 
     func driver() throws -> ProjectDriver {
         if !configuration.configurations.isEmpty {
-            guard case .spm = kind else {
-                throw LethenError.usageError("--configurations is supported for Swift packages only. Xcode projects share one index store across configurations; pass -configuration through the build arguments instead.")
+            switch kind {
+            case .spm, .xcode:
+                break
+            case .bazel, .generic:
+                throw LethenError.usageError("--configurations is supported for Swift packages and Xcode projects only.")
             }
         }
 

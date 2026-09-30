@@ -1,11 +1,59 @@
 import Foundation
 import Shared
+import Synchronization
 
 struct ShellMock: Shell {
     let output: String
 
     func exec(_: [String]) throws -> String {
         output
+    }
+
+    func execStatus(_: [String]) throws -> Int32 {
+        0
+    }
+}
+
+/// Records every command instead of running it, answering like `xcodebuild -version`. A command containing
+/// `failingArgument` throws, as a failed build does.
+final class RecordingShell: Shell {
+    private let commands = Mutex<[[String]]>([])
+    private let streamedCommands = Mutex<[[String]]>([])
+    private let failingArgument: String?
+
+    init(failingArgument: String? = nil) {
+        self.failingArgument = failingArgument
+    }
+
+    var executed: [[String]] {
+        commands.withLock { $0 }
+    }
+
+    var streamed: [[String]] {
+        streamedCommands.withLock { $0 }
+    }
+
+    var derivedDataPaths: [String] {
+        executed.compactMap { command in
+            guard command.first == "xcodebuild", let index = command.firstIndex(of: "-derivedDataPath") else { return nil }
+
+            return command[index + 1]
+        }
+    }
+
+    func exec(_ args: [String]) throws -> String {
+        commands.withLock { $0.append(args) }
+        if let failingArgument, args.contains(failingArgument) {
+            throw LethenError.shellCommandFailed(cmd: args, status: 65, output: "** TEST BUILD FAILED **")
+        }
+
+        return "Xcode 27.0\nBuild version 27A266a"
+    }
+
+    func exec(_ args: [String], onOutputLine: @escaping @Sendable (String) -> Void) throws -> String {
+        streamedCommands.withLock { $0.append(args) }
+        onOutputLine("note: Building targets in dependency order")
+        return try exec(args)
     }
 
     func execStatus(_: [String]) throws -> Int32 {

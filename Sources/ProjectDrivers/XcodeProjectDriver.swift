@@ -55,6 +55,8 @@
                 )
             }
 
+            try Self.validateConfigurations(configuration, project: project)
+
             let schemes: Set<String>
 
             if configuration.skipSchemesValidation {
@@ -102,21 +104,32 @@
             guard !configuration.skipBuild else { return }
 
             if configuration.cleanBuild {
-                try xcodebuild.removeDerivedData(for: project, allSchemes: Array(schemes))
+                for buildConfiguration in buildConfigurations {
+                    try xcodebuild.removeDerivedData(
+                        for: project,
+                        allSchemes: Array(schemes),
+                        configuration: buildConfiguration,
+                        buildArguments: configuration.buildArguments
+                    )
+                }
             }
 
             for scheme in schemes {
-                if configuration.outputFormat.supportsAuxiliaryOutput {
-                    let asterisk = logger.colorize("*", .boldGreen)
-                    logger.info("\(asterisk) Building \(scheme)...")
-                }
+                for buildConfiguration in buildConfigurations {
+                    if configuration.outputFormat.supportsAuxiliaryOutput {
+                        let asterisk = logger.colorize("*", .boldGreen)
+                        let suffix = buildConfiguration.map { " (\($0))" } ?? ""
+                        logger.info("\(asterisk) Building \(scheme)\(suffix)...")
+                    }
 
-                try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
-                    try xcodebuild.build(project: project,
-                                         scheme: scheme,
-                                         allSchemes: Array(schemes),
-                                         additionalArguments: configuration.buildArguments,
-                                         onOutputLine: onOutputLine)
+                    try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
+                        try xcodebuild.build(project: project,
+                                             scheme: scheme,
+                                             allSchemes: Array(schemes),
+                                             configuration: buildConfiguration,
+                                             additionalArguments: configuration.buildArguments,
+                                             onOutputLine: onOutputLine)
+                    }
                 }
             }
         }
@@ -127,7 +140,16 @@
             } else if configuration.skipBuild {
                 try [skipBuildIndexStore()]
             } else {
-                try [xcodebuild.indexStorePath(project: project, schemes: Array(schemes))]
+                // One store per configuration; the collector keeps every store's units, so a reference
+                // compiled in any configuration counts.
+                try buildConfigurations.mapSet {
+                    try xcodebuild.indexStorePath(
+                        project: project,
+                        schemes: Array(schemes),
+                        configuration: $0,
+                        buildArguments: configuration.buildArguments
+                    )
+                }
             }
 
             let targets = project.targets
@@ -159,10 +181,15 @@
 
         // MARK: - Private
 
+        /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.
+        private var buildConfigurations: [String?] {
+            configuration.configurations.isEmpty ? [nil] : configuration.configurations.removingDuplicates()
+        }
+
         /// Without a build, the index is either lethen's own from an earlier scan or the one Xcode keeps
         /// for this project in its DerivedData; the most recently written one is used, and named.
         private func skipBuildIndexStore() throws -> FilePath {
-            let own = try? xcodebuild.indexStorePath(project: project, schemes: Array(schemes))
+            let own = try? xcodebuild.indexStorePath(project: project, schemes: Array(schemes), buildArguments: configuration.buildArguments)
             let candidates = ([own].compactMap(\.self) + derivedDataLocator.indexStores(for: project.path))
                 .map { ($0, XcodeDerivedDataLocator.lastWritten($0)) }
             guard let (store, date) = candidates.max(by: { $0.1 < $1.1 }) else {
@@ -175,6 +202,36 @@
             }
 
             return store
+        }
+    }
+
+    extension XcodeProjectDriver {
+        /// `--configurations` selects the configurations itself, so each must exist in the project and the build
+        /// arguments must not pick another one.
+        static func validateConfigurations(_ configuration: Configuration, project: XcodeProjectlike) throws {
+            guard !configuration.configurations.isEmpty else { return }
+
+            if configuration.buildArguments.contains("-configuration") {
+                throw LethenError.usageError("--configurations already selects the build configuration; remove -configuration from the build arguments.")
+            }
+
+            let known = project.buildConfigurationNames
+            let unknown = configuration.configurations.filter { !known.contains($0) }.removingDuplicates()
+            if !unknown.isEmpty {
+                let available = known.sorted().joined(separator: ", ")
+                throw LethenError.usageError("--configurations names \(unknown.joined(separator: ", ")), which \(project.path.lastComponent?.string ?? "the project") does not define. Its build configurations are: \(available).")
+            }
+
+            if configuration.skipBuild, configuration.indexStorePath.isEmpty {
+                throw LethenError.usageError("--skip-build does not yet read one index per configuration for Xcode projects; build without --skip-build, or pass each configuration's store with --index-store-path.")
+            }
+        }
+    }
+
+    private extension Array where Element: Hashable {
+        func removingDuplicates() -> [Element] {
+            var seen: Set<Element> = []
+            return filter { seen.insert($0).inserted }
         }
     }
 #endif

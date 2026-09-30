@@ -15,6 +15,7 @@ public final class XcodeWorkspace: XcodeProjectlike {
     private let xcworkspace: XCWorkspace
 
     public private(set) var targets: Set<XcodeTarget> = []
+    public private(set) var buildConfigurationNames: Set<String> = []
 
     public required init(path: FilePath, xcodebuild: Xcodebuild, configuration: Configuration, logger: Logger, shell: Shell) throws {
         logger.contextualized(with: "xcode:workspace").debug("Loading \(path)")
@@ -39,6 +40,7 @@ public final class XcodeWorkspace: XcodeProjectlike {
         targets = projects.reduce(into: .init()) { result, project in
             result.formUnion(project.targets)
         }
+        buildConfigurationNames = projects.flatMapSet { $0.buildConfigurationNames }
     }
 
     public func schemes(additionalArguments: [String]) throws -> Set<String> {
