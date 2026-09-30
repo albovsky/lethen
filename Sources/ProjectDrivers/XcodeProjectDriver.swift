@@ -114,12 +114,16 @@
                 }
             }
 
-            for scheme in schemes {
+            for scheme in schemes.sorted() {
+                let schemeConfigurations = project.schemeConfigurations(named: scheme)
+                if let warning = Self.configurationMismatchWarning(scheme: scheme, schemeConfigurations: schemeConfigurations, configuration: configuration) {
+                    logger.warn(warning)
+                }
+
                 for buildConfiguration in buildConfigurations {
                     if configuration.outputFormat.supportsAuxiliaryOutput {
                         let asterisk = logger.colorize("*", .boldGreen)
-                        let suffix = buildConfiguration.map { " (\($0))" } ?? ""
-                        logger.info("\(asterisk) Building \(scheme)\(suffix)...")
+                        logger.info("\(asterisk) \(Self.buildDescription(scheme: scheme, listedConfiguration: buildConfiguration, schemeConfigurations: schemeConfigurations, buildArguments: configuration.buildArguments))...")
                     }
 
                     try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
@@ -225,6 +229,42 @@
             if configuration.skipBuild, configuration.indexStorePath.isEmpty {
                 throw LethenError.usageError("--skip-build does not yet read one index per configuration for Xcode projects; build without --skip-build, or pass each configuration's store with --index-store-path.")
             }
+        }
+    }
+
+    extension XcodeProjectDriver {
+        /// What a build of `scheme` compiles, such as "Building Wikipedia with configuration Test". The configuration is
+        /// the listed one, then a `-configuration` in the build arguments, then the scheme's Test action configuration;
+        /// a scheme without a file names none.
+        static func buildDescription(
+            scheme: String,
+            listedConfiguration: String?,
+            schemeConfigurations: XcodeSchemeConfigurations?,
+            buildArguments: [String]
+        ) -> String {
+            let builtConfiguration = listedConfiguration
+                ?? buildArguments.firstIndex(of: "-configuration").flatMap { buildArguments[safe: $0 + 1] }
+                ?? schemeConfigurations?.test
+            guard let builtConfiguration else { return "Building \(scheme)" }
+
+            return "Building \(scheme) with configuration \(builtConfiguration)"
+        }
+
+        /// `build-for-testing` compiles the scheme's Test configuration, so code compiled only in the configuration the
+        /// app runs with is invisible to the scan. Warns when the two differ and the user has not chosen a configuration.
+        static func configurationMismatchWarning(
+            scheme: String,
+            schemeConfigurations: XcodeSchemeConfigurations?,
+            configuration: Configuration
+        ) -> String? {
+            guard configuration.configurations.isEmpty,
+                  !configuration.buildArguments.contains("-configuration"),
+                  let test = schemeConfigurations?.test,
+                  let launch = schemeConfigurations?.launch,
+                  test != launch
+            else { return nil }
+
+            return "Scheme \(scheme) builds for testing with configuration \(test) but runs with \(launch), so code compiled only in \(launch), such as an #if branch, is reported as unused. Pass --configurations \(test) \(launch) to scan both."
         }
     }
 

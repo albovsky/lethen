@@ -11,6 +11,8 @@ public protocol XcodeProjectlike: AnyObject {
     var buildConfigurationNames: Set<String> { get }
 
     func schemes(additionalArguments: [String]) throws -> Set<String>
+    /// The Test and Launch configurations of the scheme named `scheme`, if a scheme file defines it.
+    func schemeConfigurations(named scheme: String) -> XcodeSchemeConfigurations?
 }
 
 public extension XcodeProjectlike {
