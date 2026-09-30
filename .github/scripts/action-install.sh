@@ -136,6 +136,6 @@ else
 fi
 
 reported="$("$binary" version)" \
-    || fail "The installed lethen executable does not run; the output above names what is missing. Linux release binaries are tested on the swift:6.3-jammy and swift:6.4-noble images."
+    || fail "The installed lethen executable does not run; the output above names what is missing. Linux release binaries are tested on the swift:6.3-jammy and swift:6.4-noble images, and releases after 3.9.0 also on swift:6.4-resolute."
 [ "$reported" = "$version" ] || fail "The installed lethen reports version $reported, expected $version."
 echo "path=$binary" >> "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"

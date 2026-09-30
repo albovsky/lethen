@@ -4,7 +4,9 @@
 # The binary must report the release version, then scan a small generated package with
 # one used and one unused function and report exactly the unused one. The scan builds the
 # package with the active toolchain and loads its libIndexStore, so a pass also shows
-# that the binary's library search paths resolve on this host.
+# that the binary's library search paths resolve on this host. The package also has a
+# class used only from a XIB, which stays unreported only if the binary's XML parser
+# works.
 #
 # Usage: release-smoke-test.sh <binary> <expected-version>
 set -euo pipefail
@@ -31,13 +33,22 @@ import PackageDescription
 
 let package = Package(
     name: "ReleaseSmoke",
-    targets: [.executableTarget(name: "ReleaseSmoke")]
+    targets: [.executableTarget(name: "ReleaseSmoke", resources: [.copy("View.xib")])]
 )
 EOF
 cat > "$workspace/Sources/ReleaseSmoke/main.swift" <<'EOF'
 func usedFunction() -> Int { 1 }
 func unusedFunction() -> Int { 2 }
+class XibView {}
 print(usedFunction())
+EOF
+cat > "$workspace/Sources/ReleaseSmoke/View.xib" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.XIB" version="3.0">
+    <objects>
+        <view contentMode="scaleToFill" id="view-1" customClass="XibView" customModule="ReleaseSmoke"/>
+    </objects>
+</document>
 EOF
 
 if ! (cd "$workspace" && "$binary" scan --project-root "$workspace" --format json --quiet --disable-update-check) \
