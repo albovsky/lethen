@@ -88,7 +88,8 @@ extension SPMProjectDriver: ProjectDriver {
         let xibPaths = interfaceBuilderFiles(from: description)
 
         return IndexPlan(
-            sourceFiles: sourceFiles,
+            sourceFiles: sourceFiles.sourceFiles,
+            clangSourceFiles: sourceFiles.clangSourceFiles,
             xibPaths: xibPaths
         )
     }

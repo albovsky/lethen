@@ -148,7 +148,8 @@
             let xcMappingModelPaths = targets.flatMapSet { $0.files(kind: .xcMappingModel) }
 
             return IndexPlan(
-                sourceFiles: sourceFiles,
+                sourceFiles: sourceFiles.sourceFiles,
+                clangSourceFiles: sourceFiles.clangSourceFiles,
                 plistPaths: infoPlistPaths,
                 xibPaths: xibPaths,
                 xcDataModelPaths: xcDataModelPaths,

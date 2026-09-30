@@ -6,6 +6,14 @@ import Shared
 import SourceGraph
 import SystemPackage
 
+/// The source files of an index store, split by the compiler that indexed them.
+public struct CollectedSourceFiles {
+    /// Files indexed by the Swift compiler, which the Swift indexer reads.
+    public let sourceFiles: [SourceFile: [IndexUnit]]
+    /// Files indexed by clang (C, C++, Objective-C), which the Swift indexer must not parse.
+    public let clangSourceFiles: [SourceFile: [IndexUnit]]
+}
+
 public struct SourceFileCollector {
     private let indexStorePaths: Set<FilePath>
     private let excludedTestTargets: Set<String>
@@ -35,7 +43,7 @@ public struct SourceFileCollector {
         self.configuration = configuration
     }
 
-    public func collect() throws -> [SourceFile: [IndexUnit]] {
+    public func collect() throws -> CollectedSourceFiles {
         let excludedTargets = excludedTestTargets.union(configuration.excludeTargets)
         let currentFilePath = FilePath.current
 
@@ -74,7 +82,8 @@ public struct SourceFileCollector {
                             unit: unit,
                             module: unit.moduleName,
                             date: date ?? .distantPast,
-                            isFresh: isFresh
+                            isFresh: isFresh,
+                            isClang: Self.isClangUnit(providerIdentifier: unit.providerIdentifier, mainFile: filePath)
                         )
                     }
 
@@ -84,6 +93,7 @@ public struct SourceFileCollector {
 
         var staleFiles: [FilePath: FilePath] = [:]
         var result: [SourceFile: [IndexUnit]] = [:]
+        var clangResult: [SourceFile: [IndexUnit]] = [:]
         for (file, units) in Dictionary(grouping: collected, by: \.file) {
             var chosen = units.filter(\.isFresh)
             if chosen.isEmpty {
@@ -101,15 +111,35 @@ public struct SourceFileCollector {
 
             chosen.sort { ($0.storePath, $0.unit.name) < ($1.storePath, $1.unit.name) }
             let sourceFile = SourceFile(path: file, modules: chosen.mapSet(\.module))
-            result[sourceFile] = chosen.map { IndexUnit(store: $0.store, unit: $0.unit) }
+            let indexUnits = chosen.map { IndexUnit(store: $0.store, unit: $0.unit) }
+            if chosen.allSatisfy(\.isClang) {
+                clangResult[sourceFile] = indexUnits
+            } else {
+                result[sourceFile] = indexUnits
+            }
         }
 
         if let store = staleFiles.values.min() {
             throw LethenError.staleIndexStore(path: store.string, staleFiles: staleFiles.keys.map(\.string).sorted())
         }
 
-        return result
+        return CollectedSourceFiles(sourceFiles: result, clangSourceFiles: clangResult)
     }
+
+    /// Whether clang wrote the unit, going by its provider, or by its main file's extension when the
+    /// store does not name one.
+    static func isClangUnit(providerIdentifier: String, mainFile: String) -> Bool {
+        switch providerIdentifier {
+        case "swift":
+            false
+        case "clang":
+            true
+        default:
+            clangExtensions.contains(FilePath(mainFile).extension?.lowercased() ?? "")
+        }
+    }
+
+    private static let clangExtensions: Set<String> = ["c", "cc", "cpp", "cxx", "m", "mm", "h", "hh", "hpp"]
 
     // MARK: - Private
 
@@ -121,6 +151,7 @@ public struct SourceFileCollector {
         let module: String
         let date: Date
         let isFresh: Bool
+        let isClang: Bool
     }
 
     /// The units that indexed the same content as the most recently written unit. Units of one version
