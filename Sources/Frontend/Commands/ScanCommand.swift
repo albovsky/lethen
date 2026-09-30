@@ -15,7 +15,7 @@ struct ScanCommand: ParsableCommand {
     @Argument(help: "Arguments following '--' will be passed to the underlying build tool, which is either 'swift build' or 'xcodebuild' depending on your project")
     var buildArguments: [String] = defaultConfiguration.$buildArguments.defaultValue
 
-    @Option(parsing: .upToNextOption, help: "Build configurations to build and scan together (Swift packages: debug, release). A reference found in any configuration counts, so code used only behind #if DEBUG or only in release is not reported")
+    @Option(parsing: .upToNextOption, help: "Build configurations to build and scan together (Swift packages: debug, release; Xcode projects: the project's configurations, such as Debug Release). A reference found in any configuration counts, so code used only behind #if DEBUG or only in release is not reported")
     var configurations: [String] = defaultConfiguration.$configurations.defaultValue
 
     @Flag(help: "Enable guided setup")

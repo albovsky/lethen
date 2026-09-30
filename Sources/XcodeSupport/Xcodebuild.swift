@@ -33,19 +33,33 @@ public final class Xcodebuild {
     }
 
     /// Builds `scheme` for testing with indexing enabled, passing each line of build output to `onOutputLine`.
+    /// A `configuration` is passed as `-configuration`; without one, xcodebuild uses the scheme's Test action
+    /// configuration.
     @discardableResult
     public func build(
         project: XcodeProjectlike,
         scheme: String,
         allSchemes: [String],
+        configuration: String? = nil,
         additionalArguments: [String] = [],
         onOutputLine: @escaping @Sendable (String) -> Void = { _ in }
     ) throws -> String {
-        let args = try [
+        let derivedDataPath = try derivedDataPath(
+            for: project,
+            schemes: allSchemes,
+            configuration: configuration,
+            buildArguments: additionalArguments
+        )
+        var args = [
             "-\(project.type)", "\"\(project.path.lexicallyNormalized().string.withEscapedQuotes)\"",
             "-scheme", "\"\(scheme.withEscapedQuotes)\"",
+        ]
+        if let configuration {
+            args += ["-configuration", "\"\(configuration.withEscapedQuotes)\""]
+        }
+        args += [
             "-parallelizeTargets",
-            "-derivedDataPath", "'\(derivedDataPath(for: project, schemes: allSchemes).string)'",
+            "-derivedDataPath", "'\(derivedDataPath.string)'",
             "-quiet",
             "build-for-testing",
         ]
@@ -62,12 +76,23 @@ public final class Xcodebuild {
         return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
     }
 
-    public func removeDerivedData(for project: XcodeProjectlike, allSchemes: [String]) throws {
-        try shell.exec(["rm", "-rf", derivedDataPath(for: project, schemes: allSchemes).string])
+    public func removeDerivedData(
+        for project: XcodeProjectlike,
+        allSchemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws {
+        let path = try derivedDataPath(for: project, schemes: allSchemes, configuration: configuration, buildArguments: buildArguments)
+        try shell.exec(["rm", "-rf", path.string])
     }
 
-    public func indexStorePath(project: XcodeProjectlike, schemes: [String]) throws -> FilePath {
-        let derivedDataPath = try derivedDataPath(for: project, schemes: schemes)
+    public func indexStorePath(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws -> FilePath {
+        let derivedDataPath = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
         let pathsToTry = ["Index.noindex/DataStore", "Index/DataStore"]
             .map { derivedDataPath.appending($0) }
         guard let path = pathsToTry.first(where: { $0.exists }) else {
@@ -126,19 +151,35 @@ public final class Xcodebuild {
         }
     }
 
-    private func derivedDataPath(for project: XcodeProjectlike, schemes: [String]) throws -> FilePath {
+    func derivedDataPath(
+        for project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws -> FilePath {
         // Given a project with two schemes: A and B, a scenario can arise where the index store contains conflicting
         // data. If scheme A is built, then the source file modified and then scheme B built, the index store will
         // contain two records for that source file. One reflects the state of the file when scheme A was built, and the
         // other when B was built. We must therefore key the DerivedData path with the full list of schemes being built.
         // The schemes are sorted so that the key does not depend on the order they were collected in; a `Set` of
         // schemes iterates in a different order in each process, which used to produce a new path on every run.
+        //
+        // A configuration or build arguments change what is compiled, so builds that differ in either would overwrite
+        // each other's units in a shared directory; they key the path too. A build with neither keeps the path it
+        // has always had, and with it the previous scan's DerivedData.
 
         let xcodeVersionHash = try version().djb2Hex
         let projectHash = project.name.djb2Hex
         let schemesHash = schemes.sorted().joined().djb2Hex
+        var name = "DerivedData-\(xcodeVersionHash)-\(projectHash)-\(schemesHash)"
 
-        return try Constants.cachePath().appending("DerivedData-\(xcodeVersionHash)-\(projectHash)-\(schemesHash)")
+        if configuration != nil || !buildArguments.isEmpty {
+            // Separators keep distinct inputs distinct: ["a b"] and ["a", "b"], or a configuration and an argument.
+            let variant = ([configuration ?? ""] + buildArguments).joined(separator: "\u{0}")
+            name += "-\(variant.djb2Hex)"
+        }
+
+        return try Constants.cachePath().appending(name)
     }
 
     private func quote(arguments: [String]) -> [String] {

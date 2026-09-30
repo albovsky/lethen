@@ -7,40 +7,6 @@ import SystemPackage
 import XCTest
 
 final class XcodebuildDerivedDataPathTest: XCTestCase {
-    private final class RecordingShell: Shell {
-        private let commands = Mutex<[[String]]>([])
-        private let streamedCommands = Mutex<[[String]]>([])
-
-        var streamed: [[String]] {
-            streamedCommands.withLock { $0 }
-        }
-
-        var derivedDataPaths: [String] {
-            commands.withLock { commands in
-                commands.compactMap { command in
-                    guard command.first == "xcodebuild", let index = command.firstIndex(of: "-derivedDataPath") else { return nil }
-
-                    return command[index + 1]
-                }
-            }
-        }
-
-        func exec(_ args: [String]) throws -> String {
-            commands.withLock { $0.append(args) }
-            return "Xcode 27.0\nBuild version 27A266a"
-        }
-
-        func exec(_ args: [String], onOutputLine: @escaping @Sendable (String) -> Void) throws -> String {
-            streamedCommands.withLock { $0.append(args) }
-            onOutputLine("note: Building targets in dependency order")
-            return try exec(args)
-        }
-
-        func execStatus(_: [String]) throws -> Int32 {
-            0
-        }
-    }
-
     private var project: XcodeProject!
     private var shell: RecordingShell!
     private var xcodebuild: Xcodebuild!
@@ -77,6 +43,58 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
         let paths = shell.derivedDataPaths
         XCTAssertEqual(paths.count, 2)
         XCTAssertNotEqual(paths.first, paths.last)
+    }
+
+    func testNoConfigurationOrBuildArgumentsKeepsThePreviousPath() throws {
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["B", "A"])
+        let version = try xcodebuild.version().djb2Hex
+        let expected = try Constants.cachePath().appending("DerivedData-\(version)-\(project.name.djb2Hex)-\("AB".djb2Hex)")
+        XCTAssertEqual(shell.derivedDataPaths, ["'\(expected.string)'"])
+    }
+
+    func testDerivedDataPathDependsOnTheConfiguration() throws {
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"])
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], configuration: "Debug")
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], configuration: "Release")
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], configuration: "Release")
+        let paths = shell.derivedDataPaths
+        XCTAssertEqual(paths.count, 4)
+        XCTAssertEqual(Set(paths.prefix(3)).count, 3, "\(paths)")
+        XCTAssertEqual(paths[2], paths[3])
+    }
+
+    func testDerivedDataPathDependsOnTheBuildArguments() throws {
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"])
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], additionalArguments: ["-configuration", "Release"])
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], additionalArguments: ["-configuration", "Debug"])
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], additionalArguments: ["OTHER_SWIFT_FLAGS=-DA -DB"])
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], additionalArguments: ["OTHER_SWIFT_FLAGS=-DA", "-DB"])
+        let paths = shell.derivedDataPaths
+        XCTAssertEqual(paths.count, 5)
+        XCTAssertEqual(Set(paths).count, 5, "\(paths)")
+    }
+
+    func testConfiguredPathDoesNotDependOnSchemeOrder() throws {
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["B", "A"], configuration: "Release")
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A", "B"], configuration: "Release")
+        let paths = shell.derivedDataPaths
+        XCTAssertEqual(paths.count, 2)
+        XCTAssertEqual(paths.first, paths.last)
+    }
+
+    func testIndexStoreAndRemovalUseTheBuildsPath() throws {
+        try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], configuration: "Release", additionalArguments: ["-destination", "platform=macOS"])
+        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
+        let built = try XCTUnwrap(shell.derivedDataPaths.first)
+        let removed = try XCTUnwrap(shell.executed.last)
+        XCTAssertEqual(removed.prefix(2), ["rm", "-rf"])
+        XCTAssertEqual("'\(removed[2])'", built)
+
+        XCTAssertThrowsError(try xcodebuild.indexStorePath(project: project, schemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])) { error in
+            guard case let LethenError.indexStoreNotFound(derivedDataPath) = error else { return XCTFail("\(error)") }
+
+            XCTAssertEqual("'\(derivedDataPath)'", built)
+        }
     }
 
     func testBuildStreamsOnlyTheBuildCommand() throws {
