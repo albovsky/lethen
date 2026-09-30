@@ -51,7 +51,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             let index = try XCTUnwrap(command.firstIndex(of: "-configuration"))
             return command[index + 1]
         }
-        XCTAssertEqual(configurations, ["\"Debug\"", "\"Release\""])
+        XCTAssertEqual(configurations, ["Debug", "Release"])
         XCTAssertTrue(builds.allSatisfy { $0.contains("build-for-testing") })
         XCTAssertEqual(Set(shell.derivedDataPaths).count, 2, "\(shell.derivedDataPaths)")
     }
@@ -62,16 +62,22 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         configuration.cleanBuild = true
         let driver = try Self.recordingDriver(configuration, shell: shell)
 
+        // The first build records each configuration's DerivedData; the second clean build removes them all.
+        try driver.build()
+        let paths = Set(shell.derivedDataPaths)
+        XCTAssertEqual(paths.count, 2)
+        for path in paths {
+            try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        }
         try driver.build()
 
-        let removed = shell.executed.filter { $0.first == "rm" }.map { "'\($0[2])'" }
-        XCTAssertEqual(removed.count, 2)
-        XCTAssertEqual(Set(removed), Set(shell.derivedDataPaths))
+        XCTAssertTrue(paths.allSatisfy { !FileManager.default.fileExists(atPath: $0) }, "\(paths)")
+        XCTAssertFalse(shell.executed.contains { $0.first == "rm" })
     }
 
     /// A configuration that does not build fails the scan; it is never retried as a plain build.
     func testFailingConfigurationBuildThrowsWithoutFallback() throws {
-        let shell = RecordingShell(failingArgument: "\"Release\"")
+        let shell = RecordingShell(failingArgument: "Release")
         let driver = try Self.recordingDriver(Self.configuration(["Debug", "Release"]), shell: shell)
 
         XCTAssertThrowsError(try driver.build()) { error in

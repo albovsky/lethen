@@ -48,6 +48,18 @@ final class Scan: ScanRunning {
         set { graph.recordsRetentionSources = newValue }
     }
 
+    /// Build arguments quoted as if for a shell, such as `'/tmp/Build Space'` or `--scratch-path='/tmp/Build Space'`.
+    /// Commands used to run through a shell, which removed such quotes; they now reach the build tool as written.
+    static func shellQuotedArguments(_ arguments: [String]) -> [String] {
+        arguments.filter { argument in
+            let value = argument.split(separator: "=", maxSplits: 1).last.map(String.init) ?? argument
+            return ["'", "\""].contains { quote in
+                (argument.count >= 2 && argument.hasPrefix(quote) && argument.hasSuffix(quote))
+                    || (value.count >= 2 && value.hasPrefix(quote) && value.hasSuffix(quote) && argument.hasPrefix("-"))
+            }
+        }
+    }
+
     func perform(project: Project) throws -> Output {
         if !configuration.indexStorePath.isEmpty {
             logger.warn("When using the '--index-store-path' option please ensure that Xcode is not running. False-positives can occur if Xcode writes to the index store while lethen is running.")
@@ -56,6 +68,10 @@ final class Scan: ScanRunning {
                 logger.warn("The '--index-store-path' option implies '--skip-build', specify it to silence this warning.")
                 configuration.skipBuild = true
             }
+        }
+
+        for argument in Self.shellQuotedArguments(configuration.buildArguments + configuration.xcodeListArguments) {
+            logger.warn("The build argument \(argument) reaches the build with its quotes, because lethen passes build arguments to the build tool as written, without a shell. Remove the quotes.")
         }
 
         let driver = try setup(project)

@@ -73,10 +73,10 @@ public final class ShellImpl: Shell {
 
     @discardableResult
     public func execStatus(_ args: [String]) throws -> Int32 {
-        let process = launch(args)
+        let process = try launch(args)
         defer { store.remove(process) }
         process.waitUntilExit()
-        return process.terminationStatus
+        return Self.exitStatus(of: process)
     }
 
     // MARK: - Private
@@ -95,16 +95,51 @@ public final class ShellImpl: Shell {
         )
     }
 
-    private func launch(_ cmd: [String], configure: (Process) -> Void = { _ in }) -> Process {
+    /// Starts `cmd` directly, with its first element as the program and the rest as its arguments. No shell sees the
+    /// command, so arguments reach the program exactly as given: paths, scheme names and build arguments are data,
+    /// never shell syntax.
+    private func launch(_ cmd: [String], configure: (Process) -> Void = { _ in }) throws -> Process {
+        guard let name = cmd.first, let executable = Self.executableURL(for: name) else {
+            throw LethenError.shellCommandFailed(cmd: cmd, status: 127, output: "\(cmd.first ?? ""): command not found")
+        }
+
         let process = Process()
-        process.launchPath = "/bin/bash"
-        process.arguments = ["-c", cmd.joined(separator: " ")]
+        process.executableURL = executable
+        process.arguments = Array(cmd.dropFirst())
         configure(process)
 
-        logger.debug("\(cmd.joined(separator: " "))")
+        logger.debug(cmd.shellRendered)
         store.add(process)
-        process.launch()
+        do {
+            try process.run()
+        } catch {
+            store.remove(process)
+            throw error
+        }
         return process
+    }
+
+    /// The executable `name` runs: `name` itself when it contains a slash, otherwise the first executable file named
+    /// `name` in a `PATH` directory, as a shell would find it.
+    static func executableURL(for name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
+        guard !name.isEmpty else { return nil }
+
+        if name.contains("/") {
+            return URL(fileURLWithPath: name)
+        }
+
+        let searchPath = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        for directory in searchPath.split(separator: ":", omittingEmptySubsequences: false) {
+            let candidate = URL(fileURLWithPath: directory.isEmpty ? "." : String(directory)).appendingPathComponent(name)
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), !isDirectory.boolValue,
+               FileManager.default.isExecutableFile(atPath: candidate.path)
+            {
+                return candidate
+            }
+        }
+
+        return nil
     }
 
     private func captureOutput(
@@ -113,7 +148,7 @@ public final class ShellImpl: Shell {
     ) throws -> (Int32, String, String) {
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
-        let process = launch(cmd) {
+        let process = try launch(cmd) {
             $0.standardOutput = stdoutPipe
             $0.standardError = stderrPipe
         }
@@ -143,7 +178,12 @@ public final class ShellImpl: Shell {
             )
         }
 
-        return (process.terminationStatus, standardOutput, standardError)
+        return (Self.exitStatus(of: process), standardOutput, standardError)
+    }
+
+    /// The status a shell reports for `process`: its exit status, or 128 plus the signal that killed it.
+    private static func exitStatus(of process: Process) -> Int32 {
+        process.terminationReason == .uncaughtSignal ? 128 + process.terminationStatus : process.terminationStatus
     }
 
     /// Reads `handle` until end of file, passing each complete line to `lineHandler` as soon as it is read.
@@ -198,5 +238,19 @@ private final class SerialLineHandler: Sendable {
             line.removeLast()
         }
         handler.withLock { $0(line) }
+    }
+}
+
+public extension [String] {
+    /// The command as it could be typed into a shell, for logs and error messages. Arguments that a shell would
+    /// change are single-quoted.
+    var shellRendered: String {
+        map { argument in
+            let isPlain = !argument.isEmpty && argument.unicodeScalars.allSatisfy { scalar in
+                scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || "@%+=:,./_-".unicodeScalars.contains(scalar))
+            }
+            return isPlain ? argument : "'" + argument.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        .joined(separator: " ")
     }
 }

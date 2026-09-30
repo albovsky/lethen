@@ -51,28 +51,27 @@ public final class Xcodebuild {
             buildArguments: additionalArguments
         )
         var args = [
-            "-\(project.type)", "\"\(project.path.lexicallyNormalized().string.withEscapedQuotes)\"",
-            "-scheme", "\"\(scheme.withEscapedQuotes)\"",
+            "-\(project.type)", project.path.lexicallyNormalized().string,
+            "-scheme", scheme,
         ]
         if let configuration {
-            args += ["-configuration", "\"\(configuration.withEscapedQuotes)\""]
+            args += ["-configuration", configuration]
         }
         args += [
             "-parallelizeTargets",
-            "-derivedDataPath", "'\(derivedDataPath.string)'",
+            "-derivedDataPath", derivedDataPath.string,
             "-quiet",
             "build-for-testing",
         ]
         let envs = [
-            "CODE_SIGNING_ALLOWED=\"NO\"",
-            "ENABLE_BITCODE=\"NO\"",
-            "DEBUG_INFORMATION_FORMAT=\"dwarf\"",
-            "COMPILER_INDEX_STORE_ENABLE=\"YES\"",
-            "INDEX_ENABLE_DATA_STORE=\"YES\"",
+            "CODE_SIGNING_ALLOWED=NO",
+            "ENABLE_BITCODE=NO",
+            "DEBUG_INFORMATION_FORMAT=dwarf",
+            "COMPILER_INDEX_STORE_ENABLE=YES",
+            "INDEX_ENABLE_DATA_STORE=YES",
         ]
 
-        let quotedArguments = quote(arguments: additionalArguments)
-        let xcodebuild = ["xcodebuild"] + args + envs + quotedArguments
+        let xcodebuild = ["xcodebuild"] + args + envs + additionalArguments
         return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
     }
 
@@ -83,7 +82,9 @@ public final class Xcodebuild {
         buildArguments: [String] = []
     ) throws {
         let path = try derivedDataPath(for: project, schemes: allSchemes, configuration: configuration, buildArguments: buildArguments)
-        try shell.exec(["rm", "-rf", path.string])
+        if path.exists {
+            try FileManager.default.removeItem(atPath: path.string)
+        }
     }
 
     public func indexStorePath(
@@ -112,13 +113,12 @@ public final class Xcodebuild {
 
     func schemes(type: String, path: String, additionalArguments: [String]) throws -> Set<String> {
         let args = [
-            "-\(type)", "\"\(path.withEscapedQuotes)\"",
+            "-\(type)", path,
             "-list",
             "-json",
         ]
 
-        let quotedArguments = quote(arguments: additionalArguments)
-        let xcodebuild = ["xcodebuild"] + args + quotedArguments
+        let xcodebuild = ["xcodebuild"] + args + additionalArguments
         let lines = try shell.exec(xcodebuild).split(separator: "\n").map { String($0).trimmed }
 
         // xcodebuild may output unrelated warnings, we need to strip them out otherwise
@@ -180,22 +180,5 @@ public final class Xcodebuild {
         }
 
         return try Constants.cachePath().appending(name)
-    }
-
-    private func quote(arguments: [String]) -> [String] {
-        var quotedArguments = arguments
-
-        for (i, arg) in arguments.enumerated() {
-            if arg.hasPrefix("-"),
-               let value = arguments[safe: i + 1],
-               !value.hasPrefix("-"),
-               !value.hasPrefix("\""),
-               !value.hasPrefix("\'")
-            {
-                quotedArguments[i + 1] = "\"\(value)\""
-            }
-        }
-
-        return quotedArguments
     }
 }

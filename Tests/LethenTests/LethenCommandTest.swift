@@ -2,6 +2,7 @@ import ArgumentParser
 import Foundation
 @testable import Frontend
 import Shared
+import SystemPackage
 import XCTest
 
 final class LethenCommandTest: XCTestCase {
@@ -22,6 +23,33 @@ final class LethenCommandTest: XCTestCase {
         let error = LethenError.foundIssues(count: 2)
         XCTAssertEqual(LethenCommand.exitCode(for: error), .failure)
         XCTAssertEqual(LethenCommand.message(for: error), "Found 2 issues.")
+    }
+
+    /// The cache is removed as one path: a space in it does not split it into other paths to remove.
+    func testClearCacheRemovesOnlyTheCacheDirectory() throws {
+        let root = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen-clear-cache-\(UUID().uuidString)").path)
+        defer { try? FileManager.default.removeItem(atPath: root.string) }
+        let cache = root.appending("Caches/com.github.peripheryapp")
+        let spaced = root.appending("Caches Copy")
+        let lookalike = root.appending("Caches")
+        try FileManager.default.createDirectory(atPath: cache.appending("DerivedData-1").string, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: spaced.string, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: spaced.appending("keep").string, contents: Data())
+
+        try ClearCacheCommand.removeCache(at: cache)
+        XCTAssertFalse(cache.exists)
+        XCTAssertTrue(lookalike.exists)
+
+        // A cache path with a space names one directory; its lookalike prefix stays.
+        let spacedCache = root.appending("Caches Copy/com.github.peripheryapp")
+        try FileManager.default.createDirectory(atPath: spacedCache.string, withIntermediateDirectories: true)
+        try ClearCacheCommand.removeCache(at: spacedCache)
+        XCTAssertFalse(spacedCache.exists)
+        XCTAssertTrue(spaced.appending("keep").exists)
+        XCTAssertTrue(lookalike.exists)
+
+        // A cache that was never created is already clear.
+        XCTAssertNoThrow(try ClearCacheCommand.removeCache(at: root.appending("Missing")))
     }
 
     func testUnknownSubcommandIsAParseError() {

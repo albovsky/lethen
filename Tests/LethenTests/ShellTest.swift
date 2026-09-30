@@ -1,6 +1,6 @@
 import Foundation
 import Logger
-import Shared
+@testable import Shared
 import Synchronization
 import XCTest
 
@@ -32,7 +32,7 @@ final class ShellTest: XCTestCase {
         """
         let lines = LineRecorder()
 
-        let output = try shell.exec([command]) { line in
+        let output = try shell.exec(["/bin/sh", "-c", command]) { line in
             lines.append(line)
             if line == "ready" {
                 FileManager.default.createFile(atPath: marker, contents: nil)
@@ -46,7 +46,7 @@ final class ShellTest: XCTestCase {
     func testDeliversStandardErrorAndUnterminatedLinesButReturnsStandardOutput() throws {
         let lines = LineRecorder()
 
-        let output = try shell.exec(["printf 'out\\r\\n'; printf 'err\\n' >&2; printf 'tail'"]) { lines.append($0) }
+        let output = try shell.exec(["/bin/sh", "-c", "printf 'out\\r\\n'; printf 'err\\n' >&2; printf 'tail'"]) { lines.append($0) }
 
         XCTAssertEqual(output, "out\r\ntail")
         XCTAssertEqual(lines.all.sorted(), ["err", "out", "tail"])
@@ -55,7 +55,7 @@ final class ShellTest: XCTestCase {
     func testFailureAfterStreamingThrowsWithTheCapturedOutput() {
         let lines = LineRecorder()
 
-        XCTAssertThrowsError(try shell.exec(["echo progress; echo failure >&2; exit 3"]) { lines.append($0) }) { error in
+        XCTAssertThrowsError(try shell.exec(["/bin/sh", "-c", "echo progress; echo failure >&2; exit 3"]) { lines.append($0) }) { error in
             guard case let LethenError.shellCommandFailed(_, status, output) = error else {
                 return XCTFail("Expected a failed shell command, got: \(error)")
             }
@@ -76,7 +76,7 @@ final class ShellTest: XCTestCase {
         let shell = shell!
 
         DispatchQueue.global().async {
-            let output = Result { try shell.exec([command]) }
+            let output = Result { try shell.exec(["/bin/sh", "-c", command]) }
             result.withLock { $0 = output }
             finished.fulfill()
         }
@@ -88,15 +88,86 @@ final class ShellTest: XCTestCase {
     }
 
     func testCapturingWithoutAHandlerIsUnchanged() throws {
-        XCTAssertEqual(try shell.exec(["echo out; echo err >&2"]), "out\n")
-        XCTAssertThrowsError(try shell.exec(["echo out; echo err >&2; exit 1"])) { error in
-            XCTAssertEqual(String(describing: error), "Shell command 'echo out; echo err >&2; exit 1' returned exit status '1':\nout\n\nerr")
+        XCTAssertEqual(try shell.exec(["/bin/sh", "-c", "echo out; echo err >&2"]), "out\n")
+        XCTAssertThrowsError(try shell.exec(["/bin/sh", "-c", "echo out; echo err >&2; exit 1"])) { error in
+            XCTAssertEqual(String(describing: error), "Shell command '/bin/sh -c 'echo out; echo err >&2; exit 1'' returned exit status '1':\nout\n\nerr")
         }
     }
 
     func testExecStatusReturnsTheExitStatus() throws {
-        XCTAssertEqual(try shell.execStatus(["exit 7"]), 7)
+        XCTAssertEqual(try shell.execStatus(["/bin/sh", "-c", "exit 7"]), 7)
         XCTAssertEqual(try shell.execStatus(["true"]), 0)
+    }
+
+    /// A command killed by a signal reports 128 plus the signal, as a shell does, rather than the bare signal number.
+    func testCommandKilledByASignalReportsTheShellStatus() {
+        XCTAssertEqual(try shell.execStatus(["/bin/sh", "-c", "kill -9 $$"]), 137)
+        XCTAssertThrowsError(try shell.exec(["/bin/sh", "-c", "kill -9 $$"])) { error in
+            guard case let LethenError.shellCommandFailed(_, status, _) = error else {
+                return XCTFail("Expected a failed shell command, got: \(error)")
+            }
+
+            XCTAssertEqual(status, 137)
+        }
+    }
+
+    // MARK: - Arguments
+
+    /// Arguments are data: nothing in them is expanded, substituted or split, whichever way the command is run.
+    func testArgumentsReachTheProgramExactlyAsGiven() throws {
+        let dollar = directory.appendingPathComponent("dollar").path
+        let backtick = directory.appendingPathComponent("backtick").path
+        let argument = "My App $(touch '\(dollar)') `touch '\(backtick)'` \"double\" 'single' back\\slash ; semi | pipe & $HOME *"
+
+        XCTAssertEqual(try shell.exec(["printf", "%s", argument]), argument)
+        XCTAssertEqual(try shell.exec(["printf", "%s", argument]) { _ in }, argument)
+        XCTAssertEqual(try shell.execStatus(["test", argument, "=", argument]), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dollar))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backtick))
+    }
+
+    func testPlainArgumentsStillRunTheCommand() throws {
+        XCTAssertEqual(try shell.exec(["echo", "hello", "world"]), "hello world\n")
+        XCTAssertEqual(try shell.exec(["printf", "%s|%s", "", "empty"]), "|empty")
+    }
+
+    func testMissingCommandFailsAsAShellWould() {
+        XCTAssertThrowsError(try shell.exec(["lethen-no-such-command"])) { error in
+            guard case let LethenError.shellCommandFailed(cmd, status, output) = error else {
+                return XCTFail("Expected a failed shell command, got: \(error)")
+            }
+
+            XCTAssertEqual(cmd, ["lethen-no-such-command"])
+            XCTAssertEqual(status, 127)
+            XCTAssertEqual(output, "lethen-no-such-command: command not found")
+        }
+        XCTAssertThrowsError(try shell.execStatus([]))
+    }
+
+    func testFindsCommandsOnThePathInOrder() throws {
+        let first = directory.appendingPathComponent("first")
+        let second = directory.appendingPathComponent("second")
+        for folder in [first, second] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        // A directory and a non-executable file with the command's name are skipped, as a shell skips them.
+        try FileManager.default.createDirectory(at: first.appendingPathComponent("tool"), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: second.appendingPathComponent("tool").path, contents: Data(), attributes: [.posixPermissions: 0o644])
+        let third = directory.appendingPathComponent("third")
+        try FileManager.default.createDirectory(at: third, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: third.appendingPathComponent("tool").path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+
+        let path = [first, second, third].map(\.path).joined(separator: ":")
+        XCTAssertEqual(ShellImpl.executableURL(for: "tool", environment: ["PATH": path])?.path, third.appendingPathComponent("tool").path)
+        XCTAssertNil(ShellImpl.executableURL(for: "tool", environment: ["PATH": first.path]))
+        XCTAssertEqual(ShellImpl.executableURL(for: "/bin/sh", environment: ["PATH": ""])?.path, "/bin/sh")
+        XCTAssertNil(ShellImpl.executableURL(for: "", environment: ["PATH": path]))
+    }
+
+    func testCommandsAreRenderedAsTheyCouldBeTyped() {
+        XCTAssertEqual(["swift", "build", "-c", "release", "--scratch-path=/tmp/x"].shellRendered, "swift build -c release --scratch-path=/tmp/x")
+        XCTAssertEqual(["xcodebuild", "-project", "/a b/$(x).xcodeproj", "-scheme", "it's", ""].shellRendered,
+                       "xcodebuild -project '/a b/$(x).xcodeproj' -scheme 'it'\\''s' ''")
     }
 
     func testShellsWithoutStreamingCaptureAndReportNoLines() throws {
