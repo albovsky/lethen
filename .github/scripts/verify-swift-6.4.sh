@@ -1,5 +1,14 @@
 #!/bin/bash
+# Verifies the required Swift 6.4 / Xcode 27 baseline. With no argument it runs all of
+# it, which is what contributors run locally. CI runs it as two jobs on separate runners
+# so they finish sooner: `spm` runs the SPMTests target alone, the slowest one, and
+# `main` runs every other test target and all the scans.
 set -euo pipefail
+part="${1:-all}"
+case "$part" in
+  all | main | spm) ;;
+  *) echo "usage: $0 [all|main|spm]" >&2; exit 2 ;;
+esac
 mkdir -p .validation
 {
   sw_vers
@@ -13,7 +22,14 @@ mkdir -p .validation
 swift --version | grep -E 'Apple Swift version 6\.4([ .]|$)'
 xcodebuild -version | grep -E '^Xcode 27\.0$'
 swift build --product lethen 2>&1 | tee .validation/build.log
-swift test 2>&1 | tee .validation/test.log
+case "$part" in
+  all) swift test 2>&1 | tee .validation/test.log ;;
+  main) swift test --skip '^SPMTests\.' 2>&1 | tee .validation/test.log ;;
+  spm)
+    swift test --filter '^SPMTests\.' 2>&1 | tee .validation/test.log
+    exit 0
+    ;;
+esac
 lethen_bin_dir="$(swift build --show-bin-path)"
 lethen_bin="$lethen_bin_dir/lethen"
 {

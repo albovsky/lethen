@@ -4,8 +4,8 @@
 #
 # Profiles:
 #   pr       pull requests: the newest stable toolchain per platform, so a PR queues
-#            two macOS jobs (Swift 6.4 / Xcode 27 and Bazel) against the five-slot
-#            macOS limit
+#            three macOS jobs (Swift 6.4 / Xcode 27 in two halves, and Bazel) against
+#            the five-slot macOS limit
 #   master   pushes to master: every stable toolchain, adding macOS 6.3 / Xcode 26.4
 #            and Bazel 8.x
 #   nightly  schedule and manual runs: the stable matrix plus main-snapshot toolchains,
