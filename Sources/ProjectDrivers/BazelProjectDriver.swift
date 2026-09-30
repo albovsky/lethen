@@ -56,6 +56,8 @@ public final class BazelProjectDriver: ProjectDriver {
 
     /// The environment variable that tells `bazel/generated.bzl` where the generated package is.
     static let generatedDirectoryVariable = "LETHEN_BAZEL_GENERATED_DIR"
+    /// A target that only `bazel/generated.bzl` of this lethen version creates, in a package of its own.
+    static let generatedRepositoryMarker = "@periphery_generated//lethen_scratch:v1"
 
     private let configuration: Configuration
     private let shell: Shell
@@ -127,13 +129,16 @@ public final class BazelProjectDriver: ProjectDriver {
             logger.info("\(asterisk) Building...")
         }
 
+        let repositoryEnvironment = "--repo_env=\(Self.generatedDirectoryVariable)=\(outputPath)"
+        try verifyGeneratedRepositoryVersion(repositoryEnvironment: repositoryEnvironment)
+
         let checkVisibility = configuration.bazelCheckVisibility ? "true" : "false"
         var arguments = [
             "bazel",
             "run",
             "--check_visibility=\(checkVisibility)",
             "--ui_event_filters=-info,-debug,-warning",
-            "--repo_env=\(Self.generatedDirectoryVariable)=\(outputPath)",
+            repositoryEnvironment,
         ]
         arguments.append(contentsOf: configuration.buildArguments)
         arguments.append("@periphery_generated//:scan")
@@ -176,6 +181,25 @@ public final class BazelProjectDriver: ProjectDriver {
         }
 
         return FilePath(outputBase).appending("lethen_generated")
+    }
+
+    /// Checks that the `periphery` module creates the generated repository the way this binary expects.
+    ///
+    /// An older module ignores the private directory and symlinks the scan package from `/var/tmp/periphery_bazel`,
+    /// where another user can put one, so the scan must not run with it. The query loads only the marker package,
+    /// never the generated scan package, and passes the same `--repo_env` as `bazel run`, so Bazel fetches the
+    /// repository once for both.
+    private func verifyGeneratedRepositoryVersion(repositoryEnvironment: String) throws {
+        do {
+            try shell.exec(["bazel", "query", repositoryEnvironment, Self.generatedRepositoryMarker])
+        } catch let LethenError.shellCommandFailed(_, _, output) {
+            throw LethenError.usageError(
+                "The 'periphery' Bazel module is older than this lethen binary: its generated repository has no " +
+                    "'\(Self.generatedRepositoryMarker)' target, so it would read the scan package from the shared " +
+                    "/var/tmp/periphery_bazel directory. Update the 'periphery' override in MODULE.bazel to this " +
+                    "lethen version ('lethen scan --setup' prints it). Bazel reported:\n\(output)"
+            )
+        }
     }
 
     /// Creates `path` readable and writable only by this user, or checks that an existing `path` is such a directory,

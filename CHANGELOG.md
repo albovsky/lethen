@@ -2,7 +2,7 @@
 
 ##### Breaking
 
-- The `periphery` Bazel module needs Bazel 7.1 or later, and the `periphery` module override in `MODULE.bazel` must be the same Lethen version as the `lethen` binary. This module stops with an error when an older binary runs it, and an older module still reads the generated package from `/var/tmp/periphery_bazel`, so update the override together with the binary.
+- The `periphery` Bazel module needs Bazel 7.1 or later, and the `periphery` module override in `MODULE.bazel` must be the same Lethen version as the `lethen` binary, so update the override together with the binary. `lethen scan --bazel` stops before building when the module is older, because an older module reads the generated package from `/var/tmp/periphery_bazel`, and the generated scan package fails to load with an explanation when an older binary runs it. `bazel fetch --all` and `bazel vendor` still fetch the generated repository.
 - Managed SwiftPM scans no longer clean before every build. Lethen reuses the previous build when it can verify the index: it recompiles every module that another build or an edit touched, together with the modules that import it, checks the index afterwards, and cleans and rebuilds when anything cannot be verified. A rescan of Lethen itself with nothing changed takes 5.3 s instead of 33.8 s. `--clean-build` restores the previous behavior.
 
 ##### Enhancements

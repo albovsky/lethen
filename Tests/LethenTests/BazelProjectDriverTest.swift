@@ -62,9 +62,10 @@ final class BazelProjectDriverTest: XCTestCase {
         let driver = makeDriver(configuration: configuration, shell: shell)
 
         XCTAssertEqual(try driver.buildAndScan(), 3, "The scan's exit status is returned for the CLI to exit with")
-        XCTAssertEqual(shell.commands.count, 3)
+        XCTAssertEqual(shell.commands.count, 4)
         XCTAssertEqual(shell.commands.first, ["bazel", "info", "output_base"])
         XCTAssertEqual(shell.commands.dropFirst().first?.prefix(2), ["bazel", "query"])
+        XCTAssertEqual(shell.commands.dropFirst(2).first, markerQuery)
         XCTAssertEqual(shell.commands.last, [
             "bazel",
             "run",
@@ -76,6 +77,21 @@ final class BazelProjectDriverTest: XCTestCase {
         let buildFile = try String(contentsOfFile: generatedDirectory.appending("BUILD.bazel").string, encoding: .utf8)
         XCTAssertTrue(buildFile.contains("\"@@//app:app\""), buildFile)
         XCTAssertTrue(buildFile.contains("\"@@//lib:tests\""), buildFile)
+    }
+
+    func testOlderPeripheryModuleStopsTheScanBeforeBazelRun() throws {
+        let shell = RecordingShell(outputBase: outputBase, markerQueryFails: true)
+
+        XCTAssertThrowsError(try makeDriver(shell: shell).buildAndScan()) { error in
+            guard case let LethenError.usageError(message) = error else {
+                return XCTFail("Expected a usage error, got: \(error)")
+            }
+
+            XCTAssertTrue(message.contains("'periphery' Bazel module is older than this lethen binary"), message)
+            XCTAssertTrue(message.contains("no such package"), "Bazel's output is included: \(message)")
+        }
+        XCTAssertEqual(shell.commands.last, markerQuery)
+        XCTAssertFalse(shell.commands.contains { $0.prefix(2) == ["bazel", "run"] }, "\(shell.commands)")
     }
 
     // MARK: - Generated directory
@@ -148,6 +164,15 @@ final class BazelProjectDriverTest: XCTestCase {
 
     // MARK: - Private
 
+    private var markerQuery: [String] {
+        [
+            "bazel",
+            "query",
+            "--repo_env=LETHEN_BAZEL_GENERATED_DIR=\(generatedDirectory!)",
+            "@periphery_generated//lethen_scratch:v1",
+        ]
+    }
+
     private func makeDriver(
         configuration: Configuration = Configuration(),
         shell: RecordingShell,
@@ -189,11 +214,13 @@ final class BazelProjectDriverTest: XCTestCase {
         private let outputBase: FilePath
         private let queryOutput: String
         private let runStatus: Int32
+        private let markerQueryFails: Bool
 
-        init(outputBase: FilePath, queryOutput: String = "//app:app", runStatus: Int32 = 0) {
+        init(outputBase: FilePath, queryOutput: String = "//app:app", runStatus: Int32 = 0, markerQueryFails: Bool = false) {
             self.outputBase = outputBase
             self.queryOutput = queryOutput
             self.runStatus = runStatus
+            self.markerQueryFails = markerQueryFails
         }
 
         var commands: [[String]] {
@@ -206,6 +233,16 @@ final class BazelProjectDriverTest: XCTestCase {
             switch Array(args.prefix(2)) {
             case ["bazel", "info"]:
                 return "\(outputBase)\n"
+            case ["bazel", "query"] where args.last == "@periphery_generated//lethen_scratch:v1":
+                guard !markerQueryFails else {
+                    throw LethenError.shellCommandFailed(
+                        cmd: args,
+                        status: 7,
+                        output: "ERROR: no such package '@@periphery++generated+periphery_generated//lethen_scratch'"
+                    )
+                }
+
+                return "@periphery_generated//lethen_scratch:v1\n"
             case ["bazel", "query"]:
                 return queryOutput
             default:
