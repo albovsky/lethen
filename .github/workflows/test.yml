@@ -95,15 +95,16 @@ jobs:
         # Xcode targets on macOS, so this check needs a macOS toolchain. It runs here because
         # this is the one macOS SwiftPM job every profile runs. The baseline above pins the
         # pull request head, but the rules must match what merging produces, so on a pull
-        # request this step checks out the merge commit first, as the macOS job did. It is the
-        # last step before the upload, and the forced checkout only drops the cached
-        # Package.resolved.
+        # request this step regenerates them in a separate worktree of the merge commit, as
+        # the macOS job's default checkout did. The worktree keeps the cached .build and
+        # Package.resolved at the head.
         env:
           MERGE_SHA: ${{ github.sha }}
         run: |
           if [ "$(git rev-parse HEAD)" != "$MERGE_SHA" ]; then
             git fetch --no-tags --depth=1 origin "$MERGE_SHA"
-            git checkout --force --detach FETCH_HEAD
+            git worktree add --detach "$RUNNER_TEMP/merge" FETCH_HEAD
+            cd "$RUNNER_TEMP/merge"
           fi
           ruby .mise/tasks/scripts/gen_bazel_rules.rb && git diff --quiet --exit-code -- Sources/BUILD.bazel
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
