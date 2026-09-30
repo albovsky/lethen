@@ -316,12 +316,14 @@ open class SourceGraphTestCase: XCTestCase {
         }
     }
 
-    /// What `lethen explain` prints for the declaration.
-    func explanation(of description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) -> String? {
-        guard let declaration = materialize(description, file: file, line: line) else { return nil }
+    #if os(macOS)
+        /// What `lethen explain` prints for the declaration. Only XcodeTests, which build on macOS, use it.
+        func explanation(of description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) -> String? {
+            guard let declaration = materialize(description, file: file, line: line) else { return nil }
 
-        return SourceGraphExplainer(graph: Self.graph, configuration: Configuration()).explain(declaration)
-    }
+            return SourceGraphExplainer(graph: Self.graph, configuration: Configuration()).explain(declaration)
+        }
+    #endif
 
     func module(_ name: String, scopedAssertions: (() -> Void)? = nil) {
         scopeStack.append(.module(name))
