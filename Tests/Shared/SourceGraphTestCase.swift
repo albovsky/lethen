@@ -316,6 +316,13 @@ open class SourceGraphTestCase: XCTestCase {
         }
     }
 
+    /// What `lethen explain` prints for the declaration.
+    func explanation(of description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) -> String? {
+        guard let declaration = materialize(description, file: file, line: line) else { return nil }
+
+        return SourceGraphExplainer(graph: Self.graph, configuration: Configuration()).explain(declaration)
+    }
+
     func module(_ name: String, scopedAssertions: (() -> Void)? = nil) {
         scopeStack.append(.module(name))
         scopedAssertions?()

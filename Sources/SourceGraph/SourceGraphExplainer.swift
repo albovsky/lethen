@@ -211,7 +211,8 @@ public struct SourceGraphExplainer {
         case .retained:
             lines.append("\(Self.label(chain[0])) at \(chain[0].location), retained by \(retentionSource(of: chain[0]))")
         case let .topLevel(reference):
-            lines.append("top-level code at \(reference.location) references \(Self.label(chain[0])) at \(chain[0].location)")
+            let origin = reference.isFromObjectiveC ? "Objective-C code" : "top-level code"
+            lines.append("\(origin) at \(reference.location) references \(Self.label(chain[0])) at \(chain[0].location)")
         case nil:
             lines.append("\(Self.label(chain[0])) at \(chain[0].location)")
         }

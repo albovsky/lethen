@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+- Lethen reads the index clang writes for C and Objective-C files, so a Swift declaration that Objective-C code uses, such as an `@objc` method called from a `.m` file, a class allocated there, or a class named in a header, is no longer reported as unused without `--retain-objc-accessible`. `lethen explain` names the Objective-C line that uses it. Uses are matched by the symbol's clang USR and never guessed; `@class` and `@protocol` forward declarations do not count as uses, and Objective-C declarations themselves are not analyzed, so a use counts even from Objective-C code that is itself unused. Exposed declarations with no reference are still `likely`.
 - `lethen explain <name|usr>` scans like `lethen scan` and explains one declaration: why it is reported as unused, the shortest chain of references that makes it used, or the rule or comment that retains or ignores it.
 - Lethen's package includes a command plugin, `LethenPlugin`: `swift package --allow-writing-to-package-directory --allow-network-connections all lethen` scans a package, building it with indexing in `.build/lethen`, and an Xcode command scans an Xcode project from the index Xcode keeps and reports results as Xcode issues. The package must be added with a branch or commit rule because Lethen depends on swift-index-store by commit.
 - `mint install albovsky/lethen` is supported and documented.
