@@ -248,6 +248,37 @@ Expected effect: the pull request critical path becomes Swift 6.4 / Xcode 27 (12
 median), about 3 minutes shorter per run, and a pull request queues two macOS jobs instead of
 three.
 
+## SPMTests in their own jobs
+
+The first pull request run after the change above (run 36678851660, commit `9043ef0`) took
+14.0 minutes from start to `Required checks`. Swift 6.4 / Xcode 27 was the longest job at
+13.5 minutes, of which the SPMTests target took 5.7 minutes, the other three test targets
+3.4, the fixture scans and self-scan 2.6, and the build 0.9. On Linux, SPMTests took about
+4.3 of the 5.7 minutes of `swift test` (SPMProjectTest alone 1.8 minutes, most of it class
+setup building the fixture package), and Linux 6.3 took 11.2 minutes in all.
+
+Each of these jobs now runs as two jobs in parallel. `verify-swift-6.4.sh` takes a part:
+`spm` runs `swift test --filter '^SPMTests\.'` only, and `main` runs `swift test --skip
+'^SPMTests\.'` followed by all the scans and the evidence files. With no argument it still
+runs everything, as contributors run it locally. The main half keeps the check name
+Swift 6.4 / Xcode 27, which branch protection requires; the new half is Swift 6.4 / Xcode
+27 (SPMTests), and `Required checks` expects both. Each Linux toolchain gets a `part`
+matrix entry the same way, and the nightly Linux job runs everything in one job. Both
+halves build the package, so the split costs one extra build per toolchain (under a minute
+on macOS with the dependency cache) and adds one macOS job per pull request, three instead
+of two.
+
+Expected effect: each half takes about 7 minutes, so the Linux release job (about 7.5
+minutes of release build plus a minute of smoke tests) becomes the longest path.
+
+The Linux 6.3 build takes about 1.7 minutes against 20 seconds on 6.4 even with an exact
+dependency-cache hit: its log shows SwiftSyntax, SwiftParser and ArgumentParser
+recompiling. The likely cause (inferred, not yet tested) is that the cache is saved after
+the strict scan's managed clean build, which builds with index-store flags, so the native
+build system rebuilds the dependencies for plain `swift build`. Saving the cache before the
+scan should fix it, but with the release job as the longest path it would not shorten a pull
+request run, so it is left for now.
+
 ## Method
 
 `gh api repos/albovsky/lethen/actions/runs/<id>/jobs` provides per-job timestamps. For
