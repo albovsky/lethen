@@ -47,6 +47,9 @@ public final class Reference {
     /// a value, whose signature is then fixed by the function type it converts to. References built from anything
     /// other than index evidence keep the default.
     public var isCall = true
+    /// True for a use from C or Objective-C code, which has no parent because Objective-C declarations are
+    /// not in the graph.
+    public var isFromObjectiveC = false
 
     private let hashValueCache: Int
 

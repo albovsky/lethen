@@ -234,6 +234,7 @@ swift_library(
         "Indexer/Indexer.swift",
         "Indexer/InfoPlistIndexer.swift",
         "Indexer/InfoPlistParser.swift",
+        "Indexer/ObjCReferenceIndexer.swift",
         "Indexer/SourceFileCollector.swift",
         "Indexer/SwiftIndexer.swift",
         "Indexer/XCDataModelIndexer.swift",

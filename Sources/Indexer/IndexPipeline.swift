@@ -22,10 +22,6 @@ public struct IndexPipeline {
     /// Indexes the plan into the graph and returns the number of lines of code in its Swift source
     /// files, or `nil` unless the configuration asks for statistics.
     public func perform() throws -> Int? {
-        if !plan.clangSourceFiles.isEmpty {
-            logger.debug("Skipping \(plan.clangSourceFiles.count) C and Objective-C files")
-        }
-
         let scannedLOC = try SwiftIndexer(
             sourceFiles: plan.sourceFiles,
             graph: graph,
@@ -33,6 +29,15 @@ public struct IndexPipeline {
             configuration: configuration,
             swiftVersion: swiftVersion
         ).perform()
+
+        if !plan.clangSourceFiles.isEmpty {
+            try ObjCReferenceIndexer(
+                sourceFiles: plan.clangSourceFiles,
+                graph: graph,
+                logger: logger,
+                configuration: configuration
+            ).perform()
+        }
 
         if !plan.plistPaths.isEmpty {
             try InfoPlistIndexer(

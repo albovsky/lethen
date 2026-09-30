@@ -1,0 +1,2 @@
+ObjCCaller().run()
+_ = PublicUsedFromSwift()

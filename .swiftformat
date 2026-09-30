@@ -7,6 +7,7 @@
 --exclude Tests/XcodeTests/UIKitProject/
 --exclude Tests/XcodeTests/SwiftUIProject/
 --exclude Tests/XcodeTests/ConfigurationsProject/
+--exclude Tests/XcodeTests/MixedLanguageProject/
 
 --enable blockComments
 --enable blankLinesAfterGuardStatements

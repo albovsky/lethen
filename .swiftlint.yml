@@ -6,6 +6,7 @@ excluded:
   - Tests/XcodeTests/UIKitProject
   - Tests/XcodeTests/SwiftUIProject
   - Tests/XcodeTests/ConfigurationsProject
+  - Tests/XcodeTests/MixedLanguageProject
 
 opt_in_rules:
   - single_test_class
