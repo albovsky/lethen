@@ -3,15 +3,17 @@ name: Release
 # commit must be on master and have passed Required checks, and the Apple silicon macOS
 # binary and the Linux tarballs (release-linux.yml) are built and smoke-tested. Three jobs
 # then release them, and the `release` environment's reviewer approves two of them:
-# `sign` signs and notarizes the macOS binary; `smoke-test` tests the signed binary with no
+# `sign` signs and notarizes the macOS binary; `smoke-test` tests the signed binary and,
+# for stable versions, installs and tests the Homebrew formula for it, with no
 # environment, secrets, or write access, because it runs that binary; and `publish`
-# publishes the GitHub release with every asset and, for stable versions only, updates the
-# Homebrew tap. Assets pass between the jobs as an artifact whose digest `sign` records,
-# and the later jobs refuse any other contents. Running the workflow by hand with an
-# existing tag builds and publishes binaries for it with the current release tooling,
-# which backfills older tags and retries failed releases; the environment must allow the
-# branch it runs from. .github/scripts/check-release-isolation.sh, run by `mise run
-# lint-ci`, keeps `smoke-test` unprivileged.
+# publishes the GitHub release with every asset and, for stable versions only, pushes the
+# formula to the Homebrew tap without running the binary. Assets pass between the jobs as
+# an artifact whose digest `sign` records, and the later jobs refuse any other contents.
+# Running the workflow by hand with an existing tag builds and publishes binaries for it
+# with the current release tooling, which backfills older tags and retries failed
+# releases; the environment must allow the branch it runs from.
+# .github/scripts/check-release-isolation.sh, run by `mise run lint-ci`, keeps the binary
+# out of every job that has an environment, secrets, or write access.
 on:
   push:
     tags:
@@ -110,8 +112,10 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
     environment: release
+    # Write access lets Collect assets see a draft left by a failed publish. Only that step
+    # gets the token, and this job never runs the binary.
     permissions:
-      contents: read
+      contents: write
     outputs:
       digest: ${{ steps.record.outputs.digest }}
     env:
@@ -144,9 +148,8 @@ jobs:
           merge-multiple: true
       # A rerun or backfill must not replace an asset that users or the Homebrew formula
       # may already rely on, so every asset that is already published is reused: the
-      # macOS zip is not re-signed and a rebuilt Linux tarball is discarded. This job's
-      # token reads only published releases, so a draft left by a failed publish is not
-      # reused; delete that draft before rerunning.
+      # macOS zip is not re-signed and a rebuilt Linux tarball is discarded. A draft left
+      # by a failed publish counts too, since publishing never replaces its assets.
       - name: Collect assets
         id: published
         env:
@@ -193,14 +196,14 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 7
-  # Runs the signed binary, so it gets no environment, no secrets, and no write access:
-  # contents: read only lets checkout authenticate, and this repository is public.
-  # .github/scripts/check-release-isolation.sh enforces this.
+  # Runs the signed binary, directly and through `brew test`, so it gets no environment,
+  # no secrets, and no write access: contents: read only lets checkout authenticate, and
+  # this repository is public. .github/scripts/check-release-isolation.sh enforces this.
   smoke-test:
     name: Smoke test signed binary
     needs: [prepare, sign]
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
     env:
@@ -229,6 +232,13 @@ jobs:
           ditto -x -k "dist/lethen-$TAG-macos-arm64.zip" released
           codesign --verify --strict --verbose=2 released/lethen
           bash tools/.github/scripts/release-smoke-test.sh released/lethen "$TAG"
+      # Installs and tests the formula that `publish` pushes, pointed at this zip instead
+      # of the release URL.
+      - name: Test Homebrew formula
+        if: needs.prepare.outputs.prerelease == 'false'
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: bash tools/.github/scripts/release-homebrew.sh test "$TAG" "dist/lethen-$TAG-macos-arm64.zip"
   publish:
     name: Publish
     needs: [prepare, sign, smoke-test]
@@ -274,10 +284,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash tools/.github/scripts/release-publish.sh "$TAG" "$PRERELEASE" "source/docs/releases/$TAG.md" dist/*
-      # `brew test` runs the published binary; release-homebrew.sh keeps the tap token out
-      # of every brew command and passes it only to `git push`.
+      # Pushes the formula that smoke-test installed and tested, after checking that the
+      # published zip is the one it tested. Nothing here runs brew or the binary.
       - name: Update Homebrew tap
         if: needs.prepare.outputs.prerelease == 'false'
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: bash tools/.github/scripts/release-homebrew.sh "$TAG" "dist/lethen-$TAG-macos-arm64.zip"
+        run: bash tools/.github/scripts/release-homebrew.sh publish "$TAG" "dist/lethen-$TAG-macos-arm64.zip"

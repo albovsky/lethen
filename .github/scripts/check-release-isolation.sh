@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Checks that the Release workflow runs release binaries only in unprivileged jobs.
 #
-# The `smoke-test` job of release.yml runs the signed binary, so it must have no
-# environment (whose secrets it could read), no reference to secrets, and no write
-# permission, whether granted to the job or inherited from the workflow. No job that has
-# an environment or a write permission may run release-smoke-test.sh either, so the smoke
-# test cannot move back into a privileged job. `mise run lint-ci` runs this check.
+# The `smoke-test` job of release.yml runs the signed binary, directly and through
+# `brew test`, so it must have no environment (whose secrets it could read), no reference
+# to secrets, and no write permission, whether granted to the job or inherited from the
+# workflow. No job that has an environment, secrets, or a write permission may run the
+# binary in any of the ways the workflow does: release-smoke-test.sh, `brew install`,
+# `brew reinstall` or `brew test`, or `release-homebrew.sh test`, which runs those brew
+# commands. So none of them can move back into a privileged job. `mise run lint-ci` runs
+# this check.
 #
 # Usage: check-release-isolation.sh [workflow-file]
 set -euo pipefail
@@ -38,8 +41,15 @@ def text(node)
 end
 
 def mentions?(job, needle)
-  text(job).any? { |value| value.include?(needle) }
+  text(job).any? { |value| needle.is_a?(Regexp) ? value.match?(needle) : value.include?(needle) }
 end
+
+# Commands that run the release binary.
+BINARY_RUNNERS = {
+  "release-smoke-test.sh" => "release-smoke-test.sh",
+  "brew install, reinstall or test" => /\bbrew\s+(install|reinstall|test)\b/,
+  "release-homebrew.sh test" => /release-homebrew\.sh\s+test\b/,
+}.freeze
 
 def effective_permissions(workflow, job)
   job.key?("permissions") ? job["permissions"] : workflow["permissions"]
@@ -61,11 +71,15 @@ else
 end
 
 jobs.each do |name, job|
-  next unless mentions?(job, "release-smoke-test.sh")
-  problems << "runs release-smoke-test.sh in #{name}, which has an environment" if job.key?("environment")
-  problems << "runs release-smoke-test.sh in #{name}, which references secrets" if mentions?(job, "secrets.")
-  scopes = write_scopes(effective_permissions(workflow, job))
-  problems << "runs release-smoke-test.sh in #{name}, which can write: #{scopes.join(', ')}" unless scopes.empty?
+  BINARY_RUNNERS.each do |command, pattern|
+    next unless mentions?(job, pattern)
+
+    problems << "runs #{command} in #{name}, which has an environment" if job.key?("environment")
+    problems << "runs #{command} in #{name}, which has secrets" if job.key?("secrets") || mentions?(job, "secrets.")
+    permissions = effective_permissions(workflow, job)
+    scopes = permissions.nil? ? ["the repository's default token permissions"] : write_scopes(permissions)
+    problems << "runs #{command} in #{name}, which can write: #{scopes.join(', ')}" unless scopes.empty?
+  end
 end
 
 if problems.empty?
