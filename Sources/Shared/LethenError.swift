@@ -20,6 +20,7 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
     case indexStoreNotFound(derivedDataPath: String)
     case staleIndexStore(path: String, staleFiles: [String])
     case changeCurrentDirectoryFailed(FilePath)
+    case unsafeDirectory(path: FilePath, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -62,6 +63,8 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
             return "The index store at \(path) is stale: \(staleFiles.count) source files are newer than every index unit for them (\(examples)). Build the project again, or scan without --skip-build."
         case let .changeCurrentDirectoryFailed(path):
             return "Failed to change current directory to: \(path)"
+        case let .unsafeDirectory(path, reason):
+            return "Refusing to write to \(path): \(reason). Remove it and scan again."
         }
     }
 

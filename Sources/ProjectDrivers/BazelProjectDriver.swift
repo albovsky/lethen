@@ -54,42 +54,34 @@ public final class BazelProjectDriver: ProjectDriver {
         "swift_compiler_plugin",
     ]
 
+    /// The environment variable that tells `bazel/generated.bzl` where the generated package is.
+    static let generatedDirectoryVariable = "LETHEN_BAZEL_GENERATED_DIR"
+
     private let configuration: Configuration
     private let shell: Shell
     private let logger: Logger
-    private let fileManager: FileManager
-
-    private let outputPath: FilePath
+    private let fileStatus: (FilePath) throws -> FileStatus?
 
     private lazy var contextLogger: ContextualLogger = logger.contextualized(with: "bazel")
 
     public convenience init(
         configuration: Configuration,
         shell: Shell,
-        logger: Logger,
-        fileManager: FileManager = .default
+        logger: Logger
     ) {
-        self.init(
-            configuration: configuration,
-            shell: shell,
-            logger: logger,
-            fileManager: fileManager,
-            outputPath: FilePath("/var/tmp/periphery_bazel")
-        )
+        self.init(configuration: configuration, shell: shell, logger: logger, fileStatus: FileStatus.read)
     }
 
     init(
         configuration: Configuration,
         shell: Shell,
         logger: Logger,
-        fileManager: FileManager,
-        outputPath: FilePath
+        fileStatus: @escaping (FilePath) throws -> FileStatus?
     ) {
         self.configuration = configuration
         self.shell = shell
         self.logger = logger
-        self.fileManager = fileManager
-        self.outputPath = outputPath
+        self.fileStatus = fileStatus
     }
 
     public func build() throws {
@@ -100,11 +92,12 @@ public final class BazelProjectDriver: ProjectDriver {
     /// Generates the scan target, then builds and runs it, returning the scan's exit status.
     func buildAndScan() throws -> Int32 {
         warnIfPeripheryModuleIsNotOverridden()
-        try fileManager.createDirectory(at: outputPath.url, withIntermediateDirectories: true)
+        let outputPath = try generatedDirectory()
+        try preparePrivateDirectory(outputPath)
 
         let configPath = outputPath.appending("periphery.yml")
         configuration.bazel = false // Generic project mode is used for the actual scan.
-        try configuration.save(to: configPath)
+        try configuration.asYaml().write(to: configPath.url, atomically: true, encoding: .utf8)
         contextLogger.debug("Configuration written to \(configPath)")
 
         let buildPath = outputPath.appending("BUILD.bazel")
@@ -140,6 +133,7 @@ public final class BazelProjectDriver: ProjectDriver {
             "run",
             "--check_visibility=\(checkVisibility)",
             "--ui_event_filters=-info,-debug,-warning",
+            "--repo_env=\(Self.generatedDirectoryVariable)=\(outputPath)",
         ]
         arguments.append(contentsOf: configuration.buildArguments)
         arguments.append("@periphery_generated//:scan")
@@ -163,6 +157,58 @@ public final class BazelProjectDriver: ProjectDriver {
     }
 
     // MARK: - Private
+
+    /// `<output_base>/lethen_generated`. Bazel's output base belongs to this user and this workspace, so the path
+    /// is stable across scans, which keeps Bazel from refetching the generated repository, and scans of different
+    /// workspaces do not overwrite each other's files.
+    ///
+    /// The build arguments are not passed: they are options for `bazel run`, while the output base depends only on
+    /// startup options, which Bazel reads from the same `.bazelrc` files for both commands.
+    private func generatedDirectory() throws -> FilePath {
+        let command = ["bazel", "info", "output_base"]
+        let outputBase = try shell.exec(command).trimmed
+        guard FilePath(outputBase).isAbsolute, !outputBase.contains("\n") else {
+            throw LethenError.shellCommandFailed(
+                cmd: command,
+                status: 0,
+                output: "Expected an absolute path, got: \(outputBase)"
+            )
+        }
+
+        return FilePath(outputBase).appending("lethen_generated")
+    }
+
+    /// Creates `path` readable and writable only by this user, or checks that an existing `path` is such a directory,
+    /// so that nobody else can replace the generated files that the scan builds and runs.
+    private func preparePrivateDirectory(_ path: FilePath) throws {
+        if try fileStatus(path) == nil, mkdir(path.string, 0o700) != 0, errno != EEXIST {
+            throw LethenError.unsafeDirectory(path: path, reason: String(cString: strerror(errno)))
+        }
+
+        // Whatever is at the path now is checked without following a symbolic link, including a directory that
+        // appeared after the first check.
+        guard let status = try fileStatus(path) else {
+            throw LethenError.unsafeDirectory(path: path, reason: "it disappeared after it was created")
+        }
+        guard !status.isSymbolicLink else {
+            throw LethenError.unsafeDirectory(path: path, reason: "it is a symbolic link")
+        }
+        guard status.isDirectory else {
+            throw LethenError.unsafeDirectory(path: path, reason: "it is not a directory")
+        }
+
+        let userID = geteuid()
+        guard status.ownerID == userID else {
+            throw LethenError.unsafeDirectory(
+                path: path,
+                reason: "it is owned by user ID \(status.ownerID), not by the current user (\(userID))"
+            )
+        }
+        guard !status.isWritableByOthers else {
+            let permissions = String(status.mode & 0o7777, radix: 8)
+            throw LethenError.unsafeDirectory(path: path, reason: "other users can write to it (mode \(permissions))")
+        }
+    }
 
     private func warnIfPeripheryModuleIsNotOverridden() {
         guard let moduleFile = try? String(contentsOfFile: "MODULE.bazel", encoding: .utf8),
@@ -196,5 +242,38 @@ public final class BazelProjectDriver: ProjectDriver {
         }
 
         return query
+    }
+}
+
+/// What `lstat` reports about a path: its type and permissions, and its owner.
+struct FileStatus {
+    private static let typeMask: mode_t = 0o170000
+    private static let directoryType: mode_t = 0o040000
+    private static let symbolicLinkType: mode_t = 0o120000
+
+    let mode: mode_t
+    let ownerID: uid_t
+
+    var isDirectory: Bool {
+        mode & Self.typeMask == Self.directoryType
+    }
+
+    var isSymbolicLink: Bool {
+        mode & Self.typeMask == Self.symbolicLinkType
+    }
+
+    var isWritableByOthers: Bool {
+        mode & 0o022 != 0
+    }
+
+    /// The status of `path` itself, not of what a symbolic link points to, or nil when nothing exists at `path`.
+    static func read(_ path: FilePath) throws -> FileStatus? {
+        var info = stat()
+        guard lstat(path.string, &info) == 0 else {
+            if errno == ENOENT { return nil }
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+
+        return FileStatus(mode: info.st_mode, ownerID: info.st_uid)
     }
 }

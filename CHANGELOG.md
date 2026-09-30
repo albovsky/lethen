@@ -2,6 +2,7 @@
 
 ##### Breaking
 
+- The `periphery` Bazel module needs Bazel 7.1 or later, and the `periphery` module override in `MODULE.bazel` must be the same Lethen version as the `lethen` binary. This module stops with an error when an older binary runs it, and an older module still reads the generated package from `/var/tmp/periphery_bazel`, so update the override together with the binary.
 - Managed SwiftPM scans no longer clean before every build. Lethen reuses the previous build when it can verify the index: it recompiles every module that another build or an edit touched, together with the modules that import it, checks the index afterwards, and cleans and rebuilds when anything cannot be verified. A rescan of Lethen itself with nothing changed takes 5.3 s instead of 33.8 s. `--clean-build` restores the previous behavior.
 
 ##### Enhancements
@@ -27,6 +28,7 @@
 
 ##### Bug Fixes
 
+- `lethen scan --bazel` no longer writes the generated scan package and configuration to `/var/tmp/periphery_bazel`, a fixed directory that any local user could create first or replace, and that scans of different workspaces overwrote. It writes them to `lethen_generated` in the workspace's Bazel output base, creates that directory readable only by the current user, and stops before writing if the directory is a symbolic link, is owned by another user, or is writable by other users.
 - `lethen scan --bazel` with `--skip-build` or `--index-store-path` stops with an error before running Bazel. Bazel mode ignored both options and built and ran the generated scan target anyway. To scan an existing index store, use `--generic-project-config` with `--index-store-path`.
 - Xcode builds with different build arguments no longer share one DerivedData directory. Lethen's DerivedData path is also keyed by the build arguments when any are given, so a scan with `-- -configuration Release` no longer overwrites the index units of a scan without it. The first scan with build arguments after upgrading builds from clean.
 - C, C++, and Objective-C files in the index store are no longer parsed as Swift. Their index units reached the Swift indexer, which parsed each file with SwiftSyntax, so string literals in Objective-C and C code made Swift declarations with the same name `likely` instead of `certain`, and `--stats` counted their lines. The files are now told apart by the compiler that indexed them and skipped.
