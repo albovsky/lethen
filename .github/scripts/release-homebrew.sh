@@ -6,7 +6,9 @@
 # when an older tag is backfilled), it is left alone. Before the tap is pushed, this
 # checks that the published asset is the one that was built, then taps the updated local
 # clone and runs `brew install` and `brew test` against it, so users never receive a
-# formula that does not install.
+# formula that does not install. `brew test` runs the binary, and brew keeps HOMEBREW_*
+# variables when it filters its environment, so every brew command runs without the tap
+# token or a GitHub token; only `git push` receives the tap token.
 #
 # Inputs (environment): HOMEBREW_TAP_TOKEN with contents write access to the tap,
 # HOMEBREW_TAP (owner/homebrew-name), GH_REPO (owner/name of this repository), and
@@ -33,10 +35,15 @@ fi
 url="https://github.com/$repo/releases/download/$tag/$(basename "$zip")"
 sha256="$(shasum -a 256 "$zip" | cut -d ' ' -f 1)"
 
+# Runs brew without the credentials in the environment.
+brew_without_tokens() {
+    env -u HOMEBREW_TAP_TOKEN -u GH_TOKEN -u GITHUB_TOKEN brew "$@"
+}
+
 work="$(mktemp -d)"
 cleanup() {
-    brew uninstall --formula "$tap_name/lethen" > /dev/null 2>&1 || true
-    brew untap "$tap_name" > /dev/null 2>&1 || true
+    brew_without_tokens uninstall --formula "$tap_name/lethen" > /dev/null 2>&1 || true
+    brew_without_tokens untap "$tap_name" > /dev/null 2>&1 || true
     rm -rf "$work"
 }
 trap cleanup EXIT
@@ -87,9 +94,9 @@ git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bo
     commit --quiet -m "lethen $tag"
 
 export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_NO_ANALYTICS=1
-brew tap "$tap_name" "$work/tap"
-brew install --formula "$tap_name/lethen"
-brew test "$tap_name/lethen"
+brew_without_tokens tap "$tap_name" "$work/tap"
+brew_without_tokens install --formula "$tap_name/lethen"
+brew_without_tokens test "$tap_name/lethen"
 
 git push --quiet "$push_url" HEAD:main
 echo "Pushed $tap_name/lethen $tag"

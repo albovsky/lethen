@@ -1,12 +1,17 @@
 name: Release
 # Pushing a version tag releases it: the tag is checked against the source version, its
 # commit must be on master and have passed Required checks, and the Apple silicon macOS
-# binary and the Linux tarballs (release-linux.yml) are built and smoke-tested before the
-# `release` environment's reviewer approves signing. The approved job signs and notarizes
-# the macOS binary, tests it again, publishes the GitHub release with every asset, and,
-# for stable versions only, updates the Homebrew tap. Running the workflow by hand with an existing tag builds and
-# publishes binaries for it with the current release tooling, which backfills older tags
-# and retries failed releases; the environment must allow the branch it runs from.
+# binary and the Linux tarballs (release-linux.yml) are built and smoke-tested. Three jobs
+# then release them, and the `release` environment's reviewer approves two of them:
+# `sign` signs and notarizes the macOS binary; `smoke-test` tests the signed binary with no
+# environment, secrets, or write access, because it runs that binary; and `publish`
+# publishes the GitHub release with every asset and, for stable versions only, updates the
+# Homebrew tap. Assets pass between the jobs as an artifact whose digest `sign` records,
+# and the later jobs refuse any other contents. Running the workflow by hand with an
+# existing tag builds and publishes binaries for it with the current release tooling,
+# which backfills older tags and retries failed releases; the environment must allow the
+# branch it runs from. .github/scripts/check-release-isolation.sh, run by `mise run
+# lint-ci`, keeps `smoke-test` unprivileged.
 on:
   push:
     tags:
@@ -99,32 +104,32 @@ jobs:
       version: ${{ needs.prepare.outputs.tag }}
     permissions:
       contents: read
-  release:
-    name: Sign and publish
+  sign:
+    name: Sign
     needs: [prepare, build-macos, build-linux]
     runs-on: macos-26
     timeout-minutes: 90
     environment: release
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      digest: ${{ steps.record.outputs.digest }}
     env:
       TAG: ${{ needs.prepare.outputs.tag }}
-      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
     steps:
       - name: Check out release tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: tools
+          persist-credentials: false
       - name: Check out release source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           path: source
+          persist-credentials: false
           sparse-checkout: |
             LICENSE.md
-            docs/releases
           sparse-checkout-cone-mode: false
       - name: Select Xcode
         run: sudo xcode-select -s "/Applications/Xcode_${XCODE}.app"
@@ -139,9 +144,14 @@ jobs:
           merge-multiple: true
       # A rerun or backfill must not replace an asset that users or the Homebrew formula
       # may already rely on, so every asset that is already published is reused: the
-      # macOS zip is not re-signed and a rebuilt Linux tarball is discarded.
+      # macOS zip is not re-signed and a rebuilt Linux tarball is discarded. This job's
+      # token reads only published releases, so a draft left by a failed publish is not
+      # reused; delete that draft before rerunning.
       - name: Collect assets
         id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p dist
           cp linux/*.tar.gz dist/
@@ -169,17 +179,103 @@ jobs:
         run: |
           chmod +x build/lethen
           bash tools/.github/scripts/release-sign-macos.sh build/lethen source/LICENSE.md "dist/lethen-$TAG-macos-arm64.zip"
+      # A job output cannot be changed by a later job, unlike an artifact, so the digest of
+      # the asset listing lets `smoke-test` and `publish` prove they hold these exact files.
+      - name: Record assets
+        id: record
+        working-directory: dist
+        run: |
+          digest="$(bash ../tools/.github/scripts/release-assets-digest.sh)"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lethen-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+  # Runs the signed binary, so it gets no environment, no secrets, and no write access:
+  # contents: read only lets checkout authenticate, and this repository is public.
+  # .github/scripts/check-release-isolation.sh enforces this.
+  smoke-test:
+    name: Smoke test signed binary
+    needs: [prepare, sign]
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tools
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Select Xcode
+        run: sudo xcode-select -s "/Applications/Xcode_${XCODE}.app"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: lethen-dist
+          path: dist
+      - name: Verify assets
+        working-directory: dist
+        env:
+          EXPECTED_DIGEST: ${{ needs.sign.outputs.digest }}
+        run: bash ../tools/.github/scripts/release-assets-digest.sh "$EXPECTED_DIGEST"
       # Tests the binary inside the zip that is published, whether new or reused.
       - name: Smoke test released binary
         run: |
           ditto -x -k "dist/lethen-$TAG-macos-arm64.zip" released
           codesign --verify --strict --verbose=2 released/lethen
           bash tools/.github/scripts/release-smoke-test.sh released/lethen "$TAG"
+  publish:
+    name: Publish
+    needs: [prepare, sign, smoke-test]
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: tools
+          persist-credentials: false
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: source
+          persist-credentials: false
+          sparse-checkout: |
+            docs/releases
+          sparse-checkout-cone-mode: false
+      - name: Select Xcode
+        run: sudo xcode-select -s "/Applications/Xcode_${XCODE}.app"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: lethen-dist
+          path: dist
+      - name: Verify assets
+        working-directory: dist
+        env:
+          EXPECTED_DIGEST: ${{ needs.sign.outputs.digest }}
+        run: bash ../tools/.github/scripts/release-assets-digest.sh "$EXPECTED_DIGEST"
       - name: Checksums
         working-directory: dist
         run: shasum -a 256 -- *.zip *.tar.gz | tee SHA256SUMS
       - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: bash tools/.github/scripts/release-publish.sh "$TAG" "$PRERELEASE" "source/docs/releases/$TAG.md" dist/*
+      # `brew test` runs the published binary; release-homebrew.sh keeps the tap token out
+      # of every brew command and passes it only to `git push`.
       - name: Update Homebrew tap
         if: needs.prepare.outputs.prerelease == 'false'
         env:
