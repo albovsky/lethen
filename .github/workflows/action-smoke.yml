@@ -38,7 +38,8 @@ jobs:
         include:
           # Lethen on Linux needs Swift 6.3 or later on PATH, which the hosted image lacks.
           # The image is pinned to Ubuntu 24.04 like the release tarball tests: `swift:6.4`
-          # has moved to Ubuntu 26.04, whose libxml2.so.16 the 3.9.0 tarball cannot load.
+          # has moved to Ubuntu 26.04, whose libxml2.so.16 the 3.9.0 tarball cannot load;
+          # later tarballs link libxml2 statically and are tested there too.
           - os: Linux
             runs-on: ubuntu-24.04
             container: swift:6.4-noble

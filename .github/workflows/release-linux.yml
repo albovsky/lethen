@@ -5,10 +5,11 @@ name: Release Linux
 # after tagging.
 #
 # The executable is built with the oldest supported Swift (6.3) on Ubuntu 22.04 and the
-# static Swift standard library, so it runs with glibc 2.35 or later. It links the user's
-# libIndexStore.so, whose symbols are versioned by LLVM major: Swift 6.3, 6.4, and the
-# 6.5 development snapshots ship LLVM_21, while 6.1 and 6.2 ship LLVM_17 and cannot load
-# it. A toolchain with a newer LLVM needs a Lethen release built against it.
+# static Swift standard library, so it runs with glibc 2.35 or later. libxml2, which
+# FoundationXML links, is linked statically too (release-build-libxml2.sh), because
+# Ubuntu 26.04 has no libxml2.so.2. It links the user's libIndexStore.so, whose symbols
+# are versioned by LLVM major: Swift 6.3, 6.4, and the 6.5 development snapshots ship
+# LLVM_21, while 6.1 and 6.2 ship LLVM_17 and cannot load it. A toolchain with a newer LLVM needs a Lethen release built against it.
 on:
   workflow_call:
     inputs:
@@ -50,16 +51,18 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           path: source
+      - name: Build static libxml2
+        run: bash tools/.github/scripts/release-build-libxml2.sh libxml2
       - name: Build
         working-directory: source
-        run: swift build -c release --product lethen --static-swift-stdlib
+        run: swift build -c release --product lethen --static-swift-stdlib -Xlinker -L"$GITHUB_WORKSPACE/libxml2/lib"
       - name: Package
         env:
           VERSION: ${{ inputs.version }}
         run: |
           version="${VERSION:-$(sed -n 's/^let LethenVersion = "\(.*\)"$/\1/p' source/Sources/Frontend/Version.swift)}"
-          bin_dir="$(cd source && swift build -c release --product lethen --static-swift-stdlib --show-bin-path)"
-          bash tools/.github/scripts/release-package-linux.sh "$bin_dir/lethen" source/LICENSE.md "$version" "${{ matrix.arch }}" dist
+          bin_dir="$(cd source && swift build -c release --product lethen --static-swift-stdlib -Xlinker -L"$GITHUB_WORKSPACE/libxml2/lib" --show-bin-path)"
+          bash tools/.github/scripts/release-package-linux.sh "$bin_dir/lethen" source/LICENSE.md "$version" "${{ matrix.arch }}" dist libxml2/COPYING
           echo "$version" > dist/VERSION
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -76,9 +79,9 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, aarch64]
-        # The oldest and newest supported official images, and a swiftly install whose
-        # toolchain is outside /usr, which only the launcher can find.
-        toolchain: ["swift:6.3-jammy", "swift:6.4-noble", swiftly]
+        # The oldest supported official image, one per newer Ubuntu LTS, and a swiftly
+        # install whose toolchain is outside /usr, which only the launcher can find.
+        toolchain: ["swift:6.3-jammy", "swift:6.4-noble", "swift:6.4-resolute", swiftly]
     runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     timeout-minutes: 30
     permissions:
