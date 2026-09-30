@@ -14,10 +14,6 @@ final class ClangUnitTest: FixtureSourceGraphTestCase {
         FixturesProjectPath.appending("Sources/ClangUnitObjcSupportFixtures/ClangUnitObjcSupport.m")
     }
 
-    private var swiftSourcePath: FilePath {
-        FixturesProjectPath.appending("Sources/ClangUnitFixtures/testClangLiteralsAreNotConfidenceEvidence.swift")
-    }
-
     func testClangLiteralsAreNotConfidenceEvidence() throws {
         try analyze(retainPublic: true, additionalFilesToIndex: [clangSourcePath, objcSourcePath]) {
             assertReferenced(.class("FixtureClass240")) {
@@ -32,17 +28,19 @@ final class ClangUnitTest: FixtureSourceGraphTestCase {
 
     func testPlanKeepsClangFilesOutOfSwiftSourceFiles() throws {
         let plan = try XCTUnwrap(Self.plan)
-        var clangPaths = [clangSourcePath]
+        let swiftNames = plan.sourceFiles.keys.compactMap { $0.path.lastComponent?.string }
+        let clangNames = plan.clangSourceFiles.keys.compactMap { $0.path.lastComponent?.string }
+        var clangFiles = ["ClangUnitSupport.c"]
         #if os(macOS)
-            clangPaths.append(objcSourcePath)
+            clangFiles.append("ClangUnitObjcSupport.m")
         #endif
 
-        for path in clangPaths {
-            XCTAssertTrue(plan.clangSourceFiles.keys.contains { $0.path == path }, path.string)
-            XCTAssertFalse(plan.sourceFiles.keys.contains { $0.path == path }, path.string)
+        for name in clangFiles {
+            XCTAssertTrue(clangNames.contains(name), "\(name) not in clang files: \(clangNames.sorted())")
+            XCTAssertFalse(swiftNames.contains(name), name)
         }
-        XCTAssertTrue(plan.sourceFiles.keys.contains { $0.path == swiftSourcePath })
-        XCTAssertFalse(plan.clangSourceFiles.keys.contains { $0.path == swiftSourcePath })
+        XCTAssertTrue(swiftNames.contains("testClangLiteralsAreNotConfidenceEvidence.swift"))
+        XCTAssertFalse(clangNames.contains("testClangLiteralsAreNotConfidenceEvidence.swift"))
     }
 
     func testClassifiesUnitsByProviderThenMainFileExtension() {
