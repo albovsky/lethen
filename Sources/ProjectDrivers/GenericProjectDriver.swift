@@ -81,7 +81,8 @@ extension GenericProjectDriver: ProjectDriver {
         let sourceFiles = try collector.collect()
 
         return IndexPlan(
-            sourceFiles: sourceFiles,
+            sourceFiles: sourceFiles.sourceFiles,
+            clangSourceFiles: sourceFiles.clangSourceFiles,
             plistPaths: plistPaths,
             xibPaths: xibPaths,
             xcDataModelPaths: xcDataModelsPaths,

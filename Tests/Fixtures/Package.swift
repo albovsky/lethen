@@ -58,6 +58,15 @@ var targets: [PackageDescription.Target] = [
         ]
     ),
     .target(
+        name: "ClangUnitFixtures",
+        dependencies: [
+            .target(name: "ClangUnitSupportFixtures")
+        ]
+    ),
+    .target(
+        name: "ClangUnitSupportFixtures"
+    ),
+    .target(
         name: "TypeSyntaxInspectorFixtures"
     ),
     .target(
@@ -75,6 +84,9 @@ targets.append(contentsOf: [
     ),
     .target(
         name: "AppIntentsRetentionFixtures"
+    ),
+    .target(
+        name: "ClangUnitObjcSupportFixtures"
     )
 ])
 #endif

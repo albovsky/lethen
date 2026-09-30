@@ -115,7 +115,7 @@ final class SourceFileCollectorFreshnessTest: XCTestCase {
                 logger: logger.contextualized(with: "test"),
                 configuration: Configuration()
             )
-            for (file, units) in try collector.collect() where file.path.lastComponent?.string == fileName {
+            for (file, units) in try collector.collect().sourceFiles where file.path.lastComponent?.string == fileName {
                 for unit in units {
                     var names: Set<String> = []
                     for recordName in unit.unit.recordNames {
@@ -153,7 +153,7 @@ final class SourceFileCollectorFreshnessTest: XCTestCase {
                 logger: logger.contextualized(with: "test"),
                 configuration: Configuration()
             )
-            names = try Set(collector.collect().keys.compactMap { $0.path.lastComponent?.string })
+            names = try Set(collector.collect().sourceFiles.keys.compactMap { $0.path.lastComponent?.string })
         }
         return names
     }
