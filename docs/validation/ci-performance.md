@@ -268,8 +268,11 @@ halves build the package, so the split costs one extra build per toolchain (unde
 on macOS with the dependency cache) and adds one macOS job per pull request, three instead
 of two.
 
-Expected effect: each half takes about 7 minutes, so the Linux release job (about 7.5
-minutes of release build plus a minute of smoke tests) becomes the longest path.
+The first run with the split (run 36680670220, commit `5469e22`) took 11.2 minutes from
+start to `Required checks`, down from 14.0. The SPMTests half took 7.1 minutes and the
+Linux halves 5.2 to 6.7. The main Xcode 27 half was still the longest at 10.8 minutes: the
+other test targets took 5.3 of it and the scans 3.5, both slower than on the run before,
+so part of that is runner variance. The Linux release job took 8.6 minutes.
 
 The Linux 6.3 build takes about 1.7 minutes against 20 seconds on 6.4 even with an exact
 dependency-cache hit: its log shows SwiftSyntax, SwiftParser and ArgumentParser
