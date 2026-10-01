@@ -184,10 +184,8 @@
             let indexStorePaths: Set<FilePath>
             if !configuration.indexStorePath.isEmpty {
                 indexStorePaths = Set(configuration.indexStorePath)
-            } else if configuration.skipBuild, configuration.configurations.isEmpty {
-                indexStorePaths = try [skipBuildIndexStore()]
             } else if configuration.skipBuild {
-                // A scan building into these stores meanwhile waits rather than changing them underneath this one.
+                // A scan building into Lethen's own stores meanwhile waits rather than changing them underneath this one.
                 derivedDataLock?.release()
                 derivedDataLock = try xcodebuild.lockDerivedData(
                     project: project,
@@ -196,7 +194,7 @@
                     buildArguments: configuration.buildArguments,
                     exclusive: false
                 )
-                indexStorePaths = try skipBuildConfigurationIndexStores()
+                indexStorePaths = try configuration.configurations.isEmpty ? [skipBuildIndexStore()] : skipBuildConfigurationIndexStores()
             } else {
                 // One store per configuration; the collector keeps every store's units, so a reference
                 // compiled in any configuration counts.

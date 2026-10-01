@@ -529,6 +529,22 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertTrue(locked())
         reader = nil
         XCTAssertFalse(locked())
+
+        // A plain --skip-build may pick Lethen's own store too, so it reads it under the same lock.
+        let plain = Self.configuration([])
+        plain.buildArguments = configuration.buildArguments
+        plain.skipBuild = true
+        let ownDirectory = try xcodebuild.derivedDataPath(for: project, schemes: plain.schemes, buildArguments: plain.buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: ownDirectory.string)
+            try? FileManager.default.removeItem(atPath: ownDirectory.string + ".lock")
+        }
+        try FileManager.default.createDirectory(atPath: ownDirectory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        var plainReader: XcodeProjectDriver? = try Self.recordingDriver(plain, shell: shell)
+        _ = try? plainReader?.plan(logger: Self.logger.contextualized(with: "index"))
+        XCTAssertThrowsError(try DerivedDataLock(directories: [ownDirectory], exclusive: true, wait: false))
+        plainReader = nil
+        XCTAssertNoThrow(try DerivedDataLock(directories: [ownDirectory], exclusive: true, wait: false))
     }
 
     // MARK: - Private
