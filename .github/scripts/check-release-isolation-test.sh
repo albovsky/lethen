@@ -72,8 +72,27 @@ expect fail "sign runs the binary through sudo" 'sign["steps"] << { "run" => "su
 expect fail "sign runs the binary through arch" 'sign["steps"] << { "run" => "arch -arm64 build/lethen version" }'
 expect fail "publish opens the binary" 'publish["steps"] << { "run" => "open released/lethen" }'
 expect fail "publish runs the binary through swift run" 'publish["steps"] << { "run" => "swift run lethen version" }'
+expect fail "sign passes the binary to an unlisted repository script" 'sign["steps"] << { "run" => "bash tools/.github/scripts/run-lethen.sh build/lethen" }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
+
+# An exempt script that starts running its binary argument loses its exemption.
+mkdir "$work/scripts"
+cp "$(dirname "$0")"/*.sh "$work/scripts/"
+mutate ''
+if bash "$check" "$work/release.yml" "$work/scripts" > /dev/null 2>&1; then
+    echo "ok: the exempt scripts only sign and inspect the binary (pass)"
+else
+    echo "::error::check-release-isolation.sh should pass with the repository's own scripts" >&2
+    failures=$((failures + 1))
+fi
+printf '\n"$binary" version\n' >> "$work/scripts/release-sign-macos.sh"
+if bash "$check" "$work/release.yml" "$work/scripts" > /dev/null 2>&1; then
+    echo "::error::check-release-isolation.sh should fail when release-sign-macos.sh runs its binary argument, but it did pass" >&2
+    failures=$((failures + 1))
+else
+    echo "ok: release-sign-macos.sh runs its binary argument (fail)"
+fi
 
 if [ "$failures" -ne 0 ]; then
     exit 1

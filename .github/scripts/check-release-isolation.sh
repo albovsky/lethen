@@ -10,14 +10,16 @@
 # commands. So none of them can move back into a privileged job. `mise run lint-ci` runs
 # this check.
 #
-# Usage: check-release-isolation.sh [workflow-file]
+# Usage: check-release-isolation.sh [workflow-file] [scripts-directory]
 # check-release-isolation-test.sh runs it against mutated copies of the workflow.
 set -euo pipefail
 
 workflow="${1:-.github/workflows/release.yml}"
+scripts="${2:-$(dirname "$0")}"
 
-ruby -ryaml - "$workflow" <<'RUBY'
+ruby -ryaml - "$workflow" "$scripts" <<'RUBY'
 path = ARGV.fetch(0)
+scripts = ARGV.fetch(1)
 workflow = YAML.safe_load(File.read(path), aliases: true)
 jobs = workflow.fetch("jobs", {}) || {}
 problems = []
@@ -60,10 +62,13 @@ LETHEN_WORD = %r{(?<![\w./-])["']?(?:[^\s"';&|()`<>]*/)?lethen["']?(?![\w.-])}
 # Commands that take the binary's path as an argument without running it.
 PATH_ONLY_COMMANDS = %w[chmod codesign cp ditto file ls mv rm shasum spctl stat].freeze
 
+# Repository scripts that take the binary's path and only sign, inspect or package it. Each is
+# checked below never to run its `binary` argument; any other script given the path is flagged.
+PATH_ONLY_SCRIPTS = %w[release-relocate-rpaths.sh release-sign-macos.sh].freeze
+
 # Whether `script` uses the lethen binary anywhere except as an argument to a command known
 # not to run it, so a new wrapper (`command`, `env`, `sudo`, `arch`, `open`, ...) or a direct
-# call is caught without being listed. A repository script run by bash may take the path: the
-# ones that run the binary are matched by name below.
+# call is caught without being listed. Only the scripts in PATH_ONLY_SCRIPTS may take the path.
 def runs_lethen?(script)
   script.to_s.split(/\n|;|&|\||\$\(|`|\)/).any? do |segment|
     next false unless segment.match?(LETHEN_WORD)
@@ -73,7 +78,7 @@ def runs_lethen?(script)
     command = words.first.to_s
     next false if PATH_ONLY_COMMANDS.include?(command)
     next false if command == "swift" && words[1] == "build"
-    next false if command == "bash" && words[1].to_s.match?(%r{(?:\A|/)\.github/scripts/[\w.-]+\.sh\z})
+    next false if command == "bash" && PATH_ONLY_SCRIPTS.include?(File.basename(words[1].to_s))
 
     true
   end
@@ -119,6 +124,17 @@ jobs.each do |name, job|
     scopes = permissions.nil? ? ["the repository's default token permissions"] : write_scopes(permissions)
     problems << "runs #{command} in #{name}, which can write: #{scopes.join(', ')}" unless scopes.empty?
   end
+end
+
+# The exempt scripts must keep their promise: none runs its `binary` argument as a command.
+PATH_ONLY_SCRIPTS.each do |script|
+  source = File.join(scripts, script)
+  next problems << "exempts #{script}, which does not exist" unless File.exist?(source)
+
+  runs_binary = File.read(source).split(/\n|;|&|\||\$\(|`|\)/).any? do |segment|
+    segment.strip.sub(/\A(?:\w+=\S*\s+)*/, "").match?(/\A(?:exec\s+|command\s+)?"?\$\{?binary\}?"?(?:\s|\z)/)
+  end
+  problems << "exempts #{script}, which runs its binary argument" if runs_binary
 end
 
 if problems.empty?
