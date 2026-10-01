@@ -170,6 +170,8 @@ For an Xcode project, right-click the project in the navigator and choose **leth
 
 The Bazel Central Registry's `periphery` module is upstream Periphery, so add a source override for lethen in `MODULE.bazel`; `lethen scan --setup` prints the snippet for the installed version, and `lethen scan --bazel` warns when the override is missing.
 
+A Bazel scan always builds: the generated scan target indexes your targets and runs the scan, so `--skip-build` and `--index-store-path` stop a Bazel scan with an error. To scan an index store Bazel already wrote, describe the project with `--generic-project-config` (see Other build systems) and list the store there or pass it with `--index-store-path`.
+
 ### Other build systems
 
 `--generic-project-config config.json` scans index stores and resource files you list yourself, with no build step:
