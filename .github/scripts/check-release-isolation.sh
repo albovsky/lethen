@@ -101,10 +101,11 @@ end
 # Whether `script` uses the lethen binary anywhere except as an argument to a command known
 # not to run it, so a new wrapper (`command`, `env`, `sudo`, `arch`, `open`, ...) or a direct
 # call is caught without being listed. Only the scripts in PATH_ONLY_SCRIPTS may take the path.
-# `text` as the shell reads its words: quotes and backslashes removed, so `leth"en"` and
-# `leth\en` are `lethen`.
+# `text` as the shell reads its words: the `$` of `$'...'` and `$"..."` quoting, quotes and
+# backslashes removed, so `leth"en"`, `leth$'en'` and `leth\en` are `lethen`. Escapes that encode
+# letters, such as `$'\x6c'`, are beyond this tripwire; see the header.
 def unquoted(text)
-  text.to_s.delete("\"'\\")
+  text.to_s.gsub(/\$(?=['"])/, "").delete("\"'\\")
 end
 
 def runs_lethen?(script)
