@@ -73,7 +73,14 @@ public final class ShellImpl: Shell {
 
     @discardableResult
     public func execStatus(_ args: [String]) throws -> Int32 {
-        let process = try launch(args)
+        let process: Process
+        do {
+            process = try launch(args)
+        } catch let LethenError.shellCommandFailed(_, status, output) where status == 127 {
+            // A missing program is a status, as from a shell, so callers that exit with it still exit 127.
+            FileHandle.standardError.write(Data((output + "\n").utf8))
+            return status
+        }
         defer { store.remove(process) }
         process.waitUntilExit()
         return Self.exitStatus(of: process)

@@ -141,7 +141,9 @@ final class ShellTest: XCTestCase {
             XCTAssertEqual(status, 127)
             XCTAssertEqual(output, "lethen-no-such-command: command not found")
         }
-        XCTAssertThrowsError(try shell.execStatus([]))
+        // Commands whose status is the result report a missing program as 127, as a shell does.
+        XCTAssertEqual(try shell.execStatus(["lethen-no-such-command"]), 127)
+        XCTAssertEqual(try shell.execStatus([]), 127)
     }
 
     func testFindsCommandsOnThePathInOrder() throws {
