@@ -59,23 +59,46 @@ public final class BazelProjectDriver: ProjectDriver {
     private let logger: Logger
     private let fileManager: FileManager
 
-    private let outputPath = FilePath("/var/tmp/periphery_bazel")
+    private let outputPath: FilePath
 
     private lazy var contextLogger: ContextualLogger = logger.contextualized(with: "bazel")
 
-    public required init(
+    public convenience init(
         configuration: Configuration,
         shell: Shell,
         logger: Logger,
         fileManager: FileManager = .default
     ) {
+        self.init(
+            configuration: configuration,
+            shell: shell,
+            logger: logger,
+            fileManager: fileManager,
+            outputPath: FilePath("/var/tmp/periphery_bazel")
+        )
+    }
+
+    init(
+        configuration: Configuration,
+        shell: Shell,
+        logger: Logger,
+        fileManager: FileManager,
+        outputPath: FilePath
+    ) {
         self.configuration = configuration
         self.shell = shell
         self.logger = logger
         self.fileManager = fileManager
+        self.outputPath = outputPath
     }
 
     public func build() throws {
+        // The scan runs inside `bazel run`, and its exit status is the scan's result.
+        try exit(buildAndScan())
+    }
+
+    /// Generates the scan target, then builds and runs it, returning the scan's exit status.
+    func buildAndScan() throws -> Int32 {
         warnIfPeripheryModuleIsNotOverridden()
         try fileManager.createDirectory(at: outputPath.url, withIntermediateDirectories: true)
 
@@ -121,10 +144,8 @@ public final class BazelProjectDriver: ProjectDriver {
         arguments.append(contentsOf: configuration.buildArguments)
         arguments.append("@periphery_generated//:scan")
 
-        let status = try shell.execStatus(arguments)
-
         // The actual scan is performed by Bazel.
-        exit(status)
+        return try shell.execStatus(arguments)
     }
 
     /// Whether a root `MODULE.bazel` resolves the `periphery` module from source rather than from a registry.
