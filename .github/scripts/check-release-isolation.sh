@@ -100,9 +100,15 @@ end
 # Whether `script` uses the lethen binary anywhere except as an argument to a command known
 # not to run it, so a new wrapper (`command`, `env`, `sudo`, `arch`, `open`, ...) or a direct
 # call is caught without being listed. Only the scripts in PATH_ONLY_SCRIPTS may take the path.
+# `text` as the shell reads its words: quotes and backslashes removed, so `leth"en"` and
+# `leth\en` are `lethen`.
+def unquoted(text)
+  text.to_s.delete("\"'\\")
+end
+
 def runs_lethen?(script)
   simple_commands(script).any? do |segment|
-    next false unless segment.match?(LETHEN_WORD)
+    next false unless unquoted(segment).match?(LETHEN_WORD)
 
     words = command_words(segment)
     command = words.first.to_s
@@ -118,7 +124,7 @@ end
 # or `with`, where a script could run it as `"$BINARY"` without naming it. Step names and other
 # text are not checked.
 def uses_lethen?(job)
-  passes_path = ->(node) { text(node).any? { |value| value.match?(LETHEN_WORD) } }
+  passes_path = ->(node) { text(node).any? { |value| unquoted(value).match?(LETHEN_WORD) } }
   passes_path.call(job.slice("env", "defaults")) || Array(job["steps"]).any? do |step|
     step.is_a?(Hash) && (runs_lethen?(step["run"]) || passes_path.call(step.slice("env", "with")))
   end
@@ -174,10 +180,15 @@ PATH_ONLY_SCRIPTS.each do |script|
 
   runs_binary = simple_commands(File.read(source)).any? do |segment|
     # The argument itself, or any lethen path such as the `$staging/lethen` copy it is packaged as.
-    next false unless segment.match?(/\$\{?binary\b/) || segment.match?(LETHEN_WORD)
+    next false unless segment.match?(/\$\{?binary\b/) || unquoted(segment).match?(LETHEN_WORD)
 
-    command = command_words(segment).first
-    !command.nil? && !HELPER_PATH_COMMANDS.include?(command)
+    words = command_words(segment)
+    command = words.first
+    next false if command.nil?
+    next true unless HELPER_PATH_COMMANDS.include?(command)
+
+    # A copy must keep the lethen name, so every use of the copy is checked like the binary.
+    command == "cp" && !words.last.to_s.match?(%r{(?:\A|/)lethen\z})
   end
   problems << "exempts #{script}, which runs its binary argument" if runs_binary
 end

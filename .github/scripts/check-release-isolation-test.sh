@@ -88,6 +88,8 @@ expect fail "sign runs the binary after a line continuation" 'sign["steps"] << {
 expect fail "publish runs the binary under if" 'publish["steps"] << { "run" => "if released/lethen version; then :; fi" }'
 expect fail "sign passes the binary to a same-named script elsewhere" 'sign["steps"] << { "run" => "bash tools/other/release-sign-macos.sh build/lethen" }'
 expect fail "sign passes the binary to a same-named script in /tmp" 'sign["steps"] << { "run" => "bash /tmp/release-sign-macos.sh build/lethen" }'
+expect fail "sign runs the binary through split quoting" 'sign["steps"] << { "run" => "build/leth\"en\" version" }'
+expect fail "publish runs the binary through a backslash" 'publish["steps"] << { "run" => "released/leth\\en version" }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
 
@@ -104,7 +106,7 @@ fi
 # Each way an exempt script could run its binary argument must cost it the exemption.
 for run in '"$binary" version' 'if "$binary" version; then :; fi' 'env -i "$binary" version' \
     'x="$("$binary" version)"' 'cat <("$binary" version)' 'codesign --sign - "$binary" && "${binary}" version' \
-    '"$staging/lethen" version'; do
+    '"$staging/lethen" version' 'cp "$binary" "$staging/tool"; "$staging/tool" version'; do
     cp "$(dirname "$0")/release-sign-macos.sh" "$work/scripts/release-sign-macos.sh"
     printf '\n%s\n' "$run" >> "$work/scripts/release-sign-macos.sh"
     if bash "$check" "$work/release.yml" "$work/scripts" > /dev/null 2>&1; then
