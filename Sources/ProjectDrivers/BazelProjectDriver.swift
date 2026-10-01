@@ -98,6 +98,7 @@ public final class BazelProjectDriver: ProjectDriver {
 
     /// Generates the scan target, then builds and runs it, returning the scan's exit status.
     func buildAndScan() throws -> Int32 {
+        try rejectReservedRepositoryEnvironment()
         warnIfPeripheryModuleIsNotOverridden()
         let outputPath = try generatedDirectory()
         // Another scan of the same workspace shares the directory, so it waits until this one's `bazel run` ends.
@@ -146,9 +147,10 @@ public final class BazelProjectDriver: ProjectDriver {
             "run",
             "--check_visibility=\(checkVisibility)",
             "--ui_event_filters=-info,-debug,-warning",
-            repositoryEnvironment,
         ]
         arguments.append(contentsOf: configuration.buildArguments)
+        // After the build arguments, because Bazel uses the last `--repo_env` for a variable.
+        arguments.append(repositoryEnvironment)
         arguments.append(Self.generatedScanTarget)
 
         // The actual scan is performed by Bazel.
@@ -240,6 +242,27 @@ public final class BazelProjectDriver: ProjectDriver {
         }
 
         return descriptor
+    }
+
+    /// Build arguments must not set the variable that points the generated repository at the private directory: the
+    /// version check and the scan would then read different packages.
+    private func rejectReservedRepositoryEnvironment() throws {
+        let variable = Self.generatedDirectoryVariable
+        let arguments = configuration.buildArguments
+        let setsVariable = arguments.indices.contains { index in
+            let argument = arguments[index]
+            if argument.hasPrefix("--repo_env=\(variable)=") || argument == "--repo_env=\(variable)" {
+                return true
+            }
+
+            return argument == "--repo_env" && arguments.indices.contains(index + 1)
+                && (arguments[index + 1].hasPrefix("\(variable)=") || arguments[index + 1] == variable)
+        }
+        guard !setsVariable else {
+            throw LethenError.usageError(
+                "\(variable) is set by lethen for each Bazel scan; remove '--repo_env=\(variable)' from the build arguments."
+            )
+        }
     }
 
     /// Checks that the `periphery` module creates the generated repository the way this binary expects.

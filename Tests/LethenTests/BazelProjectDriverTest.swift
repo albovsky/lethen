@@ -79,6 +79,45 @@ final class BazelProjectDriverTest: XCTestCase {
         XCTAssertTrue(buildFile.contains("\"@@//lib:tests\""), buildFile)
     }
 
+    /// The private directory's `--repo_env` comes after the build arguments, since Bazel uses the last one.
+    func testRepositoryEnvironmentFollowsTheBuildArguments() throws {
+        let configuration = Configuration()
+        configuration.buildArguments = ["--config=ci", "--repo_env=OTHER=1"]
+        let shell = RecordingShell(outputBase: outputBase)
+
+        XCTAssertEqual(try makeDriver(configuration: configuration, shell: shell).buildAndScan(), 0)
+
+        let run = try XCTUnwrap(shell.commands.last)
+        XCTAssertEqual(Array(run.suffix(4)), [
+            "--config=ci",
+            "--repo_env=OTHER=1",
+            "--repo_env=LETHEN_BAZEL_GENERATED_DIR=\(generatedDirectory!)",
+            "@periphery_generated//lethen_scan:scan",
+        ])
+    }
+
+    /// Build arguments may not point the generated repository somewhere else.
+    func testBuildArgumentsSettingTheGeneratedDirectoryAreRejected() throws {
+        for arguments in [
+            ["--repo_env=LETHEN_BAZEL_GENERATED_DIR=/elsewhere"],
+            ["--repo_env", "LETHEN_BAZEL_GENERATED_DIR=/elsewhere"],
+            ["--repo_env=LETHEN_BAZEL_GENERATED_DIR"],
+        ] {
+            let configuration = Configuration()
+            configuration.buildArguments = arguments
+            let shell = RecordingShell(outputBase: outputBase)
+
+            XCTAssertThrowsError(try makeDriver(configuration: configuration, shell: shell).buildAndScan(), "\(arguments)") { error in
+                guard case let LethenError.usageError(message) = error else {
+                    return XCTFail("Expected a usage error, got: \(error)")
+                }
+
+                XCTAssertTrue(message.contains("LETHEN_BAZEL_GENERATED_DIR"), message)
+            }
+            XCTAssertEqual(shell.commands, [], "Nothing runs for \(arguments)")
+        }
+    }
+
     func testOlderPeripheryModuleStopsTheScanBeforeBazelRun() throws {
         let shell = RecordingShell(outputBase: outputBase, markerQueryFails: true)
 
