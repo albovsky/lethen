@@ -93,10 +93,11 @@ public final class Xcodebuild {
     }
 
     /// Starts this scan's builds into a DerivedData directory, which the caller has locked exclusively. A store left by
-    /// a failed or interrupted build lacks units for what it never compiled, which no freshness check can see, so the
-    /// completion mark is removed first. The directory's name is a hash that other projects of the same name or other
-    /// scheme sets can share, and an incremental build would keep their units, so a directory last built for anything
-    /// else, or by a Lethen that recorded nothing, is removed.
+    /// a failed or interrupted build lacks units for what it never compiled, which no freshness check can see, and an
+    /// incremental build over it need not recompile them, so a build reuses the directory only when its last build
+    /// completed for exactly this project, schemes, configuration and build arguments, and removes it otherwise. The
+    /// directory's name is a hash that other projects of the same name or other scheme sets can share. The completion
+    /// mark is removed before anything else, so a build that fails from here on leaves the directory unmarked.
     public func beginBuild(
         project: XcodeProjectlike,
         schemes: [String],
@@ -104,32 +105,16 @@ public final class Xcodebuild {
         buildArguments: [String] = []
     ) throws {
         let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        let identity = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        // The mark goes first, so that a removal that fails or is interrupted part way leaves no store marked complete.
-        try invalidateCompletedBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        let identityFile = directory.appending(Self.buildIdentityFile)
-        if directory.exists, FileManager.default.contents(atPath: identityFile.string) != identity {
-            logger.debug("\(directory) was last built for another project or scheme set; removing it.")
+        let marker = directory.appending(Self.completedBuildMarker)
+        let reusable = try FileManager.default.contents(atPath: marker.string)
+            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try marker.removeIfPresent()
+        if directory.exists, !reusable {
+            logger.debug("\(directory) holds no completed build of these schemes; removing it.")
             try FileManager.default.removeItem(atPath: directory.string)
         }
 
         try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
-        try identity.write(to: identityFile.url, options: .atomic)
-    }
-
-    /// Removes the completion mark of a DerivedData directory, which the caller has locked exclusively, before anything
-    /// in it is removed or rebuilt.
-    public func invalidateCompletedBuild(
-        project: XcodeProjectlike,
-        schemes: [String],
-        configuration: String? = nil,
-        buildArguments: [String] = []
-    ) throws {
-        let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-            .appending(Self.completedBuildMarker)
-        if marker.exists {
-            try FileManager.default.removeItem(atPath: marker.string)
-        }
     }
 
     /// Marks the store complete once every build this scan started into the directory has succeeded. The caller still
@@ -152,10 +137,9 @@ public final class Xcodebuild {
         buildArguments: [String] = []
     ) throws {
         let path = try derivedDataPath(for: project, schemes: allSchemes, configuration: configuration, buildArguments: buildArguments)
-        // The records go first: a removal that stops part way then leaves a directory that records no build, which the
+        // The mark goes first: a removal that stops part way then leaves a directory with no completed build, which the
         // next build removes again instead of building on what is left.
         try path.appending(Self.completedBuildMarker).removeIfPresent()
-        try path.appending(Self.buildIdentityFile).removeIfPresent()
         try path.removeIfPresent()
     }
 
@@ -190,7 +174,6 @@ public final class Xcodebuild {
     }
 
     static let completedBuildMarker = "lethen-build-completed"
-    static let buildIdentityFile = "lethen-build-identity"
 
     /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
     /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can

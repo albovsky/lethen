@@ -439,9 +439,10 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertFalse(try xcodebuild.hasCompletedBuild(project: project, schemes: ["AB", "C"], configuration: "Debug", buildArguments: buildArguments))
     }
 
-    /// A directory last built for another project of the same name or another scheme set that hashes alike, or by a
-    /// Lethen that recorded nothing, is removed before building, since an incremental build would keep its units.
-    func testBuildRemovesADirectoryLastBuiltForAnotherIdentity() throws {
+    /// A build reuses its DerivedData only when the last build into it completed for exactly the same project and
+    /// schemes. A directory left by a failed build, by a Lethen that recorded nothing, or by another scheme set that
+    /// hashes alike is removed first, since an incremental build would keep what it holds.
+    func testBuildReusesOnlyACompletedBuildOfTheSameSchemes() throws {
         let shell = RecordingShell()
         let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
         let project = try Self.project(shell: shell)
@@ -458,14 +459,25 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
         }
 
+        func complete(_ schemes: [String]) throws {
+            try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        }
+
         try plant()
         try begin(["A", "BC"])
-        XCTAssertFalse(leftover.exists, "A directory that records no build is not trusted.")
+        XCTAssertFalse(leftover.exists, "A directory with no completed build is not built on.")
 
+        // A build that started and never completed, as a failed or interrupted xcodebuild leaves it.
+        try plant()
+        try begin(["A", "BC"])
+        XCTAssertFalse(leftover.exists, "A build that did not complete is not built on.")
+
+        try complete(["A", "BC"])
         try plant()
         try begin(["BC", "A"])
-        XCTAssertTrue(leftover.exists, "The same project and schemes build on their previous build.")
+        XCTAssertTrue(leftover.exists, "The same project and schemes build on their previous completed build.")
 
+        try complete(["A", "BC"])
         try begin(["AB", "C"])
         XCTAssertFalse(leftover.exists, "Another scheme set must not inherit the units.")
     }

@@ -124,16 +124,6 @@
                 }
             }
 
-            // Every mark goes before anything is removed, so an interrupted clean leaves no partial store marked complete.
-            for buildConfiguration in buildConfigurations {
-                try xcodebuild.invalidateCompletedBuild(
-                    project: project,
-                    schemes: Array(schemes),
-                    configuration: buildConfiguration,
-                    buildArguments: configuration.buildArguments
-                )
-            }
-
             if configuration.cleanBuild {
                 for buildConfiguration in buildConfigurations {
                     try xcodebuild.removeDerivedData(
