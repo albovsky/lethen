@@ -248,6 +248,7 @@ final class ShellTest: XCTestCase {
         guard case let .found(sh) = ShellImpl.lookUp("sh", environment: [:]) else {
             return XCTFail("sh is not found without PATH")
         }
+
         XCTAssertTrue(directories.contains(sh.deletingLastPathComponent().path), sh.path)
 
         let planted = directory.appendingPathComponent("lethen-planted-tool")
