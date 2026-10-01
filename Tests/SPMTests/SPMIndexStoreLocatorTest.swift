@@ -40,7 +40,7 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
         try withTemporaryDirectory { root in
             let native = root.appending("arm64-apple-macosx/release/index/store")
             try FileManager.default.createDirectory(at: native.url, withIntermediateDirectories: true)
-            let arguments = ["-c", "release", "--scratch-path", "'\(root.string)'", "--arch", "arm64", "--sdk", "macosx", "--build-system", "swiftbuild"]
+            let arguments = ["-c", "release", "--scratch-path", root.string, "--arch", "arm64", "--sdk", "macosx", "--build-system", "swiftbuild"]
             let pkg = SPM.Package(configuration: Configuration(), shell: ExpectedCommandShell(
                 command: ["swift", "build", "--show-bin-path"] + arguments + ["--enable-index-store"],
                 output: "\(root.string)/out/Products/Release\n"
@@ -55,11 +55,11 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
     }
 
     func testManagedReleaseBuildEnablesIndexing() throws {
-        let arguments = ["-c", "release", "--scratch-path", "'/tmp/Build Space'"]
+        let arguments = ["-c", "release", "--scratch-path", "/tmp/Build Space"]
         let binary = "/tmp/lethen-unbuilt-\(UUID().uuidString)/out/Products/Release"
         let query = ["swift", "build", "--show-bin-path"] + arguments + ["--enable-index-store"]
         let build = ["swift", "build", "--build-tests"] + arguments + [
-            "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(binary)/index/store'",
+            "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", "\(binary)/index/store",
         ]
         let pkg = SPM.Package(configuration: Configuration(), shell: ExpectedCommandShell(
             responses: [query: binary, build: ""].merging(Self.reuseQueries) { $1 }
@@ -70,7 +70,7 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
     func testManagedBuildStreamsOnlyTheBuildCommand() throws {
         let binary = "/tmp/lethen-unbuilt-\(UUID().uuidString)/debug"
         let query = ["swift", "build", "--show-bin-path", "--enable-index-store"]
-        let build = ["swift", "build", "--build-tests", "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(binary)/index/store'"]
+        let build = ["swift", "build", "--build-tests", "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", "\(binary)/index/store"]
         let shell = StreamingShell(responses: [query: binary, build: "[1/1] Compiling A a.swift\n"].merging(Self.reuseQueries) { $1 })
         let lines = Mutex<[String]>([])
         let pkg = SPM.Package(configuration: Configuration(), shell: shell, logger: logger)
@@ -95,8 +95,8 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
     /// cannot start its own, so `--disable-sandbox` goes along.
     func testPackageSubcommandsShareTheScratchPathAndSandboxSetting() throws {
         let configuration = Configuration()
-        configuration.buildArguments = ["-c", "release", "--scratch-path", "'/tmp/Build Space'", "--disable-sandbox", "--build-system", "native"]
-        let shared = ["--scratch-path", "'/tmp/Build Space'", "--disable-sandbox"]
+        configuration.buildArguments = ["-c", "release", "--scratch-path", "/tmp/Build Space", "--disable-sandbox", "--build-system", "native"]
+        let shared = ["--scratch-path", "/tmp/Build Space", "--disable-sandbox"]
         let pkg = SPM.Package(configuration: configuration, shell: ExpectedCommandShell(responses: [
             ["swift", "package"] + shared + ["describe", "--type", "json"]: #"{"targets": []}"#,
             ["swift", "package", "clean"] + shared: "",
@@ -107,7 +107,7 @@ final class SPMIndexStoreLocatorTest: XCTestCase {
     }
 
     func testCleanForwardsOnlyScratchPath() throws {
-        for scratch in [["--scratch-path", "'/tmp/Build Space'"], ["--scratch-path='/tmp/Build Space'"]] {
+        for scratch in [["--scratch-path", "/tmp/Build Space"], ["--scratch-path=/tmp/Build Space"]] {
             let pkg = SPM.Package(configuration: Configuration(), shell: ExpectedCommandShell(
                 command: ["swift", "package", "clean"] + scratch, output: ""
             ), logger: logger)
