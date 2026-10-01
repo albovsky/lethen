@@ -65,8 +65,7 @@ public enum SPM {
             let store = try SPMIndexStoreLocator.indexStorePath(binPath: binary)
             // In swiftbuild Release builds, --enable-index-store alone does
             // not put indexing flags on the Swift compiler invocation.
-            let quotedStore = "'" + store.string.replacingOccurrences(of: "'", with: "'\\''") + "'"
-            arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", quotedStore]
+            arguments += ["-Xswiftc", "-index-store-path", "-Xswiftc", store.string]
 
             // Indexing flags do not invalidate compiled tasks, so an existing tree can hold objects that
             // were never indexed or were recompiled without indexing. The build is reused only when
