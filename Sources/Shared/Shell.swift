@@ -154,6 +154,16 @@ public final class ShellImpl: Shell {
         return (error.userInfo[NSUnderlyingErrorKey] as? Error).flatMap(posixCode)
     }
 
+    /// The directories searched when `PATH` is unset: bash's own default, which includes `/usr/local/bin`, without its
+    /// trailing `.`, so a program in the scanned project's directory is never run in place of a missing build tool.
+    static var defaultSearchPath: String {
+        #if os(macOS)
+            "/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin"
+        #else
+            "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+        #endif
+    }
+
     /// The shell that runs an executable file the system cannot run itself; bash ran such files before.
     private static var fallbackShell: URL {
         URL(fileURLWithPath: FileManager.default.isExecutableFile(atPath: "/bin/bash") ? "/bin/bash" : "/bin/sh")
@@ -204,7 +214,7 @@ public final class ShellImpl: Shell {
         }
 
         var firstNotExecutable: URL?
-        let searchPath = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let searchPath = environment["PATH"] ?? defaultSearchPath
         for directory in searchPath.split(separator: ":", omittingEmptySubsequences: false) {
             let candidate = URL(fileURLWithPath: directory.isEmpty ? "." : String(directory)).appendingPathComponent(name)
             switch classify(candidate) {

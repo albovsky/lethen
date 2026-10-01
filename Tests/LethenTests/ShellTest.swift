@@ -237,6 +237,23 @@ final class ShellTest: XCTestCase {
         }
     }
 
+    /// Without `PATH`, the search covers bash's default directories, including `/usr/local/bin`, but never the
+    /// current directory.
+    func testUnsetPathSearchesTheShellsDefaultDirectoriesButNotTheCurrentOne() throws {
+        let directories = ShellImpl.defaultSearchPath.split(separator: ":").map(String.init)
+        XCTAssertTrue(directories.contains("/usr/local/bin"), ShellImpl.defaultSearchPath)
+        XCTAssertTrue(directories.contains("/usr/bin"), ShellImpl.defaultSearchPath)
+        XCTAssertFalse(directories.contains(".") || directories.contains(""), ShellImpl.defaultSearchPath)
+        XCTAssertEqual(ShellImpl.lookUp("sh", environment: [:]), .found(URL(fileURLWithPath: "/bin/sh")))
+
+        let planted = directory.appendingPathComponent("lethen-planted-tool")
+        FileManager.default.createFile(atPath: planted.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        let previous = FileManager.default.currentDirectoryPath
+        XCTAssertTrue(FileManager.default.changeCurrentDirectoryPath(directory.path))
+        defer { FileManager.default.changeCurrentDirectoryPath(previous) }
+        XCTAssertEqual(ShellImpl.lookUp("lethen-planted-tool", environment: [:]), .notFound)
+    }
+
     func testCommandsAreRenderedAsTheyCouldBeTyped() {
         XCTAssertEqual(["swift", "build", "-c", "release", "--scratch-path=/tmp/x"].shellRendered, "swift build -c release --scratch-path=/tmp/x")
         XCTAssertEqual(["xcodebuild", "-project", "/a b/$(x).xcodeproj", "-scheme", "it's", ""].shellRendered,
