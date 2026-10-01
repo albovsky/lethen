@@ -19,7 +19,8 @@ inputs:
     description: >-
       Further arguments for `lethen scan`, parsed with shell quoting, for example
       `--schemes App --targets App`. The format, strictness, baseline and results file are set
-      by the other inputs.
+      by the other inputs. The shell evaluates the value like a `run:` line, so never put pull
+      request text such as branch names or titles into it.
     required: false
     default: ""
   working-directory:
