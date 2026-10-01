@@ -584,6 +584,11 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
 
         XCTAssertThrowsError(try Self.recordingDriver(configuration, shell: shell).build())
         XCTAssertEqual(try completed(), [false, false])
+
+        // The next build without --clean-build must not build on what the failed clean left behind.
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stuck.string)
+        try xcodebuild.beginBuild(project: project, schemes: configuration.schemes, configuration: "Release", buildArguments: configuration.buildArguments)
+        XCTAssertFalse(stuck.exists)
     }
 
     // MARK: - Private

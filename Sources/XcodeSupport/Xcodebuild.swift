@@ -152,6 +152,10 @@ public final class Xcodebuild {
         buildArguments: [String] = []
     ) throws {
         let path = try derivedDataPath(for: project, schemes: allSchemes, configuration: configuration, buildArguments: buildArguments)
+        // The records go first: a removal that stops part way then leaves a directory that records no build, which the
+        // next build removes again instead of building on what is left.
+        try path.appending(Self.completedBuildMarker).removeIfPresent()
+        try path.appending(Self.buildIdentityFile).removeIfPresent()
         try path.removeIfPresent()
     }
 
