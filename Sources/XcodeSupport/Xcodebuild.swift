@@ -105,19 +105,31 @@ public final class Xcodebuild {
     ) throws {
         let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
         let identity = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        // The mark goes first, so that a removal that fails or is interrupted part way leaves no store marked complete.
+        try invalidateCompletedBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
         let identityFile = directory.appending(Self.buildIdentityFile)
         if directory.exists, FileManager.default.contents(atPath: identityFile.string) != identity {
             logger.debug("\(directory) was last built for another project or scheme set; removing it.")
             try FileManager.default.removeItem(atPath: directory.string)
         }
 
-        let marker = directory.appending(Self.completedBuildMarker)
+        try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+        try identity.write(to: identityFile.url, options: .atomic)
+    }
+
+    /// Removes the completion mark of a DerivedData directory, which the caller has locked exclusively, before anything
+    /// in it is removed or rebuilt.
+    public func invalidateCompletedBuild(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws {
+        let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            .appending(Self.completedBuildMarker)
         if marker.exists {
             try FileManager.default.removeItem(atPath: marker.string)
         }
-
-        try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
-        try identity.write(to: identityFile.url, options: .atomic)
     }
 
     /// Marks the store complete once every build this scan started into the directory has succeeded. The caller still

@@ -547,6 +547,45 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertNoThrow(try DerivedDataLock(directories: [ownDirectory], exclusive: true, wait: false))
     }
 
+    /// Removing a directory can fail part way, so its completion mark is removed before any of its contents: by a
+    /// clean build for every configuration, and before a directory built for another identity is replaced.
+    func testCompletionMarksGoBeforeAnyRemoval() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.buildArguments = ["LETHEN_TEST_ORDER=\(UUID().uuidString)"]
+        configuration.cleanBuild = true
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let directories = try ["Debug", "Release"].map {
+            try xcodebuild.derivedDataPath(for: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+        }
+        defer {
+            for directory in directories {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.appending("Index.noindex").string)
+                try? FileManager.default.removeItem(atPath: directory.string)
+                try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+            }
+        }
+
+        func completed() throws -> [Bool] {
+            try ["Debug", "Release"].map {
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+            }
+        }
+
+        // Release's index cannot be removed, so the clean build fails part way through that directory.
+        for name in ["Debug", "Release"] {
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+        }
+        let stuck = directories[1].appending("Index.noindex")
+        try FileManager.default.createDirectory(atPath: stuck.appending("DataStore/v5/units").string, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: stuck.string)
+        XCTAssertEqual(try completed(), [true, true])
+
+        XCTAssertThrowsError(try Self.recordingDriver(configuration, shell: shell).build())
+        XCTAssertEqual(try completed(), [false, false])
+    }
+
     // MARK: - Private
 
     private static func configuration(_ configurations: [String], scheme: String = "ConfigurationsProject") -> Configuration {
