@@ -1,3 +1,17 @@
+## master
+
+##### Breaking
+
+- None.
+
+##### Enhancements
+
+- None.
+
+##### Bug Fixes
+
+- None.
+
 ## 3.10.0 (2026-10-01)
 
 Lethen reports a confidence and a reason for every result, explains any declaration, reads Objective-C uses of Swift code, scans several build configurations together, and reuses verified SwiftPM builds; build tools now run without a shell.
