@@ -128,6 +128,19 @@ final class BazelProjectDriverTest: XCTestCase {
         XCTAssertTrue(buildFile.contains(#""@@//app:app""#), buildFile)
     }
 
+    /// Bazel's output ends in a newline, which is removed; a space or tab that ends the output base itself stays.
+    func testOutputBaseEndingInWhitespaceIsKept() throws {
+        let unusual = outputBase.appending("base ending in space \t ")
+        XCTAssertEqual(mkdir(unusual.string, 0o700), 0)
+        let shell = RecordingShell(outputBase: unusual)
+
+        XCTAssertEqual(try makeDriver(shell: shell).buildAndScan(), 0)
+
+        let generated = unusual.appending("lethen_generated")
+        XCTAssertTrue(generated.appending("BUILD.bazel").exists)
+        XCTAssertTrue(shell.commands.contains { $0.contains("--repo_env=LETHEN_BAZEL_GENERATED_DIR=\(generated)") })
+    }
+
     func testStarlarkStringEscapesOnlyWhatStarlarkInterprets() {
         XCTAssertEqual(BazelProjectDriver.starlarkString("/plain/path with spaces/$(x)'s"), #""/plain/path with spaces/$(x)'s""#)
         XCTAssertEqual(BazelProjectDriver.starlarkString("a\"b\\c\nd\re\tf"), #""a\"b\\c\nd\re\tf""#)

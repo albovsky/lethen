@@ -191,7 +191,14 @@ public final class BazelProjectDriver: ProjectDriver {
     /// startup options, which Bazel reads from the same `.bazelrc` files for both commands.
     private func generatedDirectory() throws -> FilePath {
         let command = ["bazel", "info", "output_base"]
-        let outputBase = try shell.exec(command).trimmed
+        // Only the line terminator is removed: an output base may end in a space or tab.
+        var outputBase = try shell.exec(command)
+        if outputBase.hasSuffix("\n") {
+            outputBase.removeLast()
+        }
+        if outputBase.hasSuffix("\r") {
+            outputBase.removeLast()
+        }
         guard FilePath(outputBase).isAbsolute, !outputBase.contains("\n") else {
             throw LethenError.shellCommandFailed(
                 cmd: command,
