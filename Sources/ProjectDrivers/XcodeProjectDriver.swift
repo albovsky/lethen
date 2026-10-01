@@ -103,6 +103,15 @@
         public func build() throws {
             guard !configuration.skipBuild else { return }
 
+            let lock = try xcodebuild.lockDerivedData(
+                project: project,
+                schemes: Array(schemes),
+                configurations: buildConfigurations,
+                buildArguments: configuration.buildArguments,
+                exclusive: true
+            )
+            defer { lock.release() }
+
             if configuration.cleanBuild {
                 for buildConfiguration in buildConfigurations {
                     try xcodebuild.removeDerivedData(
@@ -116,7 +125,7 @@
 
             // Every scheme builds into each configuration's one DerivedData directory, so a configuration is complete
             // only once all of them have built.
-            let tokens = try buildConfigurations.map { buildConfiguration in
+            for buildConfiguration in buildConfigurations {
                 try xcodebuild.beginBuild(
                     project: project,
                     schemes: Array(schemes),
@@ -148,9 +157,8 @@
                 }
             }
 
-            for (buildConfiguration, token) in zip(buildConfigurations, tokens) {
+            for buildConfiguration in buildConfigurations {
                 try xcodebuild.completeBuild(
-                    token: token,
                     project: project,
                     schemes: Array(schemes),
                     configuration: buildConfiguration,
@@ -160,14 +168,28 @@
         }
 
         public func plan(logger: ContextualLogger) throws -> IndexPlan {
-            let indexStorePaths: Set<FilePath> = if !configuration.indexStorePath.isEmpty {
-                Set(configuration.indexStorePath)
+            // Stores read without a build stay locked until they are collected, so a scan building into them meanwhile
+            // waits rather than changing them underneath.
+            var lock: DerivedDataLock?
+            defer { lock?.release() }
+            let indexStorePaths: Set<FilePath>
+            if !configuration.indexStorePath.isEmpty {
+                indexStorePaths = Set(configuration.indexStorePath)
+            } else if configuration.skipBuild, configuration.configurations.isEmpty {
+                indexStorePaths = try [skipBuildIndexStore()]
             } else if configuration.skipBuild {
-                try configuration.configurations.isEmpty ? [skipBuildIndexStore()] : skipBuildConfigurationIndexStores()
+                lock = try xcodebuild.lockDerivedData(
+                    project: project,
+                    schemes: Array(schemes),
+                    configurations: buildConfigurations,
+                    buildArguments: configuration.buildArguments,
+                    exclusive: false
+                )
+                indexStorePaths = try skipBuildConfigurationIndexStores()
             } else {
                 // One store per configuration; the collector keeps every store's units, so a reference
                 // compiled in any configuration counts.
-                try buildConfigurations.mapSet {
+                indexStorePaths = try buildConfigurations.mapSet {
                     try xcodebuild.indexStorePath(
                         project: project,
                         schemes: Array(schemes),

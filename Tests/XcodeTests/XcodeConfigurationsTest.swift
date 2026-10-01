@@ -376,7 +376,9 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         FileManager.default.createFile(atPath: marker, contents: Data(elsewhere.utf8))
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
 
+        // A completed build, which starts by replacing the directory that recorded no build.
         try Self.markComplete(xcodebuild, project: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments)
+        try FileManager.default.createDirectory(atPath: debugDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configuration Release."))
     }
 
@@ -436,45 +438,57 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertFalse(try xcodebuild.hasCompletedBuild(project: project, schemes: ["AB", "C"], configuration: "Debug", buildArguments: buildArguments))
     }
 
-    /// A scan marks a store complete only if it is still the store's latest builder: another scan that started
-    /// building into the directory since, or removed it, leaves it unmarked.
-    func testCompletedBuildIsMarkedOnlyByTheScanThatOwnsTheStore() throws {
+    /// A directory last built for another project of the same name or another scheme set that hashes alike, or by a
+    /// Lethen that recorded nothing, is removed before building, since an incremental build would keep its units.
+    func testBuildRemovesADirectoryLastBuiltForAnotherIdentity() throws {
         let shell = RecordingShell()
         let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
         let project = try Self.project(shell: shell)
-        let schemes = ["ConfigurationsProject"]
-        let buildArguments = ["LETHEN_TEST_OWNER=\(UUID().uuidString)"]
-        let directory = try xcodebuild.derivedDataPath(for: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        let buildArguments = ["LETHEN_TEST_IDENTITY=\(UUID().uuidString)"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: ["A", "BC"], configuration: "Debug", buildArguments: buildArguments)
+        let leftover = directory.appending("Index.noindex/DataStore/v5/units/leftover")
         defer { try? FileManager.default.removeItem(atPath: directory.string) }
 
-        func begin() throws -> String {
+        func plant() throws {
+            try FileManager.default.createDirectory(atPath: leftover.string, withIntermediateDirectories: true)
+        }
+
+        func begin(_ schemes: [String]) throws {
             try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
         }
 
-        func complete(_ token: String) throws {
-            try xcodebuild.completeBuild(token: token, project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try plant()
+        try begin(["A", "BC"])
+        XCTAssertFalse(leftover.exists, "A directory that records no build is not trusted.")
+
+        try plant()
+        try begin(["BC", "A"])
+        XCTAssertTrue(leftover.exists, "The same project and schemes build on their previous build.")
+
+        try begin(["AB", "C"])
+        XCTAssertFalse(leftover.exists, "Another scheme set must not inherit the units.")
+    }
+
+    /// Building takes the configuration's DerivedData exclusively and reading it without a build takes it shared, so
+    /// a scan never reads or marks a store that another scan is building.
+    func testDerivedDataLocksExcludeBuildsFromReadsAndOtherBuilds() throws {
+        let directory = FilePath(NSTemporaryDirectory()).appending("lethen-lock-\(UUID().uuidString)/DerivedData-test")
+        defer { try? FileManager.default.removeItem(atPath: directory.removingLastComponent().string) }
+
+        func lock(exclusive: Bool) throws -> DerivedDataLock {
+            try DerivedDataLock(directories: [directory], exclusive: exclusive, wait: false)
         }
 
-        func completed() throws -> Bool {
-            try xcodebuild.hasCompletedBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
-        }
+        let building = try lock(exclusive: true)
+        XCTAssertThrowsError(try lock(exclusive: false))
+        XCTAssertThrowsError(try lock(exclusive: true))
+        building.release()
 
-        let first = try begin()
-        let second = try begin()
-        try complete(first)
-        XCTAssertFalse(try completed(), "A scan that another one has started building over must not mark the store.")
-
-        let third = try begin()
-        try FileManager.default.removeItem(atPath: directory.string)
-        try complete(third)
-        XCTAssertFalse(try completed(), "A scan whose store was removed, as --clean-build does, must not mark it.")
-        XCTAssertFalse(directory.exists)
-
-        let fourth = try begin()
-        try complete(fourth)
-        XCTAssertTrue(try completed())
-        try complete(second)
-        XCTAssertTrue(try completed())
+        let reading = try lock(exclusive: false)
+        XCTAssertNoThrow(try lock(exclusive: false))
+        XCTAssertThrowsError(try lock(exclusive: true))
+        reading.release()
+        XCTAssertNoThrow(try lock(exclusive: true))
     }
 
     // MARK: - Private
@@ -503,8 +517,8 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
     }
 
     private static func markComplete(_ xcodebuild: Xcodebuild, project: XcodeProject, schemes: [String], configuration: String, buildArguments: [String]) throws {
-        let token = try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        try xcodebuild.completeBuild(token: token, project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
     }
 
     /// A driver whose builds are recorded rather than run.

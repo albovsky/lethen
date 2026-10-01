@@ -75,47 +75,62 @@ public final class Xcodebuild {
         return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
     }
 
-    /// Starts a scan's builds into a DerivedData directory. A store left by a failed or interrupted build lacks units
-    /// for what it never compiled, which no freshness check can see, so the completion mark is removed first. The
-    /// returned token names this scan as the directory's current builder; another scan that starts building into the
-    /// same directory, or removes it, replaces or deletes the token.
-    public func beginBuild(
+    /// Locks the DerivedData directories of `configurations` for this scan: exclusively to build into them, shared to
+    /// read their stores. The directories are locked in path order, so scans that lock overlapping sets cannot deadlock.
+    public func lockDerivedData(
         project: XcodeProjectlike,
         schemes: [String],
-        configuration: String? = nil,
-        buildArguments: [String] = []
-    ) throws -> String {
-        let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        let marker = directory.appending(Self.completedBuildMarker)
-        if marker.exists {
-            try FileManager.default.removeItem(atPath: marker.string)
+        configurations: [String?],
+        buildArguments: [String] = [],
+        exclusive: Bool
+    ) throws -> DerivedDataLock {
+        let directories = try configurations.map {
+            try derivedDataPath(for: project, schemes: schemes, configuration: $0, buildArguments: buildArguments)
         }
-
-        let token = UUID().uuidString
-        try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
-        try Data(token.utf8).write(to: directory.appending(Self.buildInProgressMarker).url, options: .atomic)
-        return token
+        return try DerivedDataLock(directories: directories, exclusive: exclusive) { [logger] directory in
+            logger.info("Waiting for another Lethen scan to finish with \(directory)...")
+        }
     }
 
-    /// Marks the directory's store complete once every build the scan started with `token` has succeeded, unless
-    /// another scan has since started building into it or removed it, in which case the store is left unmarked.
-    public func completeBuild(
-        token: String,
+    /// Starts this scan's builds into a DerivedData directory, which the caller has locked exclusively. A store left by
+    /// a failed or interrupted build lacks units for what it never compiled, which no freshness check can see, so the
+    /// completion mark is removed first. The directory's name is a hash that other projects of the same name or other
+    /// scheme sets can share, and an incremental build would keep their units, so a directory last built for anything
+    /// else, or by a Lethen that recorded nothing, is removed.
+    public func beginBuild(
         project: XcodeProjectlike,
         schemes: [String],
         configuration: String? = nil,
         buildArguments: [String] = []
     ) throws {
         let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        let inProgress = directory.appending(Self.buildInProgressMarker)
-        guard FileManager.default.contents(atPath: inProgress.string) == Data(token.utf8) else {
-            logger.debug("Another scan built into \(directory) since this one started; leaving its index unmarked.")
-            return
+        let identity = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        let identityFile = directory.appending(Self.buildIdentityFile)
+        if directory.exists, FileManager.default.contents(atPath: identityFile.string) != identity {
+            logger.debug("\(directory) was last built for another project or scheme set; removing it.")
+            try FileManager.default.removeItem(atPath: directory.string)
         }
 
+        let marker = directory.appending(Self.completedBuildMarker)
+        if marker.exists {
+            try FileManager.default.removeItem(atPath: marker.string)
+        }
+
+        try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+        try identity.write(to: identityFile.url, options: .atomic)
+    }
+
+    /// Marks the store complete once every build this scan started into the directory has succeeded. The caller still
+    /// holds the exclusive lock it began with.
+    public func completeBuild(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws {
+        let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
         let contents = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
         try contents.write(to: directory.appending(Self.completedBuildMarker).url, options: .atomic)
-        try FileManager.default.removeItem(atPath: inProgress.string)
     }
 
     public func removeDerivedData(
@@ -159,7 +174,7 @@ public final class Xcodebuild {
     }
 
     static let completedBuildMarker = "lethen-build-completed"
-    static let buildInProgressMarker = "lethen-build-in-progress"
+    static let buildIdentityFile = "lethen-build-identity"
 
     /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
     /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can
@@ -259,5 +274,50 @@ public final class Xcodebuild {
         }
 
         return try Constants.cachePath().appending(name)
+    }
+}
+
+/// `flock` locks on files beside DerivedData directories, so that removing a directory does not drop its lock. They
+/// are released by `release()`, or when the process exits.
+public final class DerivedDataLock {
+    private var descriptors: [Int32]
+
+    init(directories: [FilePath], exclusive: Bool, wait: Bool = true, onWait: (FilePath) -> Void = { _ in }) throws {
+        descriptors = []
+        let operation = exclusive ? LOCK_EX : LOCK_SH
+        for directory in Set(directories).sorted() {
+            let lockFile = directory.removingLastComponent().appending((directory.lastComponent?.string ?? "") + ".lock")
+            try FileManager.default.createDirectory(atPath: lockFile.removingLastComponent().string, withIntermediateDirectories: true)
+            let descriptor = open(lockFile.string, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+            guard descriptor >= 0 else {
+                release()
+                throw LethenError.usageError("Could not open \(lockFile): \(String(cString: strerror(errno)))")
+            }
+
+            descriptors.append(descriptor)
+            if flock(descriptor, operation | LOCK_NB) != 0 {
+                guard wait, errno == EWOULDBLOCK else {
+                    release()
+                    throw LethenError.usageError("\(directory) is in use by another Lethen scan.")
+                }
+
+                onWait(directory)
+                guard flock(descriptor, operation) == 0 else {
+                    release()
+                    throw LethenError.usageError("Could not lock \(lockFile): \(String(cString: strerror(errno)))")
+                }
+            }
+        }
+    }
+
+    deinit {
+        release()
+    }
+
+    public func release() {
+        for descriptor in descriptors {
+            close(descriptor)
+        }
+        descriptors = []
     }
 }
