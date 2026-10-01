@@ -166,7 +166,7 @@ For an Xcode project, right-click the project in the navigator and choose **leth
 
 ### Bazel
 
-`--bazel` queries the workspace for top-level application, test, and library targets, generates a hidden scan rule, and runs it. `--bazel-filter` narrows the default query and `--bazel-query` replaces it. Lethen passes `--check_visibility=false` unless you set `--bazel-check-visibility`, in which case the generated package must be visible to your targets.
+`--bazel` queries the workspace for top-level application, test, and library targets, generates a hidden scan rule, and runs it. The rule and the scan configuration are written to `lethen_generated` in the workspace's output base (`bazel info output_base`), a directory only you can write to. `--bazel-filter` narrows the default query and `--bazel-query` replaces it. Lethen passes `--check_visibility=false` unless you set `--bazel-check-visibility`, in which case the generated package must be visible to your targets.
 
 The Bazel Central Registry's `periphery` module is upstream Periphery, so add a source override for lethen in `MODULE.bazel`; `lethen scan --setup` prints the snippet for the installed version, and `lethen scan --bazel` warns when the override is missing.
 

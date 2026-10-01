@@ -2,6 +2,7 @@
 
 ##### Breaking
 
+- The `periphery` Bazel module needs Bazel 7.1 or later, and the `periphery` module override in `MODULE.bazel` must be the same Lethen version as the `lethen` binary, so update the override together with the binary. `lethen scan --bazel` stops before building when the module is older, because an older module reads the generated package from `/var/tmp/periphery_bazel`, and the generated scan package fails to load with an explanation when an older binary runs it. `bazel fetch --all` and `bazel vendor` still fetch the generated repository.
 - Managed SwiftPM scans no longer clean before every build. Lethen reuses the previous build when it can verify the index: it recompiles every module that another build or an edit touched, together with the modules that import it, checks the index afterwards, and cleans and rebuilds when anything cannot be verified. A rescan of Lethen itself with nothing changed takes 5.3 s instead of 33.8 s. `--clean-build` restores the previous behavior.
 - Lethen runs `xcodebuild`, `swift`, and `bazel` directly instead of through `bash -c`, so build arguments reach the build tool exactly as written. Quotes and `$VARIABLES` in `build_arguments`, `--build-arguments`, and `xcode_list_arguments` are no longer interpreted by a shell: write `--scratch-path` and `/tmp/Build Space` as two arguments rather than `'/tmp/Build Space'`. Lethen warns about any build argument that is still wrapped in quotes.
 
@@ -30,6 +31,7 @@
 
 ##### Bug Fixes
 
+- `lethen scan --bazel` no longer writes the generated scan package and configuration to `/var/tmp/periphery_bazel`, a fixed directory that any local user could create first or replace, and that scans of different workspaces overwrote. It writes them to `lethen_generated` in the workspace's Bazel output base, creates that directory readable only by the current user, and stops before writing if the directory is a symbolic link, is owned by another user, or is writable by other users.
 - `lethen scan --bazel` with `--skip-build` or `--index-store-path` stops with an error before running Bazel. Bazel mode ignored both options and built and ran the generated scan target anyway. To scan an existing index store, use `--generic-project-config` with `--index-store-path`.
 - A project path, scheme name, Bazel filter or query, or build argument can no longer run shell commands. Commands were joined into a `bash -c` string with only double quotes escaped, so a repository that named its Xcode project `App$(command).xcodeproj` ran that command when scanned, even with `--skip-build`. The same change fixes scans of projects whose path contains `$`, a backtick, or a backslash, SwiftPM plugin scans of packages whose path contains a space, and `lethen clear-cache` when the cache path contains a space.
 - Xcode builds with different build arguments no longer share one DerivedData directory. Lethen's DerivedData path is also keyed by the build arguments when any are given, so a scan with `-- -configuration Release` no longer overwrites the index units of a scan without it. The first scan with build arguments after upgrading builds from clean.
