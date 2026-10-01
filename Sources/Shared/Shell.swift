@@ -123,11 +123,22 @@ public final class ShellImpl: Shell {
         let arguments = Array(cmd.dropFirst())
         do {
             return try start(executable, arguments: arguments, configure: configure)
-        } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOEXEC) {
+        } catch where Self.isExecFormatError(error) {
             // An executable text file without a `#!` line, such as a PATH wrapper, is run by a shell when the system
             // will not run it, as a shell itself does. Its arguments still reach it as separate arguments.
             return try start(Self.fallbackShell, arguments: [executable.path] + arguments, configure: configure)
         }
+    }
+
+    /// Whether starting a program failed with `ENOEXEC`. Foundation reports it as a POSIX error on macOS and wraps it
+    /// in a Cocoa error on Linux.
+    private static func isExecFormatError(_ error: Error) -> Bool {
+        let error = error as NSError
+        if error.domain == NSPOSIXErrorDomain, error.code == Int(ENOEXEC) {
+            return true
+        }
+
+        return (error.userInfo[NSUnderlyingErrorKey] as? Error).map(isExecFormatError) ?? false
     }
 
     /// The shell that runs an executable file the system cannot run itself; bash ran such files before.
