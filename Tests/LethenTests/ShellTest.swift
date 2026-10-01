@@ -160,10 +160,10 @@ final class ShellTest: XCTestCase {
         FileManager.default.createFile(atPath: third.appendingPathComponent("tool").path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
 
         let path = [first, second, third].map(\.path).joined(separator: ":")
-        XCTAssertEqual(ShellImpl.executableURL(for: "tool", environment: ["PATH": path])?.path, third.appendingPathComponent("tool").path)
-        XCTAssertNil(ShellImpl.executableURL(for: "tool", environment: ["PATH": first.path]))
-        XCTAssertEqual(ShellImpl.executableURL(for: "/bin/sh", environment: ["PATH": ""])?.path, "/bin/sh")
-        XCTAssertNil(ShellImpl.executableURL(for: "", environment: ["PATH": path]))
+        XCTAssertEqual(ShellImpl.lookUp("tool", environment: ["PATH": path]), .found(third.appendingPathComponent("tool")))
+        XCTAssertEqual(ShellImpl.lookUp("tool", environment: ["PATH": first.path]), .notFound)
+        XCTAssertEqual(ShellImpl.lookUp("/bin/sh", environment: ["PATH": ""]), .found(URL(fileURLWithPath: "/bin/sh")))
+        XCTAssertEqual(ShellImpl.lookUp("", environment: ["PATH": path]), .notFound)
     }
 
     /// A program that exists but cannot be executed is status 126, as from a shell, not "command not found".
@@ -198,6 +198,22 @@ final class ShellTest: XCTestCase {
             XCTAssertEqual(status, 126)
             XCTAssertEqual(output, "\(tool.path): Permission denied")
         }
+    }
+
+    /// An executable text file without a `#!` line, such as a PATH wrapper, still runs, through a shell, and its
+    /// arguments still arrive separately and unexpanded.
+    func testExecutableTextWithoutAnInterpreterLineRunsThroughAShell() throws {
+        let wrapper = directory.appendingPathComponent("wrapper")
+        FileManager.default.createFile(
+            atPath: wrapper.path,
+            contents: Data(#"printf '%s|' "$@""#.utf8),
+            attributes: [.posixPermissions: 0o755]
+        )
+        let marker = directory.appendingPathComponent("marker").path
+
+        XCTAssertEqual(try shell.exec([wrapper.path, "a b", "$(touch \(marker))"]), "a b|$(touch \(marker))|")
+        XCTAssertEqual(try shell.execStatus([wrapper.path, "x"]), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker))
     }
 
     func testCommandsAreRenderedAsTheyCouldBeTyped() {

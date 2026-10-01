@@ -119,12 +119,28 @@ public final class ShellImpl: Shell {
             throw LethenError.shellCommandFailed(cmd: cmd, status: 127, output: "\(name): \(reason)")
         }
 
+        logger.debug(cmd.shellRendered)
+        let arguments = Array(cmd.dropFirst())
+        do {
+            return try start(executable, arguments: arguments, configure: configure)
+        } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOEXEC) {
+            // An executable text file without a `#!` line, such as a PATH wrapper, is run by a shell when the system
+            // will not run it, as a shell itself does. Its arguments still reach it as separate arguments.
+            return try start(Self.fallbackShell, arguments: [executable.path] + arguments, configure: configure)
+        }
+    }
+
+    /// The shell that runs an executable file the system cannot run itself; bash ran such files before.
+    private static var fallbackShell: URL {
+        URL(fileURLWithPath: FileManager.default.isExecutableFile(atPath: "/bin/bash") ? "/bin/bash" : "/bin/sh")
+    }
+
+    private func start(_ executable: URL, arguments: [String], configure: (Process) -> Void) throws -> Process {
         let process = Process()
         process.executableURL = executable
-        process.arguments = Array(cmd.dropFirst())
+        process.arguments = arguments
         configure(process)
 
-        logger.debug(cmd.shellRendered)
         store.add(process)
         do {
             try process.run()
@@ -184,24 +200,18 @@ public final class ShellImpl: Shell {
         return firstNotExecutable.map { .notExecutable($0) } ?? .notFound
     }
 
-    /// The executable `name` runs, if a shell would find one; see `lookUp(_:environment:)`.
-    static func executableURL(for name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
-        guard case let .found(url) = lookUp(name, environment: environment) else { return nil }
-
-        return url
-    }
-
     private func captureOutput(
         of cmd: [String],
         lineHandler: SerialLineHandler?
     ) throws -> (Int32, String, String) {
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
+        // Each launch attempt gets its own pipes: a failed start closes the ones it was given.
         let process = try launch(cmd) {
-            $0.standardOutput = stdoutPipe
-            $0.standardError = stderrPipe
+            $0.standardOutput = Pipe()
+            $0.standardError = Pipe()
         }
         defer { store.remove(process) }
+        // swiftlint:disable:next force_cast
+        let (stdoutPipe, stderrPipe) = (process.standardOutput as! Pipe, process.standardError as! Pipe)
 
         // Drain both pipes concurrently. Reading one to its end before the other would stall a command that
         // fills the other pipe, and would hold back the lines of whichever stream is read second.
