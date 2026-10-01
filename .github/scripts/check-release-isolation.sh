@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Checks that the Release workflow runs release binaries only in unprivileged jobs.
 #
+# It is a tripwire against a privileged job starting to run the binary by accident, so it
+# errs toward flagging: any use of the binary's path that is not known to be harmless fails.
+# A shell script can always hide a command from a static check, so changes to the release
+# workflow still need review; the check makes the ordinary ways of running the binary fail.
+#
 # The `smoke-test` job of release.yml runs the signed binary, directly and through
 # `brew test`, so it must have no environment (whose secrets it could read), no reference
 # to secrets, and no write permission, whether granted to the job or inherited from the
@@ -58,8 +63,10 @@ SECRETS = /\$\{\{[^}]*\bsecrets\b/
 # `"$PWD/released/lethen"`, `./lethen`. `dist/lethen-<tag>.zip` is not one.
 LETHEN_WORD = %r{(?<![\w./-])["']?(?:[^\s"';&|()`<>]*/)?lethen["']?(?![\w.-])}
 
-# Commands that take the binary's path as an argument without running it.
-PATH_ONLY_COMMANDS = %w[chmod codesign cp ditto file ls mv rm shasum spctl stat].freeze
+# Commands that take the binary's path as an argument without running it or making a copy
+# under another name. Copying or renaming it (`cp`, `mv`, `ditto`, `ln`) is not exempt,
+# because the copy could then run without naming lethen.
+PATH_ONLY_COMMANDS = %w[chmod codesign file ls rm shasum spctl stat].freeze
 
 # Repository scripts that take the binary's path and only sign, inspect or package it. Each is
 # checked below never to run its `binary` argument; any other script given the path is flagged.

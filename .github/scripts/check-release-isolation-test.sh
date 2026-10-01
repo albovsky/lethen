@@ -79,6 +79,9 @@ expect fail "publish passes the binary through the job env" 'publish["env"]["BIN
 expect fail "sign passes the binary to an action input" 'sign["steps"] << { "uses" => "./.github/actions/run", "with" => { "binary" => "build/lethen" } }'
 expect fail "the workflow env names the binary" 'w["env"] = (w["env"] || {}).merge("BINARY" => "build/lethen")'
 expect fail "sign assigns the binary to a shell variable" 'sign["steps"] << { "run" => "b=build/lethen\n\"$b\" version" }'
+expect fail "sign copies the binary and runs the copy" 'sign["steps"] << { "run" => "cp build/lethen /tmp/tool; /tmp/tool version" }'
+expect fail "publish renames the binary" 'publish["steps"] << { "run" => "mv released/lethen /tmp/tool" }'
+expect fail "sign links the binary" 'sign["steps"] << { "run" => "ln -s \"$PWD/build/lethen\" /tmp/tool" }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
 
