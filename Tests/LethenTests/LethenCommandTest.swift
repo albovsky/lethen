@@ -50,6 +50,12 @@ final class LethenCommandTest: XCTestCase {
 
         // A cache that was never created is already clear.
         XCTAssertNoThrow(try ClearCacheCommand.removeCache(at: root.appending("Missing")))
+
+        // A link whose target is gone is removed itself, as `rm -rf` removes it.
+        let dangling = root.appending("Dangling")
+        try FileManager.default.createSymbolicLink(atPath: dangling.string, withDestinationPath: root.appending("Gone").string)
+        try ClearCacheCommand.removeCache(at: dangling)
+        XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: dangling.string))
     }
 
     func testUnknownSubcommandIsAParseError() {

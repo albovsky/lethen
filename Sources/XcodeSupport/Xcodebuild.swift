@@ -82,9 +82,7 @@ public final class Xcodebuild {
         buildArguments: [String] = []
     ) throws {
         let path = try derivedDataPath(for: project, schemes: allSchemes, configuration: configuration, buildArguments: buildArguments)
-        if path.exists {
-            try FileManager.default.removeItem(atPath: path.string)
-        }
+        try path.removeIfPresent()
     }
 
     public func indexStorePath(

@@ -92,6 +92,11 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: built))
         XCTAssertEqual(shell.executed.count, commands)
 
+        // A DerivedData link whose target was deleted is removed too, so the clean build can create the directory.
+        try FileManager.default.createSymbolicLink(atPath: built, withDestinationPath: built + "-relocated-and-deleted")
+        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
+        XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: built))
+
         XCTAssertThrowsError(try xcodebuild.indexStorePath(project: project, schemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])) { error in
             guard case let LethenError.indexStoreNotFound(derivedDataPath) = error else { return XCTFail("\(error)") }
 

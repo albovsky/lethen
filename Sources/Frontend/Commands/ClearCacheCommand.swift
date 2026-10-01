@@ -13,10 +13,9 @@ struct ClearCacheCommand: ParsableCommand {
         try Self.removeCache(at: Constants.cachePath())
     }
 
-    /// Removes the cache directory and everything in it; a cache that does not exist is already clear.
+    /// Removes the cache directory and everything in it, or a link in its place; a cache that does not exist is already
+    /// clear.
     static func removeCache(at path: FilePath) throws {
-        guard path.exists else { return }
-
-        try FileManager.default.removeItem(atPath: path.string)
+        try path.removeIfPresent()
     }
 }
