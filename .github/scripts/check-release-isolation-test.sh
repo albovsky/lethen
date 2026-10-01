@@ -111,7 +111,8 @@ fi
 # Each way an exempt script could run its binary argument must cost it the exemption.
 for run in '"$binary" version' 'if "$binary" version; then :; fi' 'env -i "$binary" version' \
     'x="$("$binary" version)"' 'cat <("$binary" version)' 'codesign --sign - "$binary" && "${binary}" version' \
-    '"$staging/lethen" version' 'cp "$binary" "$staging/tool"; "$staging/tool" version'; do
+    '"$staging/lethen" version' 'cp "$binary" "$staging/tool"; "$staging/tool" version' \
+    'tool="$staging/lethen"; "$tool" version' 'tool=$binary; "$tool" version'; do
     cp "$(dirname "$0")/release-sign-macos.sh" "$work/scripts/release-sign-macos.sh"
     printf '\n%s\n' "$run" >> "$work/scripts/release-sign-macos.sh"
     if bash "$check" "$work/release.yml" "$work/scripts" > /dev/null 2>&1; then

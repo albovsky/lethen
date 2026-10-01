@@ -186,7 +186,10 @@ PATH_ONLY_SCRIPTS.each do |script|
 
     words = command_words(segment)
     command = words.first
-    next false if command.nil?
+    # An assignment that names the binary makes an alias a later line could run without naming
+    # it, so it is rejected; the scripts take their argument with `binary="${1:?...}"`, which
+    # names neither.
+    next true if command.nil?
     next true unless HELPER_PATH_COMMANDS.include?(command)
 
     # A copy must keep the lethen name, so every use of the copy is checked like the binary.
