@@ -133,6 +133,20 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertTrue(warning.contains("--configurations Release Debug"), warning)
     }
 
+    /// A configuration name with a space would split into several names when the printed flag is pasted.
+    func testWarningQuotesConfigurationNamesThatAreNotOneShellWord() throws {
+        let warning = try XCTUnwrap(XcodeProjectDriver.configurationMismatchWarning(
+            scheme: "App",
+            schemeConfigurations: .init(test: "App Store", launch: "Debug"),
+            configuration: Self.configuration([], scheme: "App")
+        ))
+
+        XCTAssertTrue(warning.contains("--configurations 'App Store' Debug to scan both"), warning)
+        XCTAssertEqual(XcodeProjectDriver.shellWord("Release-Beta_2.1"), "Release-Beta_2.1")
+        XCTAssertEqual(XcodeProjectDriver.shellWord("Jo's $(Build)"), #"'Jo'\''s $(Build)'"#)
+        XCTAssertEqual(XcodeProjectDriver.shellWord(""), "''")
+    }
+
     func testDoesNotWarnWhenTheConfigurationIsChosenOrMatches() throws {
         let project = try Self.project()
         let mismatched = project.schemeConfigurations(named: "ReleaseTests")

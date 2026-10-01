@@ -264,7 +264,18 @@
                   test != launch
             else { return nil }
 
-            return "Scheme \(scheme) builds for testing with configuration \(test) but runs with \(launch), so code compiled only in \(launch), such as an #if branch, is reported as unused. Pass --configurations \(test) \(launch) to scan both."
+            return "Scheme \(scheme) builds for testing with configuration \(test) but runs with \(launch), so code compiled only in \(launch), such as an #if branch, is reported as unused. Pass --configurations \(shellWord(test)) \(shellWord(launch)) to scan both."
+        }
+
+        /// `name` as one shell word, single-quoted when it holds anything but letters, digits, and `.`, `_`, `+`
+        /// or `-`, so a configuration such as `App Store` can be pasted into a command line.
+        static func shellWord(_ name: String) -> String {
+            let plain = !name.isEmpty && name.unicodeScalars.allSatisfy {
+                CharacterSet.alphanumerics.contains($0) && $0.isASCII || "._+-".unicodeScalars.contains($0)
+            }
+            guard !plain else { return name }
+
+            return "'" + name.replacingOccurrences(of: "'", with: "'\\''") + "'"
         }
     }
 
