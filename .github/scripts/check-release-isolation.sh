@@ -77,15 +77,16 @@ PATH_ONLY_SCRIPTS = %w[release-relocate-rpaths.sh release-sign-macos.sh].freeze
 # the build job uses its own checkout. A script elsewhere with the same name is not exempt.
 PATH_ONLY_SCRIPT_PATHS = PATH_ONLY_SCRIPTS.flat_map { |script| ["tools/.github/scripts/#{script}", ".github/scripts/#{script}"] }.freeze
 
-# The commands those scripts may hand `$binary` to. Any other use of it, however it is
-# reached (`if "$binary" ...`, `env "$binary"`, a new function), fails the check. `rpaths`
-# is release-relocate-rpaths.sh's own function, which runs `otool -l` on its argument.
+# The commands those scripts may hand `$binary`, or a copy of it named lethen, to. Any other
+# use of either, however it is reached (`if "$binary" ...`, `env "$binary"`, a new
+# function), fails the check. `rpaths` is release-relocate-rpaths.sh's own function, which
+# runs `otool -l` on its argument.
 HELPER_PATH_COMMANDS = %w[codesign cp install_name_tool lipo otool rpaths spctl].freeze
 
-# The simple commands of a shell script: lines joined across `\` continuations, then split at
-# `;`, `&`, `|`, `$(`, `<(`, `>(`, backticks and `)`.
+# The simple commands of a shell script: comment lines dropped, lines joined across `\`
+# continuations, then split at `;`, `&`, `|`, `$(`, `<(`, `>(`, backticks and `)`.
 def simple_commands(script)
-  script.to_s.gsub(/\\\n/, " ").split(/\n|;|&|\||\$\(|<\(|>\(|`|\)/)
+  script.to_s.gsub(/^\s*#.*$/, "").gsub(/\\\n/, " ").split(/\n|;|&|\||\$\(|<\(|>\(|`|\)/)
 end
 
 # The words of a simple command from the command name on: leading control-flow keywords (`if`,
@@ -172,7 +173,8 @@ PATH_ONLY_SCRIPTS.each do |script|
   next problems << "exempts #{script}, which does not exist" unless File.exist?(source)
 
   runs_binary = simple_commands(File.read(source)).any? do |segment|
-    next false unless segment.match?(/\$\{?binary\b/)
+    # The argument itself, or any lethen path such as the `$staging/lethen` copy it is packaged as.
+    next false unless segment.match?(/\$\{?binary\b/) || segment.match?(LETHEN_WORD)
 
     command = command_words(segment).first
     !command.nil? && !HELPER_PATH_COMMANDS.include?(command)
