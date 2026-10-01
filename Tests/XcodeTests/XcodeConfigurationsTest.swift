@@ -414,6 +414,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertThrowsError(try failing.build())
         XCTAssertEqual(shell.streamed.count, 3)
         XCTAssertEqual(try completed(), [false, false])
+        XCTAssertNoThrow(try DerivedDataLock(directories: derivedData, exclusive: true, wait: false), "A failed build must release its lock.")
 
         let succeeding = try Self.recordingDriver(configuration, shell: RecordingShell())
         try succeeding.build()
@@ -489,6 +490,45 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertThrowsError(try lock(exclusive: true))
         reading.release()
         XCTAssertNoThrow(try lock(exclusive: true))
+    }
+
+    /// The driver keeps the DerivedData it built into, or read without a build, locked until it is released, since
+    /// the index pipeline reads the stores' records after `plan()` returns.
+    func testDriverHoldsTheDerivedDataLockUntilItIsReleased() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.buildArguments = ["LETHEN_TEST_DRIVER_LOCK=\(UUID().uuidString)"]
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let directories = try ["Debug", "Release"].map {
+            try xcodebuild.derivedDataPath(for: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+        }
+        defer {
+            for directory in directories {
+                try? FileManager.default.removeItem(atPath: directory.string)
+                try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+            }
+        }
+
+        func locked() -> Bool {
+            (try? DerivedDataLock(directories: directories, exclusive: true, wait: false)) == nil
+        }
+
+        var builder: XcodeProjectDriver? = try Self.recordingDriver(configuration, shell: shell)
+        try builder?.build()
+        XCTAssertTrue(locked())
+        builder = nil
+        XCTAssertFalse(locked())
+
+        for directory in directories {
+            try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        }
+        configuration.skipBuild = true
+        var reader: XcodeProjectDriver? = try Self.recordingDriver(configuration, shell: shell)
+        _ = try? reader?.plan(logger: Self.logger.contextualized(with: "index"))
+        XCTAssertTrue(locked())
+        reader = nil
+        XCTAssertFalse(locked())
     }
 
     // MARK: - Private

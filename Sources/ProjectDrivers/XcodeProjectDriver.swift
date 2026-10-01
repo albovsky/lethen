@@ -15,6 +15,9 @@
         private let project: XcodeProjectlike
         private let schemes: Set<String>
         private let derivedDataLocator: XcodeDerivedDataLocator
+        /// The lock on the DerivedData this scan builds into or reads without a build. It is held for the driver's
+        /// lifetime, since the index pipeline reads the stores' records long after `plan()` returns.
+        private var derivedDataLock: DerivedDataLock?
 
         public convenience init(
             projectPath: FilePath,
@@ -103,14 +106,23 @@
         public func build() throws {
             guard !configuration.skipBuild else { return }
 
-            let lock = try xcodebuild.lockDerivedData(
+            // A lock this driver already holds would block its own new one, since `flock` locks per open file.
+            derivedDataLock?.release()
+            derivedDataLock = try xcodebuild.lockDerivedData(
                 project: project,
                 schemes: Array(schemes),
                 configurations: buildConfigurations,
                 buildArguments: configuration.buildArguments,
                 exclusive: true
             )
-            defer { lock.release() }
+            // A scan whose build failed reads nothing, so it lets other scans in at once.
+            var succeeded = false
+            defer {
+                if !succeeded {
+                    derivedDataLock?.release()
+                    derivedDataLock = nil
+                }
+            }
 
             if configuration.cleanBuild {
                 for buildConfiguration in buildConfigurations {
@@ -165,20 +177,19 @@
                     buildArguments: configuration.buildArguments
                 )
             }
+            succeeded = true
         }
 
         public func plan(logger: ContextualLogger) throws -> IndexPlan {
-            // Stores read without a build stay locked until they are collected, so a scan building into them meanwhile
-            // waits rather than changing them underneath.
-            var lock: DerivedDataLock?
-            defer { lock?.release() }
             let indexStorePaths: Set<FilePath>
             if !configuration.indexStorePath.isEmpty {
                 indexStorePaths = Set(configuration.indexStorePath)
             } else if configuration.skipBuild, configuration.configurations.isEmpty {
                 indexStorePaths = try [skipBuildIndexStore()]
             } else if configuration.skipBuild {
-                lock = try xcodebuild.lockDerivedData(
+                // A scan building into these stores meanwhile waits rather than changing them underneath this one.
+                derivedDataLock?.release()
+                derivedDataLock = try xcodebuild.lockDerivedData(
                     project: project,
                     schemes: Array(schemes),
                     configurations: buildConfigurations,
