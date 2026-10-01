@@ -134,6 +134,21 @@ final class BazelProjectDriverTest: XCTestCase {
         XCTAssertEqual(BazelProjectDriver.starlarkString(""), #""""#)
     }
 
+    /// A directory only the user can change but others can read or enter is made private again before files go in.
+    func testDirectoryReadableByOthersIsMadePrivate() throws {
+        for mode: mode_t in [0o755, 0o711, 0o750] {
+            XCTAssertEqual(mkdir(generatedDirectory.string, 0o700), 0)
+            XCTAssertEqual(chmod(generatedDirectory.string, mode), 0)
+
+            XCTAssertEqual(try makeDriver(shell: RecordingShell(outputBase: outputBase)).buildAndScan(), 0)
+
+            let status = try XCTUnwrap(FileStatus.read(generatedDirectory))
+            XCTAssertEqual(status.mode & 0o777, 0o700, "mode \(String(mode, radix: 8))")
+            XCTAssertEqual(try contents(of: generatedDirectory), ["BUILD.bazel", "periphery.yml"])
+            try FileManager.default.removeItem(atPath: generatedDirectory.string)
+        }
+    }
+
     func testExistingPrivateDirectoryIsReused() throws {
         XCTAssertEqual(mkdir(generatedDirectory.string, 0o700), 0)
         try "stale".write(toFile: generatedDirectory.appending("BUILD.bazel").string, atomically: true, encoding: .utf8)

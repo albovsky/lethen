@@ -58,6 +58,8 @@ version_mismatch()
 
 generated_repo = repository_rule(
     implementation = _generated_repo_impl,
+    # Declared as well as read through `getenv`, so a fetch without the variable is never reused by a scan with it.
+    environ = ["LETHEN_BAZEL_GENERATED_DIR"],
 )
 
 generated = module_extension(implementation = lambda _: generated_repo(name = "periphery_generated"))

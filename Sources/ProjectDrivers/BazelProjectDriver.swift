@@ -249,6 +249,12 @@ public final class BazelProjectDriver: ProjectDriver {
             let permissions = String(status.mode & 0o7777, radix: 8)
             throw LethenError.unsafeDirectory(path: path, reason: "other users can write to it (mode \(permissions))")
         }
+
+        // Nobody else could have changed its contents, but they could read them, including the serialized build
+        // arguments in `periphery.yml`, so the directory is made private again.
+        if status.mode & 0o077 != 0, chmod(path.string, 0o700) != 0 {
+            throw LethenError.unsafeDirectory(path: path, reason: "its permissions cannot be restricted: \(String(cString: strerror(errno)))")
+        }
     }
 
     private func warnIfPeripheryModuleIsNotOverridden() {
