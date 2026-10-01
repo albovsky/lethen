@@ -1,6 +1,7 @@
 module(
     name = "periphery",
     version = "3.10.0",
+    bazel_compatibility = [">=7.1.0"],
     compatibility_level = 1,
 )
 
