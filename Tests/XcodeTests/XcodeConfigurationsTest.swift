@@ -112,13 +112,28 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         )
 
         XCTAssertEqual(
-            XcodeSchemeConfigurations.read(scheme: "ConfigurationsProject", in: [workspace, ConfigurationsProjectPath]),
+            XcodeSchemeConfigurations.read(scheme: "ConfigurationsProject", in: [workspace, ConfigurationsProjectPath], user: "someone"),
             .init(test: "Release", launch: "Debug")
         )
         XCTAssertEqual(
-            XcodeSchemeConfigurations.read(scheme: "ConfigurationsProject", in: [ConfigurationsProjectPath, workspace]),
+            XcodeSchemeConfigurations.read(scheme: "ConfigurationsProject", in: [ConfigurationsProjectPath, workspace], user: "someone"),
             .init(test: "Debug", launch: "Debug")
         )
+    }
+
+    /// Another user's private scheme is invisible to xcodebuild, so it must not be read.
+    func testIgnoresOtherUsersPrivateSchemes() throws {
+        let project = FilePath(NSTemporaryDirectory()).appending("lethen-\(UUID().uuidString)/App.xcodeproj")
+        defer { try? FileManager.default.removeItem(atPath: project.removingLastComponent().string) }
+        let otherSchemes = project.appending("xcuserdata/another.xcuserdatad/xcschemes")
+        try FileManager.default.createDirectory(atPath: otherSchemes.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(
+            atPath: ConfigurationsProjectPath.appending("xcshareddata/xcschemes/ReleaseTests.xcscheme").string,
+            toPath: otherSchemes.appending("App.xcscheme").string
+        )
+
+        XCTAssertNil(XcodeSchemeConfigurations.read(scheme: "App", in: [project], user: "someone"))
+        XCTAssertEqual(XcodeSchemeConfigurations.read(scheme: "App", in: [project], user: "another"), .init(test: "Release", launch: "Debug"))
     }
 
     /// Scheme names are file names, not patterns: `App[Dev]` must not match `AppD`, and must match itself.
@@ -133,15 +148,15 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             toPath: userSchemes.appending("AppD.xcscheme").string
         )
 
-        XCTAssertNil(XcodeSchemeConfigurations.read(scheme: "App[Dev]", in: [project]))
+        XCTAssertNil(XcodeSchemeConfigurations.read(scheme: "App[Dev]", in: [project], user: "someone"))
 
         try FileManager.default.copyItem(
             atPath: source.appending("ConfigurationsProject.xcscheme").string,
             toPath: userSchemes.appending("App[Dev].xcscheme").string
         )
 
-        XCTAssertEqual(XcodeSchemeConfigurations.read(scheme: "App[Dev]", in: [project]), .init(test: "Debug", launch: "Debug"))
-        XCTAssertEqual(XcodeSchemeConfigurations.read(scheme: "AppD", in: [project]), .init(test: "Release", launch: "Debug"))
+        XCTAssertEqual(XcodeSchemeConfigurations.read(scheme: "App[Dev]", in: [project], user: "someone"), .init(test: "Debug", launch: "Debug"))
+        XCTAssertEqual(XcodeSchemeConfigurations.read(scheme: "AppD", in: [project], user: "someone"), .init(test: "Release", launch: "Debug"))
     }
 
     func testWarnsWhenTheTestAndLaunchConfigurationsDiffer() throws {

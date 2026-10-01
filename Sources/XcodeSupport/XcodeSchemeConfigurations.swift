@@ -14,18 +14,17 @@ public struct XcodeSchemeConfigurations: Equatable, Sendable {
     }
 
     /// Reads the scheme named `scheme` from the first of `containers` (`.xcodeproj` or `.xcworkspace` paths) that
-    /// defines it, looking at its shared schemes before any user's. A scheme Xcode generates on the fly has no
-    /// file and yields `nil`, as does one that does not parse.
-    static func read(scheme: String, in containers: [FilePath]) -> Self? {
+    /// defines it, looking at its shared schemes before `user`'s own; other users' private schemes are not visible to
+    /// `xcodebuild` and are ignored. A scheme Xcode generates on the fly has no file and yields `nil`, as does one
+    /// that does not parse.
+    static func read(scheme: String, in containers: [FilePath], user: String = NSUserName()) -> Self? {
+        // The scheme name is appended literally, never globbed, so a name such as `App[Dev]` matches only itself.
         let fileName = "\(scheme).xcscheme"
         let candidates = containers.flatMap { container in
-            // The scheme name is appended literally, never globbed, so a name such as `App[Dev]` matches only itself.
-            let userDirectories = (try? FileManager.default.contentsOfDirectory(atPath: container.appending("xcuserdata").string)) ?? []
-            let userSchemes = userDirectories
-                .filter { $0.hasSuffix(".xcuserdatad") }
-                .sorted()
-                .map { container.appending("xcuserdata/\($0)/xcschemes/\(fileName)") }
-            return [container.appending("xcshareddata/xcschemes/\(fileName)")] + userSchemes
+            [
+                container.appending("xcshareddata/xcschemes/\(fileName)"),
+                container.appending("xcuserdata/\(user).xcuserdatad/xcschemes/\(fileName)"),
+            ]
         }
 
         guard let path = candidates.first(where: \.exists),
