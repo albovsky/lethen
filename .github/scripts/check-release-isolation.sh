@@ -5,7 +5,7 @@
 # `brew test`, so it must have no environment (whose secrets it could read), no reference
 # to secrets, and no write permission, whether granted to the job or inherited from the
 # workflow. No job that has an environment, secrets, or a write permission may run the
-# binary in any of the ways the workflow does: release-smoke-test.sh, `brew install`,
+# binary in any of the ways the workflow does: the binary itself, release-smoke-test.sh, `brew install`,
 # `brew reinstall` or `brew test`, or `release-homebrew.sh test`, which runs those brew
 # commands. So none of them can move back into a privileged job. `mise run lint-ci` runs
 # this check.
@@ -49,8 +49,15 @@ end
 # `toJSON(secrets)`, and so on.
 SECRETS = /\$\{\{[^}]*\bsecrets\b/
 
+# A word in command position in a `run` script: at the start of a line, after `;`, `&`, `|`,
+# `(`, a backtick or `$(`, or after a keyword or wrapper that runs the next word.
+COMMAND_POSITION = /(?:^|[;&|(`]|\$\(|\b(?:then|do|else|exec|time|sudo|nohup|xargs)\s|\benv(?:\s+-\S+|\s+\w+=\S*)*\s)\s*/
+
 # Commands that run the release binary.
 BINARY_RUNNERS = {
+  # `build/lethen version`, `"$PWD/released/lethen" scan`, `x=$(./build/lethen version)`, or an
+  # installed `lethen`, but not `chmod +x build/lethen` or `codesign --verify released/lethen`.
+  "the lethen binary" => /#{COMMAND_POSITION}["']?(?:[^\s"';&|()`]*\/)?lethen["']?(?=\s|$|[;&|)`])/,
   "release-smoke-test.sh" => "release-smoke-test.sh",
   "brew install, reinstall or test" => /\bbrew\s+(install|reinstall|test)\b/,
   "release-homebrew.sh test" => /release-homebrew\.sh\s+test\b/,
