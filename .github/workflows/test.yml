@@ -26,11 +26,12 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 jobs:
   # Hosted macOS runs at most five jobs at once for the whole account, so pull requests
-  # only build the newest stable toolchain per platform (`pr` profile). Pushes to master
-  # run every stable toolchain (`master`), and the nightly schedule adds the main-snapshot
-  # toolchains (`nightly`). Snapshot toolchains are informational and allowed to fail,
-  # so they never run on pushes or pull requests. Documentation-only changes skip the
-  # build jobs entirely.
+  # only build the newest stable toolchain per platform (`pr` profile): Swift 6.4 / Xcode 27
+  # on macOS, Swift 6.3 and 6.4 on Linux. Pushes to master run every stable toolchain,
+  # adding macOS 6.3 / Xcode 26.4 and Bazel 8.x (`master`), and the nightly schedule adds
+  # the main-snapshot toolchains (`nightly`). Snapshot toolchains are informational and
+  # allowed to fail, so they never run on pushes or pull requests. Documentation-only
+  # changes skip the build jobs entirely.
   #
   # Every job sets `timeout-minutes` to at least twice its longest successful run as of
   # 2026-09-30, and never under 10 minutes, so a hung build or test fails within the hour
@@ -88,11 +89,63 @@ jobs:
           path: ~/Library/Caches/com.github.peripheryapp
           key: ${{ runner.os }}-27.0-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-xcode-fixtures-${{ hashFiles('Tests/XcodeTests/**', 'Sources/XcodeSupport/**') }}
       - name: Verify baseline
-        run: bash .github/scripts/verify-swift-6.4.sh
+        run: bash .github/scripts/verify-swift-6.4.sh main
+      - name: Check generated Bazel rules
+        # The generator reads `swift package describe`, whose manifest only includes the
+        # Xcode targets on macOS, so this check needs a macOS toolchain. It runs here because
+        # this is the one macOS SwiftPM job every profile runs. The baseline above pins the
+        # pull request head, but the rules must match what merging produces, so on a pull
+        # request this step regenerates them in a separate worktree of the merge commit, as
+        # the macOS job's default checkout did. The worktree keeps the cached .build and
+        # Package.resolved at the head.
+        env:
+          MERGE_SHA: ${{ github.sha }}
+        run: |
+          if [ "$(git rev-parse HEAD)" != "$MERGE_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$MERGE_SHA"
+            git worktree add --detach "$RUNNER_TEMP/merge" FETCH_HEAD
+            cd "$RUNNER_TEMP/merge"
+          fi
+          ruby .mise/tasks/scripts/gen_bazel_rules.rb && git diff --quiet --exit-code -- Sources/BUILD.bazel
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: swift-6.4-evidence
+          path: .validation/
+          include-hidden-files: true
+  swift-6-4-spm:
+    # The other half of the Swift 6.4 / Xcode 27 baseline: SPMTests alone took more than
+    # half of that job's test time (5.7 of 9 minutes on 2026-09-30), so it runs on its own
+    # runner in parallel. The main half keeps the check name branch protection requires.
+    name: Swift 6.4 / Xcode 27 (SPMTests)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Get Swift Version
+        run: |
+          swift_version=$(swift -version | head -n 1 | sed s/,//)
+          echo "$swift_version"
+          echo "SWIFT_VERSION=${swift_version}" >> "$GITHUB_ENV"
+      - name: Cache resolved dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .build
+            Package.resolved
+          key: ${{ runner.os }}-27.0-${{ env.SWIFT_VERSION }}-${{ env.cache_version }}-spm-deps-${{ hashFiles('Package.swift', 'Package.resolved') }}
+      - name: Verify baseline
+        run: bash .github/scripts/verify-swift-6.4.sh spm
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: swift-6.4-spm-evidence
           path: .validation/
           include-hidden-files: true
   lint:
@@ -167,9 +220,13 @@ jobs:
     env: *bazel-env
     steps: *bazel-steps
   macOS:
+    # The previous Xcode major. Pull requests leave it out: Swift 6.4 / Xcode 27 covers macOS
+    # and Linux 6.3 covers the Swift 6.3 compiler, and this job was the longest on a pull
+    # request (about 15 minutes). A break specific to Xcode 26.4 shows on the push to master;
+    # to catch it before merging, run this workflow on the branch with the `master` profile.
     name: macOS
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.profile != 'pr'
     strategy:
       fail-fast: false
       matrix:
@@ -241,12 +298,10 @@ jobs:
       run: ${{ env.swift_test }}
     - name: Scan
       run: ${{ env.periphery_scan }} ${{ matrix.baseline && format('--baseline baselines/{0}', matrix.baseline) || '' }}
-    - name: Check generated Bazel rules
-      # The generator reads `swift package describe`, whose manifest only includes the
-      # Xcode targets on macOS, so this check needs a macOS toolchain. Once is enough.
-      if: matrix.step == '6.3'
-      run: ruby .mise/tasks/scripts/gen_bazel_rules.rb && git diff --quiet --exit-code -- Sources/BUILD.bazel
   linux:
+    # Each toolchain runs as two jobs: `spm` runs the SPMTests target alone, which took
+    # about 4.3 of the 5.7 test minutes on 2026-09-30, and `main` runs the other test
+    # targets and the scan. The nightly job sets `part` to `all` and runs everything.
     name: Linux
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -254,6 +309,7 @@ jobs:
       fail-fast: false
       matrix:
         swift: ["6.4", "6.3"]
+        part: [main, spm]
         include:
           - swift: "6.4"
             container: "swift:6.4"
@@ -287,12 +343,21 @@ jobs:
     - name: Build
       run: ${{ env.swift_build }}
     - name: Verify update check teardown
+      if: matrix.part != 'spm'
       run: bash .github/scripts/verify-update-check-teardown.sh ./.build/debug/lethen 15
     # Test runs before Scan so it extends the cached incremental build. The scan's managed
     # clean build would otherwise force `swift test` to recompile the whole tree.
     - name: Test
-      run: ${{ env.swift_test }}
+      env:
+        TEST_PART: ${{ matrix.part }}
+      run: |
+        case "$TEST_PART" in
+          spm) $swift_test --filter '^SPMTests\.' ;;
+          main) $swift_test --skip '^SPMTests\.' ;;
+          *) $swift_test ;;
+        esac
     - name: Scan
+      if: matrix.part != 'spm'
       run: ${{ env.periphery_scan }} --baseline baselines/linux.json
   # Nightly toolchains run the same steps but are allowed to fail, so they only run on the
   # nightly profile and stay outside the required gate below.
@@ -324,6 +389,7 @@ jobs:
         include:
           - swift: "main-snapshot"
             container: "swiftlang/swift:nightly-main"
+            part: all
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     container: ${{ matrix.container }}
@@ -414,7 +480,7 @@ jobs:
     # profile calls for: success when it was meant to run, skipped when it was not.
     name: Required checks
     if: always()
-    needs: [changes, swift-6-4, lint, bazel, bazel-extended, macOS, linux, linux-release, corpus]
+    needs: [changes, swift-6-4, swift-6-4-spm, lint, bazel, bazel-extended, macOS, linux, linux-release, corpus]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions: {}
@@ -425,8 +491,8 @@ jobs:
         PROFILE: ${{ needs.changes.outputs.profile }}
         CODE: ${{ needs.changes.outputs.code }}
         # Keep in sync with `needs` above; a mismatch fails the gate.
-        CORE: '["changes", "swift-6-4", "lint", "bazel", "macOS", "linux", "linux-release"]'
-        EXTENDED: '["bazel-extended"]'
+        CORE: '["changes", "swift-6-4", "swift-6-4-spm", "lint", "bazel", "linux", "linux-release"]'
+        EXTENDED: '["bazel-extended", "macOS"]'
         NIGHTLY: '["corpus"]'
       run: |
         echo "profile=$PROFILE code=$CODE"
