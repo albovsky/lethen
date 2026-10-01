@@ -195,6 +195,41 @@ final class OutputFormatterTest: XCTestCase {
         XCTAssertEqual(output, "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Foo'")
     }
 
+    /// A file name can hold a newline, so an unescaped path could end the annotation and start a
+    /// workflow command of its own in the job log.
+    func testGitHubActionsFormatEscapesPathProperty() throws {
+        let declaration = Declaration(name: "Foo", kind: .class, usrs: ["s:Foo"], location: location("Sources/a\n::stop-commands::x,b:c%d.swift"))
+        let output = try format(.githubActions, [ScanResult(declaration: declaration, annotation: .unused)], relativeResults: true)
+        XCTAssertEqual(output, "::warning file=Sources/a%0A%3A%3Astop-commands%3A%3Ax%2Cb%3Ac%25d.swift,line=3,col=5,title=unused::Unused class 'Foo'")
+        XCTAssertEqual(output.components(separatedBy: "\n").count, 1)
+    }
+
+    func testGitHubActionsFormatEscapesMessage() throws {
+        let likely = ScanResult(declaration: declaration(name: "Foo\r\n::error::100%", kind: .class, usr: "s:Foo"), annotation: .unused, confidence: .likely, confidenceReason: "50% of\nit")
+        let output = try format(.githubActions, [likely], relativeResults: true)
+        XCTAssertEqual(output, "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Foo%0D%0A::error::100%25' [likely: 50%25 of%0Ait]")
+        XCTAssertEqual(output.components(separatedBy: "\n").count, 1)
+    }
+
+    /// Titles are fixed hint names today, but they are escaped as property values all the same.
+    func testGitHubActionsPropertyEscapingCoversTitles() {
+        XCTAssertEqual(GitHubActionsFormatter.escapeProperty("a%b\r\nc:d,e"), "a%25b%0D%0Ac%3Ad%2Ce")
+        XCTAssertEqual(GitHubActionsFormatter.escapeData("a%b\r\nc:d,e"), "a%25b%0D%0Ac:d,e")
+        XCTAssertEqual(GitHubActionsFormatter.escapeProperty("%0A"), "%250A", "The percent sign is escaped first")
+    }
+
+    /// Ordinary results, including messages with commas and colons, print exactly as before.
+    func testGitHubActionsFormatLeavesPlainResultsUnchanged() throws {
+        let likely = ScanResult(declaration: declaration(name: "Bar", kind: .class, usr: "s:Bar"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        let output = try format(.githubActions, [unusedClass(), likely, redundantProtocol(inherited: ["Q", "R"])], relativeResults: true)
+        XCTAssertEqual(output.components(separatedBy: "\n"), [
+            "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Foo'",
+            "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Bar' [likely: its name appears in a string literal]",
+            "::warning file=Sources/A.swift,line=3,col=5,title=redundantProtocol::Redundant protocol 'P' (never used as an existential type)",
+            "::warning file=Sources/B.swift,line=9,col=1,title=redundantProtocol::Redundant protocol conformance 'P' (replace with 'Q, R')",
+        ])
+    }
+
     func testCheckstyleFormatEscapesMarkup() throws {
         let output = try format(.checkstyle, [unusedClass(named: "Foo<T>")], relativeResults: true)
         XCTAssertTrue(output.hasPrefix("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<checkstyle version=\"4.3\">"))
