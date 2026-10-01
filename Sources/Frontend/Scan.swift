@@ -48,15 +48,23 @@ final class Scan: ScanRunning {
         set { graph.recordsRetentionSources = newValue }
     }
 
-    /// Build arguments quoted as if for a shell, such as `'/tmp/Build Space'` or `--scratch-path='/tmp/Build Space'`.
-    /// Commands used to run through a shell, which removed such quotes; they now reach the build tool as written.
+    /// Build arguments quoted as if for a shell, such as `'/tmp/Build Space'`, `--scratch-path='/tmp/Build Space'`, or
+    /// the build setting `OTHER_SWIFT_FLAGS='-DA -DB'`. Commands used to run through a shell, which removed such quotes;
+    /// they now reach the build tool as written.
     static func shellQuotedArguments(_ arguments: [String]) -> [String] {
-        arguments.filter { argument in
-            let value = argument.split(separator: "=", maxSplits: 1).last.map(String.init) ?? argument
-            return ["'", "\""].contains { quote in
-                (argument.count >= 2 && argument.hasPrefix(quote) && argument.hasSuffix(quote))
-                    || (value.count >= 2 && value.hasPrefix(quote) && value.hasSuffix(quote) && argument.hasPrefix("-"))
+        func isQuoted(_ text: Substring) -> Bool {
+            text.count >= 2 && ["'", "\""].contains { text.hasPrefix($0) && text.hasSuffix($0) }
+        }
+
+        return arguments.filter { argument in
+            if isQuoted(argument[...]) {
+                return true
             }
+
+            // An option's value or a build setting's value after the first `=`.
+            guard let equals = argument.firstIndex(of: "=") else { return false }
+
+            return isQuoted(argument[argument.index(after: equals)...])
         }
     }
 

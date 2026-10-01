@@ -192,8 +192,14 @@ final class ScanCommandConfigurationTest: XCTestCase {
 
     /// Build arguments reach the build tool without a shell, so quotes written for one are reported.
     func testShellQuotedBuildArgumentsAreReported() {
-        let quoted = ["'/tmp/Build Space'", "\"-DFLAG\"", "--scratch-path='/tmp/Build Space'", "-destination=\"platform=macOS\""]
-        let plain = ["-c", "release", "--scratch-path", "/tmp/Build Space", "platform=iOS Simulator,name=iPhone 17", "it's", "'", "-DNAME=value", "value='x'"]
+        let quoted = [
+            "'/tmp/Build Space'", "\"-DFLAG\"", "--scratch-path='/tmp/Build Space'", "-destination=\"platform=macOS\"",
+            "OTHER_SWIFT_FLAGS='-DFOO -DBAR'", "SWIFT_ACTIVE_COMPILATION_CONDITIONS=\"DEBUG LETHEN\"",
+        ]
+        let plain = [
+            "-c", "release", "--scratch-path", "/tmp/Build Space", "platform=iOS Simulator,name=iPhone 17", "it's", "'",
+            "-DNAME=value", "OTHER_SWIFT_FLAGS=-DFOO -DBAR", "NAME=it's", "NAME='",
+        ]
 
         XCTAssertEqual(Scan.shellQuotedArguments(quoted + plain), quoted)
         XCTAssertEqual(Scan.shellQuotedArguments(plain), [])
