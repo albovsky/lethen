@@ -86,6 +86,8 @@ expect fail "sign links the binary" 'sign["steps"] << { "run" => "ln -s \"$PWD/b
 expect fail "sign runs the binary in a process substitution" 'sign["steps"] << { "run" => "shasum <(build/lethen version)" }'
 expect fail "sign runs the binary after a line continuation" 'sign["steps"] << { "run" => "true \\\n  && build/lethen version" }'
 expect fail "publish runs the binary under if" 'publish["steps"] << { "run" => "if released/lethen version; then :; fi" }'
+expect fail "sign passes the binary to a same-named script elsewhere" 'sign["steps"] << { "run" => "bash tools/other/release-sign-macos.sh build/lethen" }'
+expect fail "sign passes the binary to a same-named script in /tmp" 'sign["steps"] << { "run" => "bash /tmp/release-sign-macos.sh build/lethen" }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
 

@@ -73,6 +73,10 @@ PATH_ONLY_COMMANDS = %w[chmod codesign file ls rm shasum spctl stat].freeze
 # checked below never to run its `binary` argument; any other script given the path is flagged.
 PATH_ONLY_SCRIPTS = %w[release-relocate-rpaths.sh release-sign-macos.sh].freeze
 
+# The exact paths a job may run them by: the release jobs check the tooling out under `tools`,
+# the build job uses its own checkout. A script elsewhere with the same name is not exempt.
+PATH_ONLY_SCRIPT_PATHS = PATH_ONLY_SCRIPTS.flat_map { |script| ["tools/.github/scripts/#{script}", ".github/scripts/#{script}"] }.freeze
+
 # The commands those scripts may hand `$binary` to. Any other use of it, however it is
 # reached (`if "$binary" ...`, `env "$binary"`, a new function), fails the check. `rpaths`
 # is release-relocate-rpaths.sh's own function, which runs `otool -l` on its argument.
@@ -103,7 +107,7 @@ def runs_lethen?(script)
     command = words.first.to_s
     next false if PATH_ONLY_COMMANDS.include?(command)
     next false if command == "swift" && words[1] == "build"
-    next false if command == "bash" && PATH_ONLY_SCRIPTS.include?(File.basename(words[1].to_s))
+    next false if command == "bash" && PATH_ONLY_SCRIPT_PATHS.include?(words[1].to_s)
 
     true
   end
