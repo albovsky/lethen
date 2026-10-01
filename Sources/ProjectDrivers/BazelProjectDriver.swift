@@ -59,6 +59,11 @@ public final class BazelProjectDriver: ProjectDriver {
     /// A target that only `bazel/generated.bzl` of this lethen version creates, in a package of its own.
     static let generatedRepositoryMarker = "@periphery_generated//lethen_scratch:v1"
 
+    /// The scan target. Its package exists only in a `periphery` module as new as this binary, so even when the build
+    /// arguments select another module (`--override_module`, a `--config`), `bazel run` cannot reach an older
+    /// module's scan package, which comes from `/var/tmp`.
+    static let generatedScanTarget = "@periphery_generated//lethen_scan:scan"
+
     private let configuration: Configuration
     private let shell: Shell
     private let logger: Logger
@@ -144,7 +149,7 @@ public final class BazelProjectDriver: ProjectDriver {
             repositoryEnvironment,
         ]
         arguments.append(contentsOf: configuration.buildArguments)
-        arguments.append("@periphery_generated//:scan")
+        arguments.append(Self.generatedScanTarget)
 
         // The actual scan is performed by Bazel.
         return try shell.execStatus(arguments)

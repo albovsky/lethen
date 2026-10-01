@@ -72,7 +72,7 @@ final class BazelProjectDriverTest: XCTestCase {
             "--check_visibility=false",
             "--ui_event_filters=-info,-debug,-warning",
             "--repo_env=LETHEN_BAZEL_GENERATED_DIR=\(generatedDirectory!)",
-            "@periphery_generated//:scan",
+            "@periphery_generated//lethen_scan:scan",
         ])
         let buildFile = try String(contentsOfFile: generatedDirectory.appending("BUILD.bazel").string, encoding: .utf8)
         XCTAssertTrue(buildFile.contains("\"@@//app:app\""), buildFile)

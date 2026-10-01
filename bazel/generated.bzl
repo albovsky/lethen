@@ -31,25 +31,30 @@ def _generated_repo_impl(repository_ctx):
 """,
     )
 
+    # The root package holds nothing. An older module symlinked the scan package there from /var/tmp, so the
+    # scan target now lives in `lethen_scan`, which an older module does not have: `bazel run` of it fails on such
+    # a module whatever flags select it, instead of running a package from /var/tmp.
+    repository_ctx.file("BUILD.bazel", "")
+
     # `lethen scan --bazel` writes the scan package to a directory private to the user and workspace, and passes
     # it with `--repo_env`.
     generated_dir = repository_ctx.getenv("LETHEN_BAZEL_GENERATED_DIR")
     if generated_dir:
         repository_ctx.symlink(
             generated_dir + "/BUILD.bazel",
-            "BUILD.bazel",
+            "lethen_scan/BUILD.bazel",
         )
     else:
         # Fetching still succeeds, so `bazel fetch --all` and `bazel vendor` work; only loading the scan package
         # fails.
         repository_ctx.file(
-            "version_mismatch.bzl",
+            "lethen_scan/version_mismatch.bzl",
             """def version_mismatch():
     fail({message})
 """.format(message = repr(_VERSION_MISMATCH)),
         )
         repository_ctx.file(
-            "BUILD.bazel",
+            "lethen_scan/BUILD.bazel",
             """load(":version_mismatch.bzl", "version_mismatch")
 
 version_mismatch()
