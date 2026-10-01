@@ -84,16 +84,20 @@ final class BazelProjectDriverTest: XCTestCase {
         let configuration = Configuration()
         configuration.buildArguments = ["--config=ci", "--repo_env=OTHER=1"]
         // Other repositories may still be overridden.
-        configuration.buildArguments += ["--override_repository=rules_swift=/local/rules_swift"]
+        configuration.buildArguments += [
+            "--override_repository=rules_swift=/local/rules_swift",
+            "--override_repository=my_periphery_generated=/local/other",
+        ]
         let shell = RecordingShell(outputBase: outputBase)
 
         XCTAssertEqual(try makeDriver(configuration: configuration, shell: shell).buildAndScan(), 0)
 
         let run = try XCTUnwrap(shell.commands.last)
-        XCTAssertEqual(Array(run.suffix(5)), [
+        XCTAssertEqual(Array(run.suffix(6)), [
             "--config=ci",
             "--repo_env=OTHER=1",
             "--override_repository=rules_swift=/local/rules_swift",
+            "--override_repository=my_periphery_generated=/local/other",
             "--repo_env=LETHEN_BAZEL_GENERATED_DIR=\(generatedDirectory!)",
             "@periphery_generated//lethen_scan:scan",
         ])

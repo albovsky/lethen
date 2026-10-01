@@ -228,7 +228,7 @@
   "moduleExtensions": {
     "//bazel:generated.bzl%generated": {
       "general": {
-        "bzlTransitiveDigest": "x4dOT0pmE+tvWZU7CJU+Y5RUeceWklVSHq9bGsrYiUc=",
+        "bzlTransitiveDigest": "vdYryiEPIfSCu90COgKYvaKaoonlrlEEvolxq+9PWpA=",
         "usagesDigest": "WDvPnxRxF+eMOK/LI8Ee82Xpq5GML0kz+z/ftTznrC8=",
         "recordedInputs": [],
         "generatedRepoSpecs": {

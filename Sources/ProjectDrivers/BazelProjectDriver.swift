@@ -265,11 +265,12 @@ public final class BazelProjectDriver: ProjectDriver {
             )
         }
 
-        // The generated repository's apparent name, or a canonical name ending in it, such as
-        // `+generated+periphery_generated`.
+        // The generated repository's apparent name, or a canonical name whose last component is it, such as
+        // `+generated+periphery_generated`; not an unrelated repository such as `my_periphery_generated`.
         let overridesGeneratedRepository = values(of: "--override_repository").contains { value in
-            let name = value.split(separator: "=", maxSplits: 1).first.map(String.init) ?? value
-            return name.trimmingCharacters(in: CharacterSet(charactersIn: "@")).hasSuffix("periphery_generated")
+            let name = (value.split(separator: "=", maxSplits: 1).first.map(String.init) ?? value)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+            return name == "periphery_generated" || name.hasSuffix("+periphery_generated")
         }
         if overridesGeneratedRepository {
             throw LethenError.usageError(
