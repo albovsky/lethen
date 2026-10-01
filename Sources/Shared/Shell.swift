@@ -76,8 +76,9 @@ public final class ShellImpl: Shell {
         let process: Process
         do {
             process = try launch(args)
-        } catch let LethenError.shellCommandFailed(_, status, output) where status == 127 {
-            // A missing program is a status, as from a shell, so callers that exit with it still exit 127.
+        } catch let LethenError.shellCommandFailed(_, status, output) where status == 126 || status == 127 {
+            // A missing or non-executable program is a status, as from a shell, so callers that exit with it still
+            // exit 127 or 126.
             FileHandle.standardError.write(Data((output + "\n").utf8))
             return status
         }
@@ -106,8 +107,16 @@ public final class ShellImpl: Shell {
     /// command, so arguments reach the program exactly as given: paths, scheme names and build arguments are data,
     /// never shell syntax.
     private func launch(_ cmd: [String], configure: (Process) -> Void = { _ in }) throws -> Process {
-        guard let name = cmd.first, let executable = Self.executableURL(for: name) else {
-            throw LethenError.shellCommandFailed(cmd: cmd, status: 127, output: "\(cmd.first ?? ""): command not found")
+        let name = cmd.first ?? ""
+        let executable: URL
+        switch Self.lookUp(name) {
+        case let .found(url):
+            executable = url
+        case .notExecutable:
+            throw LethenError.shellCommandFailed(cmd: cmd, status: 126, output: "\(name): Permission denied")
+        case .notFound:
+            let reason = name.contains("/") ? "No such file or directory" : "command not found"
+            throw LethenError.shellCommandFailed(cmd: cmd, status: 127, output: "\(name): \(reason)")
         }
 
         let process = Process()
@@ -126,27 +135,60 @@ public final class ShellImpl: Shell {
         return process
     }
 
-    /// The executable `name` runs: `name` itself when it contains a slash, otherwise the first executable file named
-    /// `name` in a `PATH` directory, as a shell would find it.
-    static func executableURL(for name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
-        guard !name.isEmpty else { return nil }
+    /// What a shell finds for a command name.
+    enum Lookup: Equatable {
+        /// An executable file to run.
+        case found(URL)
+        /// A file that is not executable, and no executable one: a shell reports status 126.
+        case notExecutable(URL)
+        /// Nothing at all: a shell reports status 127.
+        case notFound
+    }
 
-        if name.contains("/") {
-            return URL(fileURLWithPath: name)
+    /// Finds the program `name` runs as a shell would: `name` itself when it contains a slash, otherwise the first
+    /// executable file named `name` in a `PATH` directory. A file without execute permission is reported only when no
+    /// executable one follows it.
+    static func lookUp(_ name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> Lookup {
+        guard !name.isEmpty else { return .notFound }
+
+        func classify(_ candidate: URL) -> Lookup {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory) else { return .notFound }
+
+            return !isDirectory.boolValue && FileManager.default.isExecutableFile(atPath: candidate.path)
+                ? .found(candidate) : .notExecutable(candidate)
         }
 
+        if name.contains("/") {
+            return classify(URL(fileURLWithPath: name))
+        }
+
+        var firstNotExecutable: URL?
         let searchPath = environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         for directory in searchPath.split(separator: ":", omittingEmptySubsequences: false) {
             let candidate = URL(fileURLWithPath: directory.isEmpty ? "." : String(directory)).appendingPathComponent(name)
-            var isDirectory: ObjCBool = false
-            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), !isDirectory.boolValue,
-               FileManager.default.isExecutableFile(atPath: candidate.path)
-            {
-                return candidate
+            switch classify(candidate) {
+            case .found:
+                return .found(candidate)
+            case .notExecutable:
+                // A directory on the search path is skipped silently, as a shell skips it.
+                var isDirectory: ObjCBool = false
+                if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+                    firstNotExecutable = firstNotExecutable ?? candidate
+                }
+            case .notFound:
+                continue
             }
         }
 
-        return nil
+        return firstNotExecutable.map { .notExecutable($0) } ?? .notFound
+    }
+
+    /// The executable `name` runs, if a shell would find one; see `lookUp(_:environment:)`.
+    static func executableURL(for name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> URL? {
+        guard case let .found(url) = lookUp(name, environment: environment) else { return nil }
+
+        return url
     }
 
     private func captureOutput(

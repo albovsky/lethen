@@ -166,6 +166,40 @@ final class ShellTest: XCTestCase {
         XCTAssertNil(ShellImpl.executableURL(for: "", environment: ["PATH": path]))
     }
 
+    /// A program that exists but cannot be executed is status 126, as from a shell, not "command not found".
+    func testNonExecutableProgramIsReportedAsPermissionDenied() throws {
+        let folder = directory.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let tool = folder.appendingPathComponent("tool")
+        FileManager.default.createFile(atPath: tool.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o644])
+        let executable = directory.appendingPathComponent("later")
+        try FileManager.default.createDirectory(at: executable, withIntermediateDirectories: true)
+        FileManager.default.createFile(
+            atPath: executable.appendingPathComponent("tool").path,
+            contents: Data("#!/bin/sh\n".utf8),
+            attributes: [.posixPermissions: 0o755]
+        )
+
+        XCTAssertEqual(ShellImpl.lookUp("tool", environment: ["PATH": folder.path]), .notExecutable(tool))
+        XCTAssertEqual(
+            ShellImpl.lookUp("tool", environment: ["PATH": "\(folder.path):\(executable.path)"]),
+            .found(executable.appendingPathComponent("tool"))
+        )
+        XCTAssertEqual(ShellImpl.lookUp(tool.path), .notExecutable(tool))
+        XCTAssertEqual(ShellImpl.lookUp(folder.appendingPathComponent("missing").path), .notFound)
+
+        XCTAssertEqual(try shell.execStatus([tool.path]), 126)
+        XCTAssertEqual(try shell.execStatus([folder.appendingPathComponent("missing").path]), 127)
+        XCTAssertThrowsError(try shell.exec([tool.path])) { error in
+            guard case let LethenError.shellCommandFailed(_, status, output) = error else {
+                return XCTFail("Expected a failed shell command, got: \(error)")
+            }
+
+            XCTAssertEqual(status, 126)
+            XCTAssertEqual(output, "\(tool.path): Permission denied")
+        }
+    }
+
     func testCommandsAreRenderedAsTheyCouldBeTyped() {
         XCTAssertEqual(["swift", "build", "-c", "release", "--scratch-path=/tmp/x"].shellRendered, "swift build -c release --scratch-path=/tmp/x")
         XCTAssertEqual(["xcodebuild", "-project", "/a b/$(x).xcodeproj", "-scheme", "it's", ""].shellRendered,
