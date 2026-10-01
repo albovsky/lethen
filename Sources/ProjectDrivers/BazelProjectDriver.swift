@@ -198,14 +198,13 @@ public final class BazelProjectDriver: ProjectDriver {
     /// startup options, which Bazel reads from the same `.bazelrc` files for both commands.
     private func generatedDirectory() throws -> FilePath {
         let command = ["bazel", "info", "output_base"]
-        // Only the line terminator is removed: an output base may end in a space or tab.
-        var outputBase = try shell.exec(command)
-        if outputBase.hasSuffix("\n") {
-            outputBase.removeLast()
+        // Only the final newline is removed, as one scalar: an output base may end in a space, a tab or even a
+        // carriage return, which Swift would otherwise join with the newline into one character.
+        var scalars = try shell.exec(command).unicodeScalars
+        if scalars.last == "\n" {
+            scalars.removeLast()
         }
-        if outputBase.hasSuffix("\r") {
-            outputBase.removeLast()
-        }
+        let outputBase = String(scalars)
         guard FilePath(outputBase).isAbsolute, !outputBase.contains("\n") else {
             throw LethenError.shellCommandFailed(
                 cmd: command,

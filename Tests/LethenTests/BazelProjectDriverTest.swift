@@ -180,6 +180,18 @@ final class BazelProjectDriverTest: XCTestCase {
         XCTAssertTrue(shell.commands.contains { $0.contains("--repo_env=LETHEN_BAZEL_GENERATED_DIR=\(generated)") })
     }
 
+    /// A carriage return that ends the output base's name is part of the name, not of Bazel's line terminator.
+    func testOutputBaseEndingInACarriageReturnIsKept() throws {
+        let unusual = outputBase.appending("base\r")
+        XCTAssertEqual(mkdir(unusual.string, 0o700), 0)
+        let shell = RecordingShell(outputBase: unusual)
+
+        XCTAssertEqual(try makeDriver(shell: shell).buildAndScan(), 0)
+
+        XCTAssertTrue(unusual.appending("lethen_generated/BUILD.bazel").exists)
+        XCTAssertFalse(outputBase.appending("base/lethen_generated").exists)
+    }
+
     func testStarlarkStringEscapesOnlyWhatStarlarkInterprets() {
         XCTAssertEqual(BazelProjectDriver.starlarkString("/plain/path with spaces/$(x)'s"), #""/plain/path with spaces/$(x)'s""#)
         XCTAssertEqual(BazelProjectDriver.starlarkString("a\"b\\c\nd\re\tf"), #""a\"b\\c\nd\re\tf""#)
