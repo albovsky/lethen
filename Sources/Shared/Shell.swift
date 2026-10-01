@@ -73,10 +73,18 @@ public final class ShellImpl: Shell {
 
     @discardableResult
     public func execStatus(_ args: [String]) throws -> Int32 {
-        let process = launch(args)
+        let process: Process
+        do {
+            process = try launch(args)
+        } catch let LethenError.shellCommandFailed(_, status, output) where status == 126 || status == 127 {
+            // A missing or non-executable program is a status, as from a shell, so callers that exit with it still
+            // exit 127 or 126.
+            FileHandle.standardError.write(Data((output + "\n").utf8))
+            return status
+        }
         defer { store.remove(process) }
         process.waitUntilExit()
-        return process.terminationStatus
+        return Self.exitStatus(of: process)
     }
 
     // MARK: - Private
@@ -95,29 +103,149 @@ public final class ShellImpl: Shell {
         )
     }
 
-    private func launch(_ cmd: [String], configure: (Process) -> Void = { _ in }) -> Process {
+    /// Starts `cmd` directly, with its first element as the program and the rest as its arguments. No shell sees the
+    /// command, so arguments reach the program exactly as given: paths, scheme names and build arguments are data,
+    /// never shell syntax.
+    private func launch(_ cmd: [String], configure: (Process) -> Void = { _ in }) throws -> Process {
+        let name = cmd.first ?? ""
+        let executable: URL
+        switch Self.lookUp(name) {
+        case let .found(url):
+            executable = url
+        case .notExecutable:
+            throw LethenError.shellCommandFailed(cmd: cmd, status: 126, output: "\(name): Permission denied")
+        case .notFound:
+            let reason = name.contains("/") ? "No such file or directory" : "command not found"
+            throw LethenError.shellCommandFailed(cmd: cmd, status: 127, output: "\(name): \(reason)")
+        }
+
+        logger.debug(cmd.shellRendered)
+        let arguments = Array(cmd.dropFirst())
+        do {
+            return try start(executable, arguments: arguments, configure: configure)
+        } catch {
+            switch Self.posixCode(of: error) {
+            case ENOEXEC:
+                // An executable text file without a `#!` line, such as a PATH wrapper, is run by a shell when the
+                // system will not run it, as a shell itself does. Its arguments still reach it as separate arguments.
+                return try start(Self.fallbackShell, arguments: [executable.path] + arguments, configure: configure)
+            case let .some(code):
+                // The program was found but could not start, such as a script whose `#!` interpreter is missing: a
+                // shell reports 127 when something is missing and 126 otherwise.
+                throw LethenError.shellCommandFailed(
+                    cmd: cmd,
+                    status: code == ENOENT ? 127 : 126,
+                    output: "\(name): \(String(cString: strerror(code)))"
+                )
+            case nil:
+                throw error
+            }
+        }
+    }
+
+    /// The POSIX error a failed start reports. Foundation reports it directly on macOS and wraps it in a Cocoa error
+    /// on Linux.
+    private static func posixCode(of error: Error) -> Int32? {
+        let error = error as NSError
+        if error.domain == NSPOSIXErrorDomain {
+            return Int32(error.code)
+        }
+
+        return (error.userInfo[NSUnderlyingErrorKey] as? Error).flatMap(posixCode)
+    }
+
+    /// The directories searched when `PATH` is unset: bash's own default, which includes `/usr/local/bin`, without its
+    /// trailing `.`, so a program in the scanned project's directory is never run in place of a missing build tool.
+    static var defaultSearchPath: String {
+        #if os(macOS)
+            "/usr/gnu/bin:/usr/local/bin:/bin:/usr/bin"
+        #else
+            "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+        #endif
+    }
+
+    /// The shell that runs an executable file the system cannot run itself; bash ran such files before.
+    private static var fallbackShell: URL {
+        URL(fileURLWithPath: FileManager.default.isExecutableFile(atPath: "/bin/bash") ? "/bin/bash" : "/bin/sh")
+    }
+
+    private func start(_ executable: URL, arguments: [String], configure: (Process) -> Void) throws -> Process {
         let process = Process()
-        process.launchPath = "/bin/bash"
-        process.arguments = ["-c", cmd.joined(separator: " ")]
+        process.executableURL = executable
+        process.arguments = arguments
         configure(process)
 
-        logger.debug("\(cmd.joined(separator: " "))")
         store.add(process)
-        process.launch()
+        do {
+            try process.run()
+        } catch {
+            store.remove(process)
+            throw error
+        }
         return process
+    }
+
+    /// What a shell finds for a command name.
+    enum Lookup: Equatable {
+        /// An executable file to run.
+        case found(URL)
+        /// A file that is not executable, and no executable one: a shell reports status 126.
+        case notExecutable(URL)
+        /// Nothing at all: a shell reports status 127.
+        case notFound
+    }
+
+    /// Finds the program `name` runs as a shell would: `name` itself when it contains a slash, otherwise the first
+    /// executable file named `name` in a `PATH` directory. A file without execute permission is reported only when no
+    /// executable one follows it.
+    static func lookUp(_ name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> Lookup {
+        guard !name.isEmpty else { return .notFound }
+
+        func classify(_ candidate: URL) -> Lookup {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory) else { return .notFound }
+
+            return !isDirectory.boolValue && FileManager.default.isExecutableFile(atPath: candidate.path)
+                ? .found(candidate) : .notExecutable(candidate)
+        }
+
+        if name.contains("/") {
+            return classify(URL(fileURLWithPath: name))
+        }
+
+        var firstNotExecutable: URL?
+        let searchPath = environment["PATH"] ?? defaultSearchPath
+        for directory in searchPath.split(separator: ":", omittingEmptySubsequences: false) {
+            let candidate = URL(fileURLWithPath: directory.isEmpty ? "." : String(directory)).appendingPathComponent(name)
+            switch classify(candidate) {
+            case .found:
+                return .found(candidate)
+            case .notExecutable:
+                // A directory on the search path is skipped silently, as a shell skips it.
+                var isDirectory: ObjCBool = false
+                if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), !isDirectory.boolValue {
+                    firstNotExecutable = firstNotExecutable ?? candidate
+                }
+            case .notFound:
+                continue
+            }
+        }
+
+        return firstNotExecutable.map { .notExecutable($0) } ?? .notFound
     }
 
     private func captureOutput(
         of cmd: [String],
         lineHandler: SerialLineHandler?
     ) throws -> (Int32, String, String) {
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        let process = launch(cmd) {
-            $0.standardOutput = stdoutPipe
-            $0.standardError = stderrPipe
+        // Each launch attempt gets its own pipes: a failed start closes the ones it was given.
+        let process = try launch(cmd) {
+            $0.standardOutput = Pipe()
+            $0.standardError = Pipe()
         }
         defer { store.remove(process) }
+        // swiftlint:disable:next force_cast
+        let (stdoutPipe, stderrPipe) = (process.standardOutput as! Pipe, process.standardError as! Pipe)
 
         // Drain both pipes concurrently. Reading one to its end before the other would stall a command that
         // fills the other pipe, and would hold back the lines of whichever stream is read second.
@@ -143,7 +271,12 @@ public final class ShellImpl: Shell {
             )
         }
 
-        return (process.terminationStatus, standardOutput, standardError)
+        return (Self.exitStatus(of: process), standardOutput, standardError)
+    }
+
+    /// The status a shell reports for `process`: its exit status, or 128 plus the signal that killed it.
+    private static func exitStatus(of process: Process) -> Int32 {
+        process.terminationReason == .uncaughtSignal ? 128 + process.terminationStatus : process.terminationStatus
     }
 
     /// Reads `handle` until end of file, passing each complete line to `lineHandler` as soon as it is read.
@@ -198,5 +331,19 @@ private final class SerialLineHandler: Sendable {
             line.removeLast()
         }
         handler.withLock { $0(line) }
+    }
+}
+
+public extension [String] {
+    /// The command as it could be typed into a shell, for logs and error messages. Arguments that a shell would
+    /// change are single-quoted.
+    var shellRendered: String {
+        map { argument in
+            let isPlain = !argument.isEmpty && argument.unicodeScalars.allSatisfy { scalar in
+                scalar.isASCII && (CharacterSet.alphanumerics.contains(scalar) || "@%+=:,./_-".unicodeScalars.contains(scalar))
+            }
+            return isPlain ? argument : "'" + argument.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        .joined(separator: " ")
     }
 }

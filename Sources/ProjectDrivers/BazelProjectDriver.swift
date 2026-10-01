@@ -301,7 +301,7 @@ public final class BazelProjectDriver: ProjectDriver {
 
     private func queryTargets() throws -> [String] {
         try shell
-            .exec(["bazel", "query", "\"\(query)\""])
+            .exec(["bazel", "query", query])
             .split(separator: "\n")
             .map { Self.starlarkString("@@\($0)") }
     }

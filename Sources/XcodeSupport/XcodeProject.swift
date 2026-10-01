@@ -15,6 +15,7 @@ public final class XcodeProject: XcodeProjectlike {
     let xcodeProject: XcodeProj
 
     private let xcodebuild: Xcodebuild
+    private var subProjects: [XcodeProject] = []
     private var synchronizedRootGroupFiles: Set<FilePath>?
 
     /// Every file in the project's file system synchronized groups. Each target reads the same groups,
@@ -79,7 +80,6 @@ public final class XcodeProject: XcodeProjectlike {
             throw LethenError.underlyingError(error)
         }
 
-        var subProjects: [XcodeProject] = []
         loadedProjectPaths.insert(path)
 
         // Don't search for sub projects within CocoaPods.
@@ -112,6 +112,15 @@ public final class XcodeProject: XcodeProjectlike {
 
     public func schemes(additionalArguments: [String]) throws -> Set<String> {
         try xcodebuild.schemes(project: self, additionalArguments: additionalArguments)
+    }
+
+    public func schemeConfigurations(named scheme: String) -> XcodeSchemeConfigurations? {
+        XcodeSchemeConfigurations.read(scheme: scheme, in: schemeContainerPaths)
+    }
+
+    /// This project followed by every project it references, depth first.
+    var schemeContainerPaths: [FilePath] {
+        [path] + subProjects.flatMap(\.schemeContainerPaths)
     }
 }
 
