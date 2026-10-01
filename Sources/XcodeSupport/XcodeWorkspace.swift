@@ -13,6 +13,7 @@ public final class XcodeWorkspace: XcodeProjectlike {
     private let xcodebuild: Xcodebuild
     private let configuration: Configuration
     private let xcworkspace: XCWorkspace
+    private var projects: [XcodeProject] = []
 
     public private(set) var targets: Set<XcodeTarget> = []
     public private(set) var buildConfigurationNames: Set<String> = []
@@ -33,7 +34,7 @@ public final class XcodeWorkspace: XcodeProjectlike {
 
         let projectPaths = collectProjectPaths(in: xcworkspace.data.children)
         var loadedProjectPaths: Set<FilePath> = []
-        let projects = try projectPaths.compactMapSet {
+        projects = try projectPaths.compactMap {
             try XcodeProject(path: sourceRoot.pushing($0), loadedProjectPaths: &loadedProjectPaths, referencedBy: self.path, shell: shell, logger: logger)
         }
 
@@ -45,6 +46,11 @@ public final class XcodeWorkspace: XcodeProjectlike {
 
     public func schemes(additionalArguments: [String]) throws -> Set<String> {
         try xcodebuild.schemes(project: self, additionalArguments: additionalArguments)
+    }
+
+    /// Workspace schemes come first, then those of each project in the order the workspace lists them.
+    public func schemeConfigurations(named scheme: String) -> XcodeSchemeConfigurations? {
+        XcodeSchemeConfigurations.read(scheme: scheme, in: [path] + projects.flatMap(\.schemeContainerPaths))
     }
 
     // MARK: - Private
