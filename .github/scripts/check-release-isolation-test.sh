@@ -51,6 +51,7 @@ expect pass "sign only passes the binary's path to other commands" 'sign["steps"
 
 expect fail "smoke-test reads secrets.NAME" 'smoke["steps"][0]["env"] = { "T" => "${{ secrets.HOMEBREW_TAP_TOKEN }}" }'
 expect fail "smoke-test reads secrets[\"NAME\"]" "smoke[\"steps\"][0][\"env\"] = { \"T\" => \"\${{ secrets['HOMEBREW_TAP_TOKEN'] }}\" }"
+expect fail "smoke-test hides secrets behind a brace in a string" "smoke[\"env\"][\"T\"] = \"\${{ '}' && secrets.HOMEBREW_TAP_TOKEN }}\""
 expect fail "smoke-test reads toJSON(secrets)" 'smoke["env"]["ALL"] = "${{ toJSON(secrets) }}"'
 expect fail "smoke-test inherits secrets" 'smoke["secrets"] = "inherit"'
 expect fail "the workflow env reads a secret" 'w["env"] = (w["env"] || {}).merge("T" => "${{ secrets.HOMEBREW_TAP_TOKEN }}")'
@@ -82,6 +83,9 @@ expect fail "sign assigns the binary to a shell variable" 'sign["steps"] << { "r
 expect fail "sign copies the binary and runs the copy" 'sign["steps"] << { "run" => "cp build/lethen /tmp/tool; /tmp/tool version" }'
 expect fail "publish renames the binary" 'publish["steps"] << { "run" => "mv released/lethen /tmp/tool" }'
 expect fail "sign links the binary" 'sign["steps"] << { "run" => "ln -s \"$PWD/build/lethen\" /tmp/tool" }'
+expect fail "sign runs the binary in a process substitution" 'sign["steps"] << { "run" => "shasum <(build/lethen version)" }'
+expect fail "sign runs the binary after a line continuation" 'sign["steps"] << { "run" => "true \\\n  && build/lethen version" }'
+expect fail "publish runs the binary under if" 'publish["steps"] << { "run" => "if released/lethen version; then :; fi" }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
 
@@ -95,13 +99,18 @@ else
     echo "::error::check-release-isolation.sh should pass with the repository's own scripts" >&2
     failures=$((failures + 1))
 fi
-printf '\n"$binary" version\n' >> "$work/scripts/release-sign-macos.sh"
-if bash "$check" "$work/release.yml" "$work/scripts" > /dev/null 2>&1; then
-    echo "::error::check-release-isolation.sh should fail when release-sign-macos.sh runs its binary argument, but it did pass" >&2
-    failures=$((failures + 1))
-else
-    echo "ok: release-sign-macos.sh runs its binary argument (fail)"
-fi
+# Each way an exempt script could run its binary argument must cost it the exemption.
+for run in '"$binary" version' 'if "$binary" version; then :; fi' 'env -i "$binary" version' \
+    'x="$("$binary" version)"' 'cat <("$binary" version)' 'codesign --sign - "$binary" && "${binary}" version'; do
+    cp "$(dirname "$0")/release-sign-macos.sh" "$work/scripts/release-sign-macos.sh"
+    printf '\n%s\n' "$run" >> "$work/scripts/release-sign-macos.sh"
+    if bash "$check" "$work/release.yml" "$work/scripts" > /dev/null 2>&1; then
+        echo "::error::check-release-isolation.sh should fail when release-sign-macos.sh runs $run, but it did pass" >&2
+        failures=$((failures + 1))
+    else
+        echo "ok: release-sign-macos.sh runs $run (fail)"
+    fi
+done
 
 if [ "$failures" -ne 0 ]; then
     exit 1

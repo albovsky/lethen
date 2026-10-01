@@ -56,8 +56,9 @@ def mentions?(job, needle)
 end
 
 # Any use of the `secrets` context in an expression: `secrets.NAME`, `secrets['NAME']`,
-# `toJSON(secrets)`, and so on.
-SECRETS = /\$\{\{[^}]*\bsecrets\b/
+# `toJSON(secrets)`, and so on. Anything after `${{` in the same value counts, so a brace inside
+# a string literal in the expression cannot end the search early.
+SECRETS = /\$\{\{.*\bsecrets\b/m
 
 # A path to the lethen binary, or a bare `lethen`, as one word: `build/lethen`,
 # `"$PWD/released/lethen"`, `./lethen`. `dist/lethen-<tag>.zip` is not one.
@@ -72,15 +73,33 @@ PATH_ONLY_COMMANDS = %w[chmod codesign file ls rm shasum spctl stat].freeze
 # checked below never to run its `binary` argument; any other script given the path is flagged.
 PATH_ONLY_SCRIPTS = %w[release-relocate-rpaths.sh release-sign-macos.sh].freeze
 
+# The commands those scripts may hand `$binary` to. Any other use of it, however it is
+# reached (`if "$binary" ...`, `env "$binary"`, a new function), fails the check. `rpaths`
+# is release-relocate-rpaths.sh's own function, which runs `otool -l` on its argument.
+HELPER_PATH_COMMANDS = %w[codesign cp install_name_tool lipo otool rpaths spctl].freeze
+
+# The simple commands of a shell script: lines joined across `\` continuations, then split at
+# `;`, `&`, `|`, `$(`, `<(`, `>(`, backticks and `)`.
+def simple_commands(script)
+  script.to_s.gsub(/\\\n/, " ").split(/\n|;|&|\||\$\(|<\(|>\(|`|\)/)
+end
+
+# The words of a simple command from the command name on: leading control-flow keywords (`if`,
+# `then`, `!`, ...) and variable assignments are dropped, and quotes are removed.
+def command_words(segment)
+  words = segment.strip.split(/\s+/).map { |word| word.delete("\"'") }
+  words.shift while %w[if then elif else while until do ! { time].include?(words.first) || words.first&.match?(/\A\w+=/)
+  words
+end
+
 # Whether `script` uses the lethen binary anywhere except as an argument to a command known
 # not to run it, so a new wrapper (`command`, `env`, `sudo`, `arch`, `open`, ...) or a direct
 # call is caught without being listed. Only the scripts in PATH_ONLY_SCRIPTS may take the path.
 def runs_lethen?(script)
-  script.to_s.split(/\n|;|&|\||\$\(|`|\)/).any? do |segment|
+  simple_commands(script).any? do |segment|
     next false unless segment.match?(LETHEN_WORD)
 
-    words = segment.strip.split(/\s+/).map { |word| word.delete("\"'") }
-    words.shift while words.first&.match?(/\A\w+=/)
+    words = command_words(segment)
     command = words.first.to_s
     next false if PATH_ONLY_COMMANDS.include?(command)
     next false if command == "swift" && words[1] == "build"
@@ -148,8 +167,11 @@ PATH_ONLY_SCRIPTS.each do |script|
   source = File.join(scripts, script)
   next problems << "exempts #{script}, which does not exist" unless File.exist?(source)
 
-  runs_binary = File.read(source).split(/\n|;|&|\||\$\(|`|\)/).any? do |segment|
-    segment.strip.sub(/\A(?:\w+=\S*\s+)*/, "").match?(/\A(?:exec\s+|command\s+)?"?\$\{?binary\}?"?(?:\s|\z)/)
+  runs_binary = simple_commands(File.read(source)).any? do |segment|
+    next false unless segment.match?(/\$\{?binary\b/)
+
+    command = command_words(segment).first
+    !command.nil? && !HELPER_PATH_COMMANDS.include?(command)
   end
   problems << "exempts #{script}, which runs its binary argument" if runs_binary
 end
