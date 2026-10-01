@@ -116,8 +116,13 @@
 
             // Every scheme builds into each configuration's one DerivedData directory, so a configuration is complete
             // only once all of them have built.
-            for buildConfiguration in buildConfigurations {
-                try setCompletedBuild(false, configuration: buildConfiguration)
+            let tokens = try buildConfigurations.map { buildConfiguration in
+                try xcodebuild.beginBuild(
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                )
             }
 
             for scheme in schemes.sorted() {
@@ -143,8 +148,14 @@
                 }
             }
 
-            for buildConfiguration in buildConfigurations {
-                try setCompletedBuild(true, configuration: buildConfiguration)
+            for (buildConfiguration, token) in zip(buildConfigurations, tokens) {
+                try xcodebuild.completeBuild(
+                    token: token,
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                )
             }
         }
 
@@ -194,16 +205,6 @@
         }
 
         // MARK: - Private
-
-        private func setCompletedBuild(_ completed: Bool, configuration buildConfiguration: String?) throws {
-            try xcodebuild.setCompletedBuild(
-                completed,
-                project: project,
-                schemes: Array(schemes),
-                configuration: buildConfiguration,
-                buildArguments: configuration.buildArguments
-            )
-        }
 
         /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.
         private var buildConfigurations: [String?] {

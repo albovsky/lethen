@@ -66,12 +66,14 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try driver.build()
         let paths = Set(shell.derivedDataPaths)
         XCTAssertEqual(paths.count, 2)
-        for path in paths {
-            try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        // A leftover from an earlier build in each; the scan recreates the directories to record its own build.
+        let leftovers = paths.map { FilePath($0).appending("Build/leftover").string }
+        for leftover in leftovers {
+            try FileManager.default.createDirectory(atPath: leftover, withIntermediateDirectories: true)
         }
         try driver.build()
 
-        XCTAssertTrue(paths.allSatisfy { !FileManager.default.fileExists(atPath: $0) }, "\(paths)")
+        XCTAssertTrue(leftovers.allSatisfy { !FileManager.default.fileExists(atPath: $0) }, "\(leftovers)")
         XCTAssertFalse(shell.executed.contains { $0.first == "rm" })
     }
 
@@ -374,7 +376,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         FileManager.default.createFile(atPath: marker, contents: Data(elsewhere.utf8))
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
 
-        try xcodebuild.setCompletedBuild(true, project: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments)
+        try Self.markComplete(xcodebuild, project: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments)
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configuration Release."))
     }
 
@@ -395,7 +397,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
         }
         for name in ["Debug", "Release"] {
-            try xcodebuild.setCompletedBuild(true, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
         }
 
         func completed() throws -> [Bool] {
@@ -428,10 +430,51 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         defer { try? FileManager.default.removeItem(atPath: built.string) }
         try FileManager.default.createDirectory(atPath: built.string, withIntermediateDirectories: true)
 
-        try xcodebuild.setCompletedBuild(true, project: project, schemes: ["BC", "A"], configuration: "Debug", buildArguments: buildArguments)
+        try Self.markComplete(xcodebuild, project: project, schemes: ["BC", "A"], configuration: "Debug", buildArguments: buildArguments)
 
         XCTAssertTrue(try xcodebuild.hasCompletedBuild(project: project, schemes: ["A", "BC"], configuration: "Debug", buildArguments: buildArguments))
         XCTAssertFalse(try xcodebuild.hasCompletedBuild(project: project, schemes: ["AB", "C"], configuration: "Debug", buildArguments: buildArguments))
+    }
+
+    /// A scan marks a store complete only if it is still the store's latest builder: another scan that started
+    /// building into the directory since, or removed it, leaves it unmarked.
+    func testCompletedBuildIsMarkedOnlyByTheScanThatOwnsTheStore() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let schemes = ["ConfigurationsProject"]
+        let buildArguments = ["LETHEN_TEST_OWNER=\(UUID().uuidString)"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        defer { try? FileManager.default.removeItem(atPath: directory.string) }
+
+        func begin() throws -> String {
+            try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        }
+
+        func complete(_ token: String) throws {
+            try xcodebuild.completeBuild(token: token, project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        }
+
+        func completed() throws -> Bool {
+            try xcodebuild.hasCompletedBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        }
+
+        let first = try begin()
+        let second = try begin()
+        try complete(first)
+        XCTAssertFalse(try completed(), "A scan that another one has started building over must not mark the store.")
+
+        let third = try begin()
+        try FileManager.default.removeItem(atPath: directory.string)
+        try complete(third)
+        XCTAssertFalse(try completed(), "A scan whose store was removed, as --clean-build does, must not mark it.")
+        XCTAssertFalse(directory.exists)
+
+        let fourth = try begin()
+        try complete(fourth)
+        XCTAssertTrue(try completed())
+        try complete(second)
+        XCTAssertTrue(try completed())
     }
 
     // MARK: - Private
@@ -457,6 +500,11 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             shell: shell,
             logger: logger
         )
+    }
+
+    private static func markComplete(_ xcodebuild: Xcodebuild, project: XcodeProject, schemes: [String], configuration: String, buildArguments: [String]) throws {
+        let token = try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try xcodebuild.completeBuild(token: token, project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
     }
 
     /// A driver whose builds are recorded rather than run.

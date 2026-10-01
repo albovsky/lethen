@@ -75,25 +75,47 @@ public final class Xcodebuild {
         return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
     }
 
-    /// Records whether every scheme built into a DerivedData directory completed. A store left by a failed or
-    /// interrupted build lacks units for what it never compiled, which no freshness check can see, so the driver
-    /// clears the mark before its first build and sets it only after the last one succeeds.
-    public func setCompletedBuild(
-        _ completed: Bool,
+    /// Starts a scan's builds into a DerivedData directory. A store left by a failed or interrupted build lacks units
+    /// for what it never compiled, which no freshness check can see, so the completion mark is removed first. The
+    /// returned token names this scan as the directory's current builder; another scan that starts building into the
+    /// same directory, or removes it, replaces or deletes the token.
+    public func beginBuild(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws -> String {
+        let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        let marker = directory.appending(Self.completedBuildMarker)
+        if marker.exists {
+            try FileManager.default.removeItem(atPath: marker.string)
+        }
+
+        let token = UUID().uuidString
+        try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+        try Data(token.utf8).write(to: directory.appending(Self.buildInProgressMarker).url, options: .atomic)
+        return token
+    }
+
+    /// Marks the directory's store complete once every build the scan started with `token` has succeeded, unless
+    /// another scan has since started building into it or removed it, in which case the store is left unmarked.
+    public func completeBuild(
+        token: String,
         project: XcodeProjectlike,
         schemes: [String],
         configuration: String? = nil,
         buildArguments: [String] = []
     ) throws {
-        let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-            .appending(Self.completedBuildMarker)
-        if completed {
-            // Without the directory there is no store to mark; a later `--skip-build` reports it missing either way.
-            let contents = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-            FileManager.default.createFile(atPath: marker.string, contents: contents)
-        } else if marker.exists {
-            try FileManager.default.removeItem(atPath: marker.string)
+        let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        let inProgress = directory.appending(Self.buildInProgressMarker)
+        guard FileManager.default.contents(atPath: inProgress.string) == Data(token.utf8) else {
+            logger.debug("Another scan built into \(directory) since this one started; leaving its index unmarked.")
+            return
         }
+
+        let contents = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try contents.write(to: directory.appending(Self.completedBuildMarker).url, options: .atomic)
+        try FileManager.default.removeItem(atPath: inProgress.string)
     }
 
     public func removeDerivedData(
@@ -137,6 +159,7 @@ public final class Xcodebuild {
     }
 
     static let completedBuildMarker = "lethen-build-completed"
+    static let buildInProgressMarker = "lethen-build-in-progress"
 
     /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
     /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can
