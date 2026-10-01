@@ -1,4 +1,6 @@
-## master
+## 3.10.0 (2026-10-01)
+
+Lethen reports a confidence and a reason for every result, explains any declaration, reads Objective-C uses of Swift code, scans several build configurations together, and reuses verified SwiftPM builds; build tools now run without a shell.
 
 ##### Breaking
 
@@ -46,6 +48,7 @@
 - XcodeProj is capped at 9.10.x, the version Lethen is tested with. Packages that depend on Lethen resolve XcodeProj themselves, and 9.11 and later add enum cases Lethen does not handle, so they could not build it.
 - Scans of an index store holding units for several versions of one file, such as an Xcode index built for several destinations over time, gave different results from run to run: the versions' declarations conflicted, and which one won depended on hash and thread order. Each file is now indexed from one version (the units written after the file last changed, or else the most recently written version), declarations whose USRs collide are chosen in a fixed order, and removing a declaration no longer unmaps a USR that a conflicting declaration owns. On an app of about 100,000 lines, six identical scans had given six different result sets; they are now identical.
 - Redundant protocol conformance locations are listed in file, line, and column order in every output format. They previously followed per-process hash order, so identical scans of a protocol with several conformances could produce different output, contrary to the byte-identical output claimed in 3.9.0.
+- The `github-actions` format escapes `%`, carriage returns, and newlines in each annotation's message, and also `:` and `,` in its file and title, the way GitHub's toolkit does. A file or declaration name containing a newline could end the annotation and start another workflow command in the job log.
 
 ## 3.9.0 (2026-09-25)
 
