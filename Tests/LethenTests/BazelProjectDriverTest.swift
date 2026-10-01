@@ -83,25 +83,31 @@ final class BazelProjectDriverTest: XCTestCase {
     func testRepositoryEnvironmentFollowsTheBuildArguments() throws {
         let configuration = Configuration()
         configuration.buildArguments = ["--config=ci", "--repo_env=OTHER=1"]
+        // Other repositories may still be overridden.
+        configuration.buildArguments += ["--override_repository=rules_swift=/local/rules_swift"]
         let shell = RecordingShell(outputBase: outputBase)
 
         XCTAssertEqual(try makeDriver(configuration: configuration, shell: shell).buildAndScan(), 0)
 
         let run = try XCTUnwrap(shell.commands.last)
-        XCTAssertEqual(Array(run.suffix(4)), [
+        XCTAssertEqual(Array(run.suffix(5)), [
             "--config=ci",
             "--repo_env=OTHER=1",
+            "--override_repository=rules_swift=/local/rules_swift",
             "--repo_env=LETHEN_BAZEL_GENERATED_DIR=\(generatedDirectory!)",
             "@periphery_generated//lethen_scan:scan",
         ])
     }
 
-    /// Build arguments may not point the generated repository somewhere else.
+    /// Build arguments may not point the generated repository somewhere else, by its variable or by overriding it.
     func testBuildArgumentsSettingTheGeneratedDirectoryAreRejected() throws {
         for arguments in [
             ["--repo_env=LETHEN_BAZEL_GENERATED_DIR=/elsewhere"],
             ["--repo_env", "LETHEN_BAZEL_GENERATED_DIR=/elsewhere"],
             ["--repo_env=LETHEN_BAZEL_GENERATED_DIR"],
+            ["--override_repository=periphery_generated=/elsewhere"],
+            ["--override_repository", "+generated+periphery_generated=/elsewhere"],
+            ["--override_repository=@@periphery++generated+periphery_generated=/elsewhere"],
         ] {
             let configuration = Configuration()
             configuration.buildArguments = arguments
@@ -112,7 +118,7 @@ final class BazelProjectDriverTest: XCTestCase {
                     return XCTFail("Expected a usage error, got: \(error)")
                 }
 
-                XCTAssertTrue(message.contains("LETHEN_BAZEL_GENERATED_DIR"), message)
+                XCTAssertTrue(message.contains("LETHEN_BAZEL_GENERATED_DIR") || message.contains("periphery_generated"), message)
             }
             XCTAssertEqual(shell.commands, [], "Nothing runs for \(arguments)")
         }

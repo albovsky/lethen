@@ -243,23 +243,37 @@ public final class BazelProjectDriver: ProjectDriver {
         return descriptor
     }
 
-    /// Build arguments must not set the variable that points the generated repository at the private directory: the
-    /// version check and the scan would then read different packages.
+    /// Build arguments must not point the generated repository anywhere else, through its variable or by overriding
+    /// the repository itself: the version check and the scan would then read different packages.
     private func rejectReservedRepositoryEnvironment() throws {
         let variable = Self.generatedDirectoryVariable
         let arguments = configuration.buildArguments
-        let setsVariable = arguments.indices.contains { index in
-            let argument = arguments[index]
-            if argument.hasPrefix("--repo_env=\(variable)=") || argument == "--repo_env=\(variable)" {
-                return true
-            }
 
-            return argument == "--repo_env" && arguments.indices.contains(index + 1)
-                && (arguments[index + 1].hasPrefix("\(variable)=") || arguments[index + 1] == variable)
+        /// The value `option` sets, written as `--option=value` or as `--option value`.
+        func values(of option: String) -> [String] {
+            arguments.indices.compactMap { index in
+                if arguments[index].hasPrefix("\(option)=") {
+                    return String(arguments[index].dropFirst(option.count + 1))
+                }
+                return arguments[index] == option && arguments.indices.contains(index + 1) ? arguments[index + 1] : nil
+            }
         }
-        guard !setsVariable else {
+
+        if values(of: "--repo_env").contains(where: { $0 == variable || $0.hasPrefix("\(variable)=") }) {
             throw LethenError.usageError(
                 "\(variable) is set by lethen for each Bazel scan; remove '--repo_env=\(variable)' from the build arguments."
+            )
+        }
+
+        // The generated repository's apparent name, or a canonical name ending in it, such as
+        // `+generated+periphery_generated`.
+        let overridesGeneratedRepository = values(of: "--override_repository").contains { value in
+            let name = value.split(separator: "=", maxSplits: 1).first.map(String.init) ?? value
+            return name.trimmingCharacters(in: CharacterSet(charactersIn: "@")).hasSuffix("periphery_generated")
+        }
+        if overridesGeneratedRepository {
+            throw LethenError.usageError(
+                "The periphery_generated repository is created by lethen for each Bazel scan; remove its '--override_repository' from the build arguments."
             )
         }
     }
