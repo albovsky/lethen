@@ -15,6 +15,9 @@
         private let project: XcodeProjectlike
         private let schemes: Set<String>
         private let derivedDataLocator: XcodeDerivedDataLocator
+        /// The lock on the DerivedData this scan builds into or reads without a build. It is held for the driver's
+        /// lifetime, since the index pipeline reads the stores' records long after `plan()` returns.
+        private var derivedDataLock: DerivedDataLock?
 
         public convenience init(
             projectPath: FilePath,
@@ -103,6 +106,24 @@
         public func build() throws {
             guard !configuration.skipBuild else { return }
 
+            // A lock this driver already holds would block its own new one, since `flock` locks per open file.
+            derivedDataLock?.release()
+            derivedDataLock = try xcodebuild.lockDerivedData(
+                project: project,
+                schemes: Array(schemes),
+                configurations: buildConfigurations,
+                buildArguments: configuration.buildArguments,
+                exclusive: true
+            )
+            // A scan whose build failed reads nothing, so it lets other scans in at once.
+            var succeeded = false
+            defer {
+                if !succeeded {
+                    derivedDataLock?.release()
+                    derivedDataLock = nil
+                }
+            }
+
             if configuration.cleanBuild {
                 for buildConfiguration in buildConfigurations {
                     try xcodebuild.removeDerivedData(
@@ -112,6 +133,17 @@
                         buildArguments: configuration.buildArguments
                     )
                 }
+            }
+
+            // Every scheme builds into each configuration's one DerivedData directory, so a configuration is complete
+            // only once all of them have built.
+            for buildConfiguration in buildConfigurations {
+                try xcodebuild.beginBuild(
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                )
             }
 
             for scheme in schemes.sorted() {
@@ -136,17 +168,37 @@
                     }
                 }
             }
+
+            for buildConfiguration in buildConfigurations {
+                try xcodebuild.completeBuild(
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                )
+            }
+            succeeded = true
         }
 
         public func plan(logger: ContextualLogger) throws -> IndexPlan {
-            let indexStorePaths: Set<FilePath> = if !configuration.indexStorePath.isEmpty {
-                Set(configuration.indexStorePath)
+            let indexStorePaths: Set<FilePath>
+            if !configuration.indexStorePath.isEmpty {
+                indexStorePaths = Set(configuration.indexStorePath)
             } else if configuration.skipBuild {
-                try [skipBuildIndexStore()]
+                // A scan building into Lethen's own stores meanwhile waits rather than changing them underneath this one.
+                derivedDataLock?.release()
+                derivedDataLock = try xcodebuild.lockDerivedData(
+                    project: project,
+                    schemes: Array(schemes),
+                    configurations: buildConfigurations,
+                    buildArguments: configuration.buildArguments,
+                    exclusive: false
+                )
+                indexStorePaths = try configuration.configurations.isEmpty ? [skipBuildIndexStore()] : skipBuildConfigurationIndexStores()
             } else {
                 // One store per configuration; the collector keeps every store's units, so a reference
                 // compiled in any configuration counts.
-                try buildConfigurations.mapSet {
+                indexStorePaths = try buildConfigurations.mapSet {
                     try xcodebuild.indexStorePath(
                         project: project,
                         schemes: Array(schemes),
@@ -207,6 +259,50 @@
 
             return store
         }
+
+        /// Without a build, `--configurations` reads the index of Lethen's last completed build of each configuration.
+        /// Xcode's own DerivedData holds whichever configuration it last built, so it is never a stand-in for one of them.
+        private func skipBuildConfigurationIndexStores() throws -> Set<FilePath> {
+            var stores: [(configuration: String, path: FilePath)] = []
+            var missing: [String] = []
+            for case let buildConfiguration? in buildConfigurations {
+                do {
+                    let store = try xcodebuild.indexStorePath(
+                        project: project,
+                        schemes: Array(schemes),
+                        configuration: buildConfiguration,
+                        buildArguments: configuration.buildArguments
+                    )
+                    let completed = try xcodebuild.hasCompletedBuild(
+                        project: project,
+                        schemes: Array(schemes),
+                        configuration: buildConfiguration,
+                        buildArguments: configuration.buildArguments
+                    )
+                    guard completed else {
+                        missing.append(buildConfiguration)
+                        continue
+                    }
+
+                    stores.append((buildConfiguration, store))
+                } catch LethenError.indexStoreNotFound {
+                    missing.append(buildConfiguration)
+                }
+            }
+
+            guard missing.isEmpty else {
+                let names = (missing.count == 1 ? "configuration " : "configurations ") + missing.map(Self.shellWord).joined(separator: " ")
+                throw LethenError.usageError("--skip-build found no index from a completed Lethen build of \(names). Scan once with --configurations and without --skip-build, or pass each configuration's store with --index-store-path.")
+            }
+
+            if configuration.outputFormat.supportsAuxiliaryOutput {
+                for (name, store) in stores {
+                    logger.info("Using the index from Lethen's build of configuration \(name) at \(store), last written \(XcodeDerivedDataLocator.lastWritten(store).formatted(.iso8601)).")
+                }
+            }
+
+            return stores.mapSet(\.path)
+        }
     }
 
     extension XcodeProjectDriver {
@@ -224,10 +320,6 @@
             if !unknown.isEmpty {
                 let available = known.sorted().joined(separator: ", ")
                 throw LethenError.usageError("--configurations names \(unknown.joined(separator: ", ")), which \(project.path.lastComponent?.string ?? "the project") does not define. Its build configurations are: \(available).")
-            }
-
-            if configuration.skipBuild, configuration.indexStorePath.isEmpty {
-                throw LethenError.usageError("--skip-build does not yet read one index per configuration for Xcode projects; build without --skip-build, or pass each configuration's store with --index-store-path.")
             }
         }
     }

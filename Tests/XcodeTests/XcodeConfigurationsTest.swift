@@ -66,12 +66,14 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try driver.build()
         let paths = Set(shell.derivedDataPaths)
         XCTAssertEqual(paths.count, 2)
-        for path in paths {
-            try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        // A leftover from an earlier build in each; the scan recreates the directories to record its own build.
+        let leftovers = paths.map { FilePath($0).appending("Build/leftover").string }
+        for leftover in leftovers {
+            try FileManager.default.createDirectory(atPath: leftover, withIntermediateDirectories: true)
         }
         try driver.build()
 
-        XCTAssertTrue(paths.allSatisfy { !FileManager.default.fileExists(atPath: $0) }, "\(paths)")
+        XCTAssertTrue(leftovers.allSatisfy { !FileManager.default.fileExists(atPath: $0) }, "\(leftovers)")
         XCTAssertFalse(shell.executed.contains { $0.first == "rm" })
     }
 
@@ -253,15 +255,352 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         }
     }
 
-    func testRejectsSkipBuildWithoutIndexStorePaths() throws {
+    func testAcceptsSkipBuildWithAndWithoutIndexStorePaths() throws {
         let configuration = Self.configuration(["Debug", "Release"])
         configuration.skipBuild = true
-        XCTAssertThrowsError(try Self.driver(configuration)) { error in
-            guard case LethenError.usageError = error else { return XCTFail("\(error)") }
-        }
+        XCTAssertNoThrow(try Self.driver(configuration))
 
         configuration.indexStorePath = [FilePath("/nonexistent/DataStore")]
         XCTAssertNoThrow(try Self.driver(configuration))
+    }
+
+    // MARK: - Skip build
+
+    /// `--skip-build --configurations` scans the index of each configuration's earlier build together, and refuses a
+    /// configuration's index that predates an edit even when another configuration's index was rebuilt since.
+    func testSkipBuildReadsEveryConfigurationsIndexAndRejectsAStaleOne() throws {
+        let root = FilePath(NSTemporaryDirectory()).appending("lethen configurations \(UUID().uuidString)")
+        let copy = root.appending("ConfigurationsProject")
+        try FileManager.default.createDirectory(atPath: root.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: ConfigurationsProjectPath.removingLastComponent().string, toPath: copy.string)
+        let project = copy.appending("ConfigurationsProject.xcodeproj")
+        // A build setting of its own keys this copy's DerivedData apart from the fixture's.
+        let buildArguments = ["LETHEN_TEST_COPY=\(UUID().uuidString)"]
+        let xcodebuild = Xcodebuild(shell: Self.shell, logger: Self.logger)
+        defer {
+            for name in ["Debug", "Release"] {
+                try? xcodebuild.removeDerivedData(for: Self.project(at: project), allSchemes: ["ConfigurationsProject"], configuration: name, buildArguments: buildArguments)
+            }
+            try? FileManager.default.removeItem(atPath: root.string)
+        }
+
+        func configuration(_ configurations: [String], skipBuild: Bool) -> Configuration {
+            let configuration = Self.configuration(configurations)
+            configuration.buildArguments = buildArguments
+            configuration.skipBuild = skipBuild
+            return configuration
+        }
+
+        try Self.build(projectPath: project, configuration: configuration(["Debug", "Release"], skipBuild: false))
+        Self.plan = nil
+
+        let skipBuild = configuration(["Debug", "Release"], skipBuild: true)
+        try project.chdir {
+            let driver = try XcodeProjectDriver(projectPath: project, configuration: skipBuild, shell: Self.shell, logger: Self.logger)
+            Self.plan = try driver.plan(logger: Self.logger.contextualized(with: "index"))
+        }
+        try Self.index(configuration: skipBuild)
+        assertReferenced(.functionFree("calledOnlyInDebug()"))
+        assertReferenced(.functionFree("calledOnlyInRelease()"))
+
+        // Edited, then rebuilt in Release only: Debug's index still describes the old file.
+        Thread.sleep(forTimeInterval: 1.1)
+        let conditional = copy.appending("ConfigurationsProject/Conditional.swift")
+        let text = try String(contentsOf: conditional.url, encoding: .utf8)
+        try (text + "\n// edited after indexing\n").write(to: conditional.url, atomically: true, encoding: .utf8)
+        try Self.build(projectPath: project, configuration: configuration(["Release"], skipBuild: false))
+
+        let debugStore = try xcodebuild.indexStorePath(project: Self.project(at: project), schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: buildArguments)
+        XCTAssertThrowsError(try project.chdir {
+            let driver = try XcodeProjectDriver(projectPath: project, configuration: skipBuild, shell: Self.shell, logger: Self.logger)
+            _ = try driver.plan(logger: Self.logger.contextualized(with: "index"))
+        }) { error in
+            guard case let LethenError.staleIndexStore(path, staleFiles) = error else { return XCTFail("\(error)") }
+
+            XCTAssertEqual(path, debugStore.string)
+            XCTAssertEqual(staleFiles.map { FilePath($0).lastComponent?.string }, ["Conditional.swift"])
+        }
+    }
+
+    /// Each listed configuration needs Lethen's own index for it; Xcode's DerivedData index, which holds one
+    /// configuration, never stands in for a missing one.
+    func testSkipBuildFailsWhenAConfigurationHasNoIndexOfItsOwn() throws {
+        let root = FilePath(NSTemporaryDirectory()).appending("lethen configurations \(UUID().uuidString)")
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.skipBuild = true
+        configuration.buildArguments = ["LETHEN_TEST_MISSING=\(UUID().uuidString)"]
+        let debugDerivedData = try xcodebuild.derivedDataPath(for: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: root.string)
+            try? FileManager.default.removeItem(atPath: debugDerivedData.string)
+        }
+
+        // Xcode has indexed the project, which is what a plain --skip-build would read.
+        let xcodeDerivedData = root.appending("DerivedData/ConfigurationsProject-xcode")
+        try FileManager.default.createDirectory(atPath: xcodeDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        let info = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": ConfigurationsProjectPath.string], format: .xml, options: 0)
+        try info.write(to: xcodeDerivedData.appending("info.plist").url)
+        let locator = XcodeDerivedDataLocator(root: root.appending("DerivedData"))
+        XCTAssertEqual(locator.indexStores(for: ConfigurationsProjectPath).count, 1)
+
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: project, schemes: ["ConfigurationsProject"], derivedDataLocator: locator)
+
+        func message() -> String? {
+            do {
+                _ = try driver.plan(logger: Self.logger.contextualized(with: "index"))
+            } catch let LethenError.usageError(message) {
+                return message
+            } catch {
+                XCTFail("\(error)")
+            }
+            return nil
+        }
+
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
+
+        // A store without the marker is what a failed or interrupted build leaves behind.
+        try FileManager.default.createDirectory(atPath: debugDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
+
+        // A project of the same name elsewhere shares the DerivedData directory, but its build does not count.
+        let marker = debugDerivedData.appending(Xcodebuild.completedBuildMarker).string
+        let ownMark = try XCTUnwrap(String(
+            bytes: Xcodebuild.markerContents(project: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments),
+            encoding: .utf8
+        ))
+        let elsewhere = ownMark.replacingOccurrences(of: project.path.lexicallyNormalized().string, with: "/elsewhere/ConfigurationsProject.xcodeproj")
+        XCTAssertNotEqual(elsewhere, ownMark)
+        FileManager.default.createFile(atPath: marker, contents: Data(elsewhere.utf8))
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
+
+        // A completed build, which starts by replacing the directory that recorded no build.
+        try Self.markComplete(xcodebuild, project: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments)
+        try FileManager.default.createDirectory(atPath: debugDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configuration Release."))
+    }
+
+    /// Each configuration's DerivedData is marked complete only once every scheme has built into it, so a scan that
+    /// stops after one scheme leaves no configuration marked, even one an earlier scan completed.
+    func testOnlyBuildsOfEverySchemeMarkAConfigurationComplete() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.schemes = ["ConfigurationsProject", "ReleaseTests"]
+        configuration.buildArguments = ["LETHEN_TEST_MARKER=\(UUID().uuidString)"]
+        let shell = RecordingShell(failingArgument: "ReleaseTests")
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let derivedData = try ["Debug", "Release"].map {
+            try xcodebuild.derivedDataPath(for: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+        }
+        defer { derivedData.forEach { try? FileManager.default.removeItem(atPath: $0.string) } }
+        for directory in derivedData {
+            try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+        }
+        for name in ["Debug", "Release"] {
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+        }
+
+        func completed() throws -> [Bool] {
+            try ["Debug", "Release"].map {
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+            }
+        }
+
+        // ConfigurationsProject builds in both configurations, then ReleaseTests fails.
+        XCTAssertEqual(try completed(), [true, true])
+        let failing = try Self.recordingDriver(configuration, shell: shell)
+        XCTAssertThrowsError(try failing.build())
+        XCTAssertEqual(shell.streamed.count, 3)
+        XCTAssertEqual(try completed(), [false, false])
+        XCTAssertNoThrow(try DerivedDataLock(directories: derivedData, exclusive: true, wait: false), "A failed build must release its lock.")
+
+        let succeeding = try Self.recordingDriver(configuration, shell: RecordingShell())
+        try succeeding.build()
+        XCTAssertEqual(try completed(), [true, true])
+    }
+
+    /// Scheme sets whose names join to the same string share a DerivedData directory, so the mark must tell them apart.
+    func testCompletedBuildNamesTheExactSchemes() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let buildArguments = ["LETHEN_TEST_SCHEMES=\(UUID().uuidString)"]
+        let built = try xcodebuild.derivedDataPath(for: project, schemes: ["A", "BC"], configuration: "Debug", buildArguments: buildArguments)
+        let other = try xcodebuild.derivedDataPath(for: project, schemes: ["AB", "C"], configuration: "Debug", buildArguments: buildArguments)
+        XCTAssertEqual(built, other)
+        defer { try? FileManager.default.removeItem(atPath: built.string) }
+        try FileManager.default.createDirectory(atPath: built.string, withIntermediateDirectories: true)
+
+        try Self.markComplete(xcodebuild, project: project, schemes: ["BC", "A"], configuration: "Debug", buildArguments: buildArguments)
+
+        XCTAssertTrue(try xcodebuild.hasCompletedBuild(project: project, schemes: ["A", "BC"], configuration: "Debug", buildArguments: buildArguments))
+        XCTAssertFalse(try xcodebuild.hasCompletedBuild(project: project, schemes: ["AB", "C"], configuration: "Debug", buildArguments: buildArguments))
+    }
+
+    /// A build reuses its DerivedData only when the last build into it completed for exactly the same project and
+    /// schemes. A directory left by a failed build, by a Lethen that recorded nothing, or by another scheme set that
+    /// hashes alike is removed first, since an incremental build would keep what it holds.
+    func testBuildReusesOnlyACompletedBuildOfTheSameSchemes() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let buildArguments = ["LETHEN_TEST_IDENTITY=\(UUID().uuidString)"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: ["A", "BC"], configuration: "Debug", buildArguments: buildArguments)
+        let leftover = directory.appending("Index.noindex/DataStore/v5/units/leftover")
+        defer { try? FileManager.default.removeItem(atPath: directory.string) }
+
+        func plant() throws {
+            try FileManager.default.createDirectory(atPath: leftover.string, withIntermediateDirectories: true)
+        }
+
+        func begin(_ schemes: [String]) throws {
+            try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        }
+
+        func complete(_ schemes: [String]) throws {
+            try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        }
+
+        try plant()
+        try begin(["A", "BC"])
+        XCTAssertFalse(leftover.exists, "A directory with no completed build is not built on.")
+
+        // A build that started and never completed, as a failed or interrupted xcodebuild leaves it.
+        try plant()
+        try begin(["A", "BC"])
+        XCTAssertFalse(leftover.exists, "A build that did not complete is not built on.")
+
+        try complete(["A", "BC"])
+        try plant()
+        try begin(["BC", "A"])
+        XCTAssertTrue(leftover.exists, "The same project and schemes build on their previous completed build.")
+
+        try complete(["A", "BC"])
+        try begin(["AB", "C"])
+        XCTAssertFalse(leftover.exists, "Another scheme set must not inherit the units.")
+    }
+
+    /// Building takes the configuration's DerivedData exclusively and reading it without a build takes it shared, so
+    /// a scan never reads or marks a store that another scan is building.
+    func testDerivedDataLocksExcludeBuildsFromReadsAndOtherBuilds() throws {
+        let directory = FilePath(NSTemporaryDirectory()).appending("lethen-lock-\(UUID().uuidString)/DerivedData-test")
+        defer { try? FileManager.default.removeItem(atPath: directory.removingLastComponent().string) }
+
+        func lock(exclusive: Bool) throws -> DerivedDataLock {
+            try DerivedDataLock(directories: [directory], exclusive: exclusive, wait: false)
+        }
+
+        let building = try lock(exclusive: true)
+        XCTAssertThrowsError(try lock(exclusive: false))
+        XCTAssertThrowsError(try lock(exclusive: true))
+        building.release()
+
+        let reading = try lock(exclusive: false)
+        XCTAssertNoThrow(try lock(exclusive: false))
+        XCTAssertThrowsError(try lock(exclusive: true))
+        reading.release()
+        XCTAssertNoThrow(try lock(exclusive: true))
+    }
+
+    /// The driver keeps the DerivedData it built into, or read without a build, locked until it is released, since
+    /// the index pipeline reads the stores' records after `plan()` returns.
+    func testDriverHoldsTheDerivedDataLockUntilItIsReleased() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.buildArguments = ["LETHEN_TEST_DRIVER_LOCK=\(UUID().uuidString)"]
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let directories = try ["Debug", "Release"].map {
+            try xcodebuild.derivedDataPath(for: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+        }
+        defer {
+            for directory in directories {
+                try? FileManager.default.removeItem(atPath: directory.string)
+                try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+            }
+        }
+
+        func locked() -> Bool {
+            (try? DerivedDataLock(directories: directories, exclusive: true, wait: false)) == nil
+        }
+
+        var builder: XcodeProjectDriver? = try Self.recordingDriver(configuration, shell: shell)
+        try builder?.build()
+        XCTAssertTrue(locked())
+        builder = nil
+        XCTAssertFalse(locked())
+
+        for directory in directories {
+            try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        }
+        configuration.skipBuild = true
+        var reader: XcodeProjectDriver? = try Self.recordingDriver(configuration, shell: shell)
+        _ = try? reader?.plan(logger: Self.logger.contextualized(with: "index"))
+        XCTAssertTrue(locked())
+        reader = nil
+        XCTAssertFalse(locked())
+
+        // A plain --skip-build may pick Lethen's own store too, so it reads it under the same lock.
+        let plain = Self.configuration([])
+        plain.buildArguments = configuration.buildArguments
+        plain.skipBuild = true
+        let ownDirectory = try xcodebuild.derivedDataPath(for: project, schemes: plain.schemes, buildArguments: plain.buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: ownDirectory.string)
+            try? FileManager.default.removeItem(atPath: ownDirectory.string + ".lock")
+        }
+        try FileManager.default.createDirectory(atPath: ownDirectory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        var plainReader: XcodeProjectDriver? = try Self.recordingDriver(plain, shell: shell)
+        _ = try? plainReader?.plan(logger: Self.logger.contextualized(with: "index"))
+        XCTAssertThrowsError(try DerivedDataLock(directories: [ownDirectory], exclusive: true, wait: false))
+        plainReader = nil
+        XCTAssertNoThrow(try DerivedDataLock(directories: [ownDirectory], exclusive: true, wait: false))
+    }
+
+    /// Removing a directory can fail part way, so its completion mark is removed before any of its contents: by a
+    /// clean build for every configuration, and before a directory built for another identity is replaced.
+    func testCompletionMarksGoBeforeAnyRemoval() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.buildArguments = ["LETHEN_TEST_ORDER=\(UUID().uuidString)"]
+        configuration.cleanBuild = true
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let directories = try ["Debug", "Release"].map {
+            try xcodebuild.derivedDataPath(for: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+        }
+        defer {
+            for directory in directories {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.appending("Index.noindex").string)
+                try? FileManager.default.removeItem(atPath: directory.string)
+                try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+            }
+        }
+
+        func completed() throws -> [Bool] {
+            try ["Debug", "Release"].map {
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+            }
+        }
+
+        // Release's index cannot be removed, so the clean build fails part way through that directory.
+        for name in ["Debug", "Release"] {
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+        }
+        let stuck = directories[1].appending("Index.noindex")
+        try FileManager.default.createDirectory(atPath: stuck.appending("DataStore/v5/units").string, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: stuck.string)
+        XCTAssertEqual(try completed(), [true, true])
+
+        XCTAssertThrowsError(try Self.recordingDriver(configuration, shell: shell).build())
+        XCTAssertEqual(try completed(), [false, false])
+
+        // The next build without --clean-build must not build on what the failed clean left behind.
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: stuck.string)
+        try xcodebuild.beginBuild(project: project, schemes: configuration.schemes, configuration: "Release", buildArguments: configuration.buildArguments)
+        XCTAssertFalse(stuck.exists)
     }
 
     // MARK: - Private
@@ -278,15 +617,20 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try XcodeProjectDriver(projectPath: ConfigurationsProjectPath, configuration: configuration, shell: shell, logger: logger)
     }
 
-    private static func project(shell: Shell = RecordingShell()) throws -> XcodeProject {
+    private static func project(at path: FilePath = ConfigurationsProjectPath, shell: Shell = RecordingShell()) throws -> XcodeProject {
         var loaded: Set<FilePath> = []
         return try XcodeProject(
-            path: ConfigurationsProjectPath,
+            path: path,
             loadedProjectPaths: &loaded,
             xcodebuild: Xcodebuild(shell: shell, logger: logger),
             shell: shell,
             logger: logger
         )
+    }
+
+    private static func markComplete(_ xcodebuild: Xcodebuild, project: XcodeProject, schemes: [String], configuration: String, buildArguments: [String]) throws {
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
     }
 
     /// A driver whose builds are recorded rather than run.

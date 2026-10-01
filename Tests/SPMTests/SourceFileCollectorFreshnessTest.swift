@@ -85,6 +85,29 @@ final class SourceFileCollectorFreshnessTest: XCTestCase {
         XCTAssertThrowsError(try symbols(inUnitsOf: "main.swift", store: twoVersions, requireFreshUnits: true))
     }
 
+    /// With one store per configuration, each store must be current on its own: a source edited after one store
+    /// was written and then rebuilt into another must not hide the first store's older units.
+    func testEveryStoreMustBeCurrentForAFileItIndexed() throws {
+        let rebuilt = root.appending("rebuilt")
+        Thread.sleep(forTimeInterval: 1.1)
+        try append("\n// edited after indexing\n", to: "Sources/MainTarget/main.swift")
+        try root.chdir {
+            let arguments = ["--build-system", "native", "-c", "release", "-Xswiftc", "-index-store-path", "-Xswiftc", rebuilt.string]
+            try ShellImpl(logger: logger).exec(["swift", "build"] + arguments)
+        }
+
+        XCTAssertThrowsError(try collect(stores: [store, rebuilt], requireFreshUnits: true)) { error in
+            guard case let LethenError.staleIndexStore(path, staleFiles) = error else {
+                return XCTFail("Expected a stale index error, got \(error)")
+            }
+
+            XCTAssertEqual(path, store.string)
+            XCTAssertEqual(staleFiles.map { FilePath($0).lastComponent?.string }, ["main.swift"])
+        }
+        XCTAssertTrue(try collect(stores: [rebuilt], requireFreshUnits: true).contains("main.swift"))
+        XCTAssertTrue(try collect(stores: [store, rebuilt], requireFreshUnits: false).contains("main.swift"))
+    }
+
     // MARK: - Private
 
     /// Builds main.swift into one store twice, in debug and in release so the units do not replace each
@@ -143,11 +166,11 @@ final class SourceFileCollectorFreshnessTest: XCTestCase {
         try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: old, with: new).write(to: url, atomically: true, encoding: .utf8)
     }
 
-    private func collect(requireFreshUnits: Bool) throws -> Set<String> {
+    private func collect(stores: Set<FilePath>? = nil, requireFreshUnits: Bool) throws -> Set<String> {
         var names: Set<String> = []
         try root.chdir {
             let collector = SourceFileCollector(
-                indexStorePaths: [store],
+                indexStorePaths: stores ?? [store],
                 excludedTestTargets: [],
                 requireFreshUnits: requireFreshUnits,
                 logger: logger.contextualized(with: "test"),
