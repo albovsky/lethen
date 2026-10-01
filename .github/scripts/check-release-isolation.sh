@@ -41,7 +41,11 @@ def text(node)
   end
 end
 
+# A Method needle is a shell-script check, so it sees only the job's `run` scripts, not
+# step names or other text.
 def mentions?(job, needle)
+  return Array(job["steps"]).any? { |step| step.is_a?(Hash) && needle.call(step["run"]) } if needle.is_a?(Method)
+
   text(job).any? { |value| needle.is_a?(Regexp) ? value.match?(needle) : value.include?(needle) }
 end
 
@@ -49,15 +53,35 @@ end
 # `toJSON(secrets)`, and so on.
 SECRETS = /\$\{\{[^}]*\bsecrets\b/
 
-# A word in command position in a `run` script: at the start of a line, after `;`, `&`, `|`,
-# `(`, a backtick or `$(`, or after a keyword or wrapper that runs the next word.
-COMMAND_POSITION = /(?:^|[;&|(`]|\$\(|\b(?:then|do|else|exec|time|sudo|nohup|xargs)\s|\benv(?:\s+-\S+|\s+\w+=\S*)*\s)\s*/
+# A path to the lethen binary, or a bare `lethen`, as one word: `build/lethen`,
+# `"$PWD/released/lethen"`, `./lethen`. `dist/lethen-<tag>.zip` is not one.
+LETHEN_WORD = %r{(?<![\w./-])["']?(?:[^\s"';&|()`<>]*/)?lethen["']?(?![\w.-])}
+
+# Commands that take the binary's path as an argument without running it.
+PATH_ONLY_COMMANDS = %w[chmod codesign cp ditto file ls mv rm shasum spctl stat].freeze
+
+# Whether `script` uses the lethen binary anywhere except as an argument to a command known
+# not to run it, so a new wrapper (`command`, `env`, `sudo`, `arch`, `open`, ...) or a direct
+# call is caught without being listed. A repository script run by bash may take the path: the
+# ones that run the binary are matched by name below.
+def runs_lethen?(script)
+  script.to_s.split(/\n|;|&|\||\$\(|`|\)/).any? do |segment|
+    next false unless segment.match?(LETHEN_WORD)
+
+    words = segment.strip.split(/\s+/).map { |word| word.delete("\"'") }
+    words.shift while words.first&.match?(/\A\w+=/)
+    command = words.first.to_s
+    next false if PATH_ONLY_COMMANDS.include?(command)
+    next false if command == "swift" && words[1] == "build"
+    next false if command == "bash" && words[1].to_s.match?(%r{(?:\A|/)\.github/scripts/[\w.-]+\.sh\z})
+
+    true
+  end
+end
 
 # Commands that run the release binary.
 BINARY_RUNNERS = {
-  # `build/lethen version`, `"$PWD/released/lethen" scan`, `x=$(./build/lethen version)`, or an
-  # installed `lethen`, but not `chmod +x build/lethen` or `codesign --verify released/lethen`.
-  "the lethen binary" => /#{COMMAND_POSITION}["']?(?:[^\s"';&|()`]*\/)?lethen["']?(?=\s|$|[;&|)`])/,
+  "the lethen binary" => method(:runs_lethen?),
   "release-smoke-test.sh" => "release-smoke-test.sh",
   "brew install, reinstall or test" => /\bbrew\s+(install|reinstall|test)\b/,
   "release-homebrew.sh test" => /release-homebrew\.sh\s+test\b/,
