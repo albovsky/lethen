@@ -216,6 +216,27 @@ final class ShellTest: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker))
     }
 
+    /// A script whose `#!` interpreter is missing fails to start; a shell reports that as status 127.
+    func testScriptWithAMissingInterpreterIsReportedAsNotFound() throws {
+        let script = directory.appendingPathComponent("script")
+        FileManager.default.createFile(
+            atPath: script.path,
+            contents: Data("#!/lethen-no-such-interpreter\necho ran\n".utf8),
+            attributes: [.posixPermissions: 0o755]
+        )
+
+        XCTAssertEqual(try shell.execStatus([script.path]), 127)
+        XCTAssertThrowsError(try shell.exec([script.path, "argument"])) { error in
+            guard case let LethenError.shellCommandFailed(cmd, status, output) = error else {
+                return XCTFail("Expected a failed shell command, got: \(error)")
+            }
+
+            XCTAssertEqual(cmd, [script.path, "argument"])
+            XCTAssertEqual(status, 127)
+            XCTAssertTrue(output.hasPrefix("\(script.path): "), output)
+        }
+    }
+
     func testCommandsAreRenderedAsTheyCouldBeTyped() {
         XCTAssertEqual(["swift", "build", "-c", "release", "--scratch-path=/tmp/x"].shellRendered, "swift build -c release --scratch-path=/tmp/x")
         XCTAssertEqual(["xcodebuild", "-project", "/a b/$(x).xcodeproj", "-scheme", "it's", ""].shellRendered,

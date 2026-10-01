@@ -123,22 +123,35 @@ public final class ShellImpl: Shell {
         let arguments = Array(cmd.dropFirst())
         do {
             return try start(executable, arguments: arguments, configure: configure)
-        } catch where Self.isExecFormatError(error) {
-            // An executable text file without a `#!` line, such as a PATH wrapper, is run by a shell when the system
-            // will not run it, as a shell itself does. Its arguments still reach it as separate arguments.
-            return try start(Self.fallbackShell, arguments: [executable.path] + arguments, configure: configure)
+        } catch {
+            switch Self.posixCode(of: error) {
+            case ENOEXEC:
+                // An executable text file without a `#!` line, such as a PATH wrapper, is run by a shell when the
+                // system will not run it, as a shell itself does. Its arguments still reach it as separate arguments.
+                return try start(Self.fallbackShell, arguments: [executable.path] + arguments, configure: configure)
+            case let .some(code):
+                // The program was found but could not start, such as a script whose `#!` interpreter is missing: a
+                // shell reports 127 when something is missing and 126 otherwise.
+                throw LethenError.shellCommandFailed(
+                    cmd: cmd,
+                    status: code == ENOENT ? 127 : 126,
+                    output: "\(name): \(String(cString: strerror(code)))"
+                )
+            case nil:
+                throw error
+            }
         }
     }
 
-    /// Whether starting a program failed with `ENOEXEC`. Foundation reports it as a POSIX error on macOS and wraps it
-    /// in a Cocoa error on Linux.
-    private static func isExecFormatError(_ error: Error) -> Bool {
+    /// The POSIX error a failed start reports. Foundation reports it directly on macOS and wraps it in a Cocoa error
+    /// on Linux.
+    private static func posixCode(of error: Error) -> Int32? {
         let error = error as NSError
-        if error.domain == NSPOSIXErrorDomain, error.code == Int(ENOEXEC) {
-            return true
+        if error.domain == NSPOSIXErrorDomain {
+            return Int32(error.code)
         }
 
-        return (error.userInfo[NSUnderlyingErrorKey] as? Error).map(isExecFormatError) ?? false
+        return (error.userInfo[NSUnderlyingErrorKey] as? Error).flatMap(posixCode)
     }
 
     /// The shell that runs an executable file the system cannot run itself; bash ran such files before.
