@@ -95,6 +95,9 @@ public final class BazelProjectDriver: ProjectDriver {
     func buildAndScan() throws -> Int32 {
         warnIfPeripheryModuleIsNotOverridden()
         let outputPath = try generatedDirectory()
+        // Another scan of the same workspace shares the directory, so it waits until this one's `bazel run` ends.
+        let lock = try lockGeneratedDirectory(outputPath)
+        defer { close(lock) }
         try preparePrivateDirectory(outputPath)
 
         let configPath = outputPath.appending("periphery.yml")
@@ -198,6 +201,33 @@ public final class BazelProjectDriver: ProjectDriver {
         }
 
         return FilePath(outputBase).appending("lethen_generated")
+    }
+
+    /// Takes an exclusive lock on `lethen_generated.lock` beside `directory`, waiting while another scan holds it, and
+    /// returns its descriptor. The generated files are one pair, read by `bazel run` well after they are written, so a
+    /// second scan of the same workspace must not replace them until the first scan is done. The descriptor is closed
+    /// on exec, so Bazel's server never inherits the lock.
+    private func lockGeneratedDirectory(_ directory: FilePath) throws -> Int32 {
+        let lockPath = directory.removingLastComponent().appending("lethen_generated.lock")
+        let descriptor = open(lockPath.string, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else {
+            throw LethenError.unsafeDirectory(path: lockPath, reason: "it cannot be opened: \(String(cString: strerror(errno)))")
+        }
+
+        if flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+            if errno == EWOULDBLOCK, configuration.outputFormat.supportsAuxiliaryOutput {
+                logger.info("Waiting for another lethen scan of this Bazel workspace to finish...")
+            }
+            while flock(descriptor, LOCK_EX) != 0 {
+                guard errno == EINTR else {
+                    let reason = String(cString: strerror(errno))
+                    close(descriptor)
+                    throw LethenError.unsafeDirectory(path: lockPath, reason: "it cannot be locked: \(reason)")
+                }
+            }
+        }
+
+        return descriptor
     }
 
     /// Checks that the `periphery` module creates the generated repository the way this binary expects.

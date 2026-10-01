@@ -149,6 +149,42 @@ final class BazelProjectDriverTest: XCTestCase {
         }
     }
 
+    /// Two scans of one workspace share the generated directory, so the lock is held from before the files are written
+    /// until `bazel run` returns, and a second scan waits for it.
+    func testScanHoldsTheWorkspaceLockThroughBazelRun() throws {
+        let lockPath = outputBase.appending("lethen_generated.lock")
+        let shell = RecordingShell(outputBase: outputBase)
+
+        XCTAssertEqual(try makeDriver(shell: shell).buildAndScan(), 0)
+
+        XCTAssertEqual(shell.lockWasHeldDuringRun, true)
+        XCTAssertTrue(RecordingShell.canLock(lockPath), "The lock must be released once the scan returns")
+    }
+
+    func testScanWaitsWhileAnotherScanHoldsTheLock() throws {
+        let lockPath = outputBase.appending("lethen_generated.lock")
+        let held = open(lockPath.string, O_RDWR | O_CREAT, 0o600)
+        XCTAssertGreaterThanOrEqual(held, 0)
+        XCTAssertEqual(flock(held, LOCK_EX), 0)
+        let shell = RecordingShell(outputBase: outputBase)
+        let driver = makeDriver(shell: shell)
+        let finished = expectation(description: "scan finished")
+
+        DispatchQueue.global().async {
+            XCTAssertEqual(try? driver.buildAndScan(), 0)
+            finished.fulfill()
+        }
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Only the output base was looked up: nothing is written or queried while the other scan holds the lock.
+        XCTAssertEqual(shell.commands, [["bazel", "info", "output_base"]])
+        XCTAssertFalse(generatedDirectory.appending("BUILD.bazel").exists)
+
+        close(held)
+        wait(for: [finished], timeout: 10)
+        XCTAssertEqual(shell.commands.last?.prefix(2), ["bazel", "run"])
+    }
+
     func testExistingPrivateDirectoryIsReused() throws {
         XCTAssertEqual(mkdir(generatedDirectory.string, 0o700), 0)
         try "stale".write(toFile: generatedDirectory.appending("BUILD.bazel").string, atomically: true, encoding: .utf8)
@@ -291,7 +327,24 @@ final class BazelProjectDriverTest: XCTestCase {
 
         func execStatus(_ args: [String]) throws -> Int32 {
             recorded.withLock { $0.append(args) }
+            lockedDuringRun.withLock { $0 = !Self.canLock(outputBase.appending("lethen_generated.lock")) }
             return runStatus
+        }
+
+        /// Whether the workspace lock was held by the scan when `bazel run` started.
+        var lockWasHeldDuringRun: Bool? {
+            lockedDuringRun.withLock { $0 }
+        }
+
+        private let lockedDuringRun = Mutex<Bool?>(nil)
+
+        /// Whether a new descriptor can take the lock now; another descriptor's lock blocks it, even in this process.
+        static func canLock(_ path: FilePath) -> Bool {
+            let descriptor = open(path.string, O_RDWR | O_CREAT, 0o600)
+            guard descriptor >= 0 else { return false }
+
+            defer { close(descriptor) }
+            return flock(descriptor, LOCK_EX | LOCK_NB) == 0
         }
     }
 
