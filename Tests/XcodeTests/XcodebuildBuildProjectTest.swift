@@ -30,7 +30,7 @@ final class XcodebuildBuildProjectTest: XCTestCase {
         try xcodebuild.build(project: project, scheme: scheme, allSchemes: [scheme])
     }
 
-    func testConfigurationIsPassedQuoted() throws {
+    func testConfigurationIsPassedAsOneArgument() throws {
         let shell = RecordingShell()
         let recording = Xcodebuild(shell: shell, logger: Logger(quiet: true, verbose: false, colorMode: .never))
         try recording.build(project: project, scheme: "Scheme", allSchemes: ["Scheme"], configuration: "App Store")
@@ -40,7 +40,7 @@ final class XcodebuildBuildProjectTest: XCTestCase {
         XCTAssertEqual(commands.count, 2)
         let configured = try XCTUnwrap(commands.first)
         let index = try XCTUnwrap(configured.firstIndex(of: "-configuration"))
-        XCTAssertEqual(configured[index + 1], "\"App Store\"")
+        XCTAssertEqual(configured[index + 1], "App Store")
         XCTAssertEqual(configured.last { !$0.contains("=") }, "build-for-testing")
         XCTAssertFalse(try XCTUnwrap(commands.last).contains("-configuration"))
     }

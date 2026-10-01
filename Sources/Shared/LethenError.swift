@@ -24,11 +24,9 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
     public var errorDescription: String? {
         switch self {
         case let .shellCommandFailed(cmd, status, output):
-            let joinedCmd = cmd.joined(separator: " ")
-            return "Shell command '\(joinedCmd)' returned exit status '\(status)':\n\(output)"
+            return "Shell command '\(cmd.shellRendered)' returned exit status '\(status)':\n\(output)"
         case let .shellOutputEncodingFailed(cmd, encoding):
-            let joinedCmd = cmd.joined(separator: " ")
-            return "Shell command '\(joinedCmd)' output encoding to \(encoding) failed."
+            return "Shell command '\(cmd.shellRendered)' output encoding to \(encoding) failed."
         case let .usageError(message):
             return message
         case let .underlyingError(error):
