@@ -110,6 +110,30 @@ final class BazelProjectDriverTest: XCTestCase {
         XCTAssertTrue(buildFile.contains("config = \"\(generatedDirectory.appending("periphery.yml"))\""), buildFile)
     }
 
+    /// Values in the generated BUILD file are Starlark string literals, so an output base or index store path with a
+    /// quote or backslash stays one exact string instead of breaking the file.
+    func testGeneratedBuildFileQuotesPathsWithQuotesAndBackslashes() throws {
+        let unusual = outputBase.appending("base \"quoted\" back\\slash")
+        XCTAssertEqual(mkdir(unusual.string, 0o700), 0)
+        let generated = unusual.appending("lethen_generated")
+        let configuration = Configuration()
+        configuration.bazelIndexStore = unusual.appending("index \"store\"")
+        let shell = RecordingShell(outputBase: unusual, queryOutput: "//app:app")
+
+        XCTAssertEqual(try makeDriver(configuration: configuration, shell: shell).buildAndScan(), 0)
+
+        let buildFile = try String(contentsOfFile: generated.appending("BUILD.bazel").string, encoding: .utf8)
+        XCTAssertTrue(buildFile.contains(#"config = "\#(outputBase.string)/base \"quoted\" back\\slash/lethen_generated/periphery.yml","#), buildFile)
+        XCTAssertTrue(buildFile.contains(#"global_indexstore = "\#(outputBase.string)/base \"quoted\" back\\slash/index \"store\"","#), buildFile)
+        XCTAssertTrue(buildFile.contains(#""@@//app:app""#), buildFile)
+    }
+
+    func testStarlarkStringEscapesOnlyWhatStarlarkInterprets() {
+        XCTAssertEqual(BazelProjectDriver.starlarkString("/plain/path with spaces/$(x)'s"), #""/plain/path with spaces/$(x)'s""#)
+        XCTAssertEqual(BazelProjectDriver.starlarkString("a\"b\\c\nd\re\tf"), #""a\"b\\c\nd\re\tf""#)
+        XCTAssertEqual(BazelProjectDriver.starlarkString(""), #""""#)
+    }
+
     func testExistingPrivateDirectoryIsReused() throws {
         XCTAssertEqual(mkdir(generatedDirectory.string, 0o700), 0)
         try "stale".write(toFile: generatedDirectory.appending("BUILD.bazel").string, atomically: true, encoding: .utf8)

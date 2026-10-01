@@ -105,7 +105,7 @@ public final class BazelProjectDriver: ProjectDriver {
         let buildPath = outputPath.appending("BUILD.bazel")
         let deps = try queryTargets().joined(separator: ",\n")
         let globalIndexStoreValue = configuration.bazelIndexStore.map {
-            "\"\($0.makeAbsolute())\""
+            Self.starlarkString($0.makeAbsolute().string)
         } ?? "None"
         let buildFileContents = """
         load("@periphery//bazel:rules.bzl", "scan")
@@ -113,7 +113,7 @@ public final class BazelProjectDriver: ProjectDriver {
         scan(
           name = "scan",
           testonly = True,
-          config = "\(configPath)",
+          config = \(Self.starlarkString(configPath.string)),
           global_indexstore = \(globalIndexStoreValue),
           deps = [
             \(deps)
@@ -159,6 +159,23 @@ public final class BazelProjectDriver: ProjectDriver {
         let sourceOverride = #/\b(?:git|local_path|archive)_override\s*\([^)]*\bmodule_name\s*=\s*["']periphery["']/#
 
         return contents.contains(isPeripheryModuleItself) || contents.contains(sourceOverride)
+    }
+
+    /// `value` as a Starlark string literal, so paths and labels with quotes or backslashes stay one exact string in
+    /// the generated BUILD file.
+    static func starlarkString(_ value: String) -> String {
+        var literal = "\""
+        for character in value.unicodeScalars {
+            switch character {
+            case "\\": literal += "\\\\"
+            case "\"": literal += "\\\""
+            case "\n": literal += "\\n"
+            case "\r": literal += "\\r"
+            case "\t": literal += "\\t"
+            default: literal.unicodeScalars.append(character)
+            }
+        }
+        return literal + "\""
     }
 
     // MARK: - Private
@@ -250,7 +267,7 @@ public final class BazelProjectDriver: ProjectDriver {
         try shell
             .exec(["bazel", "query", "\"\(query)\""])
             .split(separator: "\n")
-            .map { "\"@@\($0)\"" }
+            .map { Self.starlarkString("@@\($0)") }
     }
 
     private var query: String {
