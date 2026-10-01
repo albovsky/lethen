@@ -92,7 +92,7 @@ final class SourceFileCollectorFreshnessTest: XCTestCase {
         Thread.sleep(forTimeInterval: 1.1)
         try append("\n// edited after indexing\n", to: "Sources/MainTarget/main.swift")
         try root.chdir {
-            let arguments = ["--build-system", "native", "-c", "release", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(rebuilt.string)'"]
+            let arguments = ["--build-system", "native", "-c", "release", "-Xswiftc", "-index-store-path", "-Xswiftc", rebuilt.string]
             try ShellImpl(logger: logger).exec(["swift", "build"] + arguments)
         }
 
