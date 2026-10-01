@@ -120,13 +120,14 @@ def runs_lethen?(script)
   end
 end
 
-# Whether a job runs the binary from a `run` script, or hands its path to a step through `env`
-# or `with`, where a script could run it as `"$BINARY"` without naming it. Step names and other
-# text are not checked.
+# Whether a job runs the binary from a `run` script, names it as a step's `shell` (which GitHub
+# runs with the script's path), or hands its path to a step through `env` or `with`, where a
+# script could run it as `"$BINARY"` without naming it. Job and workflow `defaults`, which can
+# set the shell too, are checked the same way. Step names and other text are not checked.
 def uses_lethen?(job)
   passes_path = ->(node) { text(node).any? { |value| unquoted(value).match?(LETHEN_WORD) } }
   passes_path.call(job.slice("env", "defaults")) || Array(job["steps"]).any? do |step|
-    step.is_a?(Hash) && (runs_lethen?(step["run"]) || passes_path.call(step.slice("env", "with")))
+    step.is_a?(Hash) && (runs_lethen?(step["run"]) || passes_path.call(step.slice("env", "with", "shell")))
   end
 end
 

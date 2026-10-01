@@ -90,6 +90,9 @@ expect fail "sign passes the binary to a same-named script elsewhere" 'sign["ste
 expect fail "sign passes the binary to a same-named script in /tmp" 'sign["steps"] << { "run" => "bash /tmp/release-sign-macos.sh build/lethen" }'
 expect fail "sign runs the binary through split quoting" 'sign["steps"] << { "run" => "build/leth\"en\" version" }'
 expect fail "publish runs the binary through a backslash" 'publish["steps"] << { "run" => "released/leth\\en version" }'
+expect fail "sign uses the binary as a step shell" 'sign["steps"][0]["shell"] = "build/lethen {0}"'
+expect fail "publish sets the binary as the default shell" 'publish["defaults"] = { "run" => { "shell" => "released/lethen {0}" } }'
+expect fail "the workflow sets the binary as the default shell" 'w["defaults"] = { "run" => { "shell" => "build/lethen {0}" } }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
 
