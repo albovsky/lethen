@@ -19,9 +19,13 @@ public struct XcodeSchemeConfigurations: Equatable, Sendable {
     static func read(scheme: String, in containers: [FilePath]) -> Self? {
         let fileName = "\(scheme).xcscheme"
         let candidates = containers.flatMap { container in
-            [container.appending("xcshareddata/xcschemes/\(fileName)")]
-                + FilePath.glob(container.appending("xcuserdata/*.xcuserdatad/xcschemes/\(fileName)").string)
-                .sorted { $0.string < $1.string }
+            // The scheme name is appended literally, never globbed, so a name such as `App[Dev]` matches only itself.
+            let userDirectories = (try? FileManager.default.contentsOfDirectory(atPath: container.appending("xcuserdata").string)) ?? []
+            let userSchemes = userDirectories
+                .filter { $0.hasSuffix(".xcuserdatad") }
+                .sorted()
+                .map { container.appending("xcuserdata/\($0)/xcschemes/\(fileName)") }
+            return [container.appending("xcshareddata/xcschemes/\(fileName)")] + userSchemes
         }
 
         guard let path = candidates.first(where: \.exists),

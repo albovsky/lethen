@@ -121,6 +121,29 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         )
     }
 
+    /// Scheme names are file names, not patterns: `App[Dev]` must not match `AppD`, and must match itself.
+    func testReadsSchemeNamesWithPatternCharactersLiterally() throws {
+        let project = FilePath(NSTemporaryDirectory()).appending("lethen-\(UUID().uuidString)/App.xcodeproj")
+        defer { try? FileManager.default.removeItem(atPath: project.removingLastComponent().string) }
+        let userSchemes = project.appending("xcuserdata/someone.xcuserdatad/xcschemes")
+        try FileManager.default.createDirectory(atPath: userSchemes.string, withIntermediateDirectories: true)
+        let source = ConfigurationsProjectPath.appending("xcshareddata/xcschemes")
+        try FileManager.default.copyItem(
+            atPath: source.appending("ReleaseTests.xcscheme").string,
+            toPath: userSchemes.appending("AppD.xcscheme").string
+        )
+
+        XCTAssertNil(XcodeSchemeConfigurations.read(scheme: "App[Dev]", in: [project]))
+
+        try FileManager.default.copyItem(
+            atPath: source.appending("ConfigurationsProject.xcscheme").string,
+            toPath: userSchemes.appending("App[Dev].xcscheme").string
+        )
+
+        XCTAssertEqual(XcodeSchemeConfigurations.read(scheme: "App[Dev]", in: [project]), .init(test: "Debug", launch: "Debug"))
+        XCTAssertEqual(XcodeSchemeConfigurations.read(scheme: "AppD", in: [project]), .init(test: "Release", launch: "Debug"))
+    }
+
     func testWarnsWhenTheTestAndLaunchConfigurationsDiffer() throws {
         let project = try Self.project()
         let warning = try XCTUnwrap(XcodeProjectDriver.configurationMismatchWarning(
