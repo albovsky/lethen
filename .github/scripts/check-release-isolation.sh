@@ -56,13 +56,14 @@ def mentions?(job, needle)
 end
 
 # Any use of the `secrets` context in an expression: `secrets.NAME`, `secrets['NAME']`,
-# `toJSON(secrets)`, and so on. Anything after `${{` in the same value counts, so a brace inside
-# a string literal in the expression cannot end the search early.
-SECRETS = /\$\{\{.*\bsecrets\b/m
+# `toJSON(secrets)`, and so on, in any letter case, as expressions ignore case. Anything after
+# `${{` in the same value counts, so a brace inside a string literal cannot end the search early.
+SECRETS = /\$\{\{.*\bsecrets\b/im
 
 # A path to the lethen binary, or a bare `lethen`, as one word: `build/lethen`,
-# `"$PWD/released/lethen"`, `./lethen`. `dist/lethen-<tag>.zip` is not one.
-LETHEN_WORD = %r{(?<![\w./-])["']?(?:[^\s"';&|()`<>]*/)?lethen["']?(?![\w.-])}
+# `"$PWD/released/lethen"`, `./lethen`, in any letter case, since the macOS runners' file system
+# ignores it. `dist/lethen-<tag>.zip` is not one.
+LETHEN_WORD = %r{(?<![\w./-])["']?(?:[^\s"';&|()`<>]*/)?lethen["']?(?![\w.-])}i
 
 # Commands that take the binary's path as an argument without running it or making a copy
 # under another name. Copying or renaming it (`cp`, `mv`, `ditto`, `ln`) is not exempt,
@@ -189,7 +190,7 @@ PATH_ONLY_SCRIPTS.each do |script|
     next true unless HELPER_PATH_COMMANDS.include?(command)
 
     # A copy must keep the lethen name, so every use of the copy is checked like the binary.
-    command == "cp" && !words.last.to_s.match?(%r{(?:\A|/)lethen\z})
+    command == "cp" && !words.last.to_s.match?(%r{(?:\A|/)lethen\z}i)
   end
   problems << "exempts #{script}, which runs its binary argument" if runs_binary
 end

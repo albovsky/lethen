@@ -52,6 +52,7 @@ expect pass "sign only passes the binary's path to other commands" 'sign["steps"
 expect fail "smoke-test reads secrets.NAME" 'smoke["steps"][0]["env"] = { "T" => "${{ secrets.HOMEBREW_TAP_TOKEN }}" }'
 expect fail "smoke-test reads secrets[\"NAME\"]" "smoke[\"steps\"][0][\"env\"] = { \"T\" => \"\${{ secrets['HOMEBREW_TAP_TOKEN'] }}\" }"
 expect fail "smoke-test hides secrets behind a brace in a string" "smoke[\"env\"][\"T\"] = \"\${{ '}' && secrets.HOMEBREW_TAP_TOKEN }}\""
+expect fail "smoke-test reads Secrets.NAME" 'smoke["env"]["T"] = "${{ Secrets.HOMEBREW_TAP_TOKEN }}"'
 expect fail "smoke-test reads toJSON(secrets)" 'smoke["env"]["ALL"] = "${{ toJSON(secrets) }}"'
 expect fail "smoke-test inherits secrets" 'smoke["secrets"] = "inherit"'
 expect fail "the workflow env reads a secret" 'w["env"] = (w["env"] || {}).merge("T" => "${{ secrets.HOMEBREW_TAP_TOKEN }}")'
@@ -93,6 +94,7 @@ expect fail "publish runs the binary through a backslash" 'publish["steps"] << {
 expect fail "sign uses the binary as a step shell" 'sign["steps"][0]["shell"] = "build/lethen {0}"'
 expect fail "publish sets the binary as the default shell" 'publish["defaults"] = { "run" => { "shell" => "released/lethen {0}" } }'
 expect fail "the workflow sets the binary as the default shell" 'w["defaults"] = { "run" => { "shell" => "build/lethen {0}" } }'
+expect fail "sign runs the binary with different letter case" 'sign["steps"] << { "run" => "build/LETHEN version" }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
 
