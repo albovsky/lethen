@@ -71,8 +71,17 @@ public final class Xcodebuild {
             "INDEX_ENABLE_DATA_STORE=YES",
         ]
 
+        // A store left by a failed or interrupted build lacks units for what it never compiled, which no freshness check
+        // can see, so the marker is removed first and written only once the build succeeds.
+        let marker = derivedDataPath.appending(Self.completedBuildMarker)
+        if marker.exists {
+            try FileManager.default.removeItem(atPath: marker.string)
+        }
+
         let xcodebuild = ["xcodebuild"] + args + envs + additionalArguments
-        return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
+        let output = try shell.exec(xcodebuild, onOutputLine: onOutputLine)
+        FileManager.default.createFile(atPath: marker.string, contents: nil)
+        return output
     }
 
     public func removeDerivedData(
@@ -100,6 +109,21 @@ public final class Xcodebuild {
 
         return path
     }
+
+    /// Whether the last build into this DerivedData directory completed. A store whose build failed or was
+    /// interrupted can lack units for whole files, so `--skip-build` must not read it as a complete index.
+    public func hasCompletedBuild(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws -> Bool {
+        try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            .appending(Self.completedBuildMarker)
+            .exists
+    }
+
+    static let completedBuildMarker = "lethen-build-completed"
 
     func schemes(project: XcodeProjectlike, additionalArguments: [String]) throws -> Set<String> {
         try schemes(

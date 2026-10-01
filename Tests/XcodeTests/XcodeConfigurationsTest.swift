@@ -357,10 +357,37 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             return nil
         }
 
-        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from Lethen's build of configurations Debug Release."))
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
 
+        // A store without the marker is what a failed or interrupted build leaves behind.
         try FileManager.default.createDirectory(atPath: debugDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
-        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from Lethen's build of configuration Release."))
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
+
+        FileManager.default.createFile(atPath: debugDerivedData.appending(Xcodebuild.completedBuildMarker).string, contents: nil)
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configuration Release."))
+    }
+
+    /// A build that fails leaves no marker, even where an earlier build of that configuration completed.
+    func testFailedBuildRemovesTheCompletedBuildMarker() throws {
+        let shell = RecordingShell(failingArgument: "Release")
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let buildArguments = ["LETHEN_TEST_MARKER=\(UUID().uuidString)"]
+        let derivedData = try xcodebuild.derivedDataPath(for: project, schemes: ["ConfigurationsProject"], configuration: "Release", buildArguments: buildArguments)
+        defer { try? FileManager.default.removeItem(atPath: derivedData.string) }
+        try FileManager.default.createDirectory(atPath: derivedData.string, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: derivedData.appending(Xcodebuild.completedBuildMarker).string, contents: nil)
+
+        func completed() throws -> Bool {
+            try xcodebuild.hasCompletedBuild(project: project, schemes: ["ConfigurationsProject"], configuration: "Release", buildArguments: buildArguments)
+        }
+
+        XCTAssertTrue(try completed())
+        XCTAssertThrowsError(try xcodebuild.build(project: project, scheme: "ConfigurationsProject", allSchemes: ["ConfigurationsProject"], configuration: "Release", additionalArguments: buildArguments))
+        XCTAssertFalse(try completed())
+
+        try xcodebuild.build(project: project, scheme: "ConfigurationsProject", allSchemes: ["ConfigurationsProject"], configuration: "Debug", additionalArguments: buildArguments)
+        XCTAssertFalse(try completed(), "A build of another configuration must not mark this one complete.")
     }
 
     // MARK: - Private

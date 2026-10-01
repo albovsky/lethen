@@ -208,8 +208,8 @@
             return store
         }
 
-        /// Without a build, `--configurations` reads the index Lethen built for each configuration. Xcode's own
-        /// DerivedData holds whichever configuration it last built, so it is never a stand-in for one of them.
+        /// Without a build, `--configurations` reads the index of Lethen's last completed build of each configuration.
+        /// Xcode's own DerivedData holds whichever configuration it last built, so it is never a stand-in for one of them.
         private func skipBuildConfigurationIndexStores() throws -> Set<FilePath> {
             var stores: [(configuration: String, path: FilePath)] = []
             var missing: [String] = []
@@ -221,6 +221,17 @@
                         configuration: buildConfiguration,
                         buildArguments: configuration.buildArguments
                     )
+                    let completed = try xcodebuild.hasCompletedBuild(
+                        project: project,
+                        schemes: Array(schemes),
+                        configuration: buildConfiguration,
+                        buildArguments: configuration.buildArguments
+                    )
+                    guard completed else {
+                        missing.append(buildConfiguration)
+                        continue
+                    }
+
                     stores.append((buildConfiguration, store))
                 } catch LethenError.indexStoreNotFound {
                     missing.append(buildConfiguration)
@@ -229,7 +240,7 @@
 
             guard missing.isEmpty else {
                 let names = (missing.count == 1 ? "configuration " : "configurations ") + missing.map(Self.shellWord).joined(separator: " ")
-                throw LethenError.usageError("--skip-build found no index from Lethen's build of \(names). Scan once with --configurations and without --skip-build, or pass each configuration's store with --index-store-path.")
+                throw LethenError.usageError("--skip-build found no index from a completed Lethen build of \(names). Scan once with --configurations and without --skip-build, or pass each configuration's store with --index-store-path.")
             }
 
             if configuration.outputFormat.supportsAuxiliaryOutput {
