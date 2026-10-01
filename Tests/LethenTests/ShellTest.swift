@@ -244,7 +244,11 @@ final class ShellTest: XCTestCase {
         XCTAssertTrue(directories.contains("/usr/local/bin"), ShellImpl.defaultSearchPath)
         XCTAssertTrue(directories.contains("/usr/bin"), ShellImpl.defaultSearchPath)
         XCTAssertFalse(directories.contains(".") || directories.contains(""), ShellImpl.defaultSearchPath)
-        XCTAssertEqual(ShellImpl.lookUp("sh", environment: [:]), .found(URL(fileURLWithPath: "/bin/sh")))
+        // Linux searches /usr/bin before /bin, macOS the other way round, so either copy of `sh` is right.
+        guard case let .found(sh) = ShellImpl.lookUp("sh", environment: [:]) else {
+            return XCTFail("sh is not found without PATH")
+        }
+        XCTAssertTrue(directories.contains(sh.deletingLastPathComponent().path), sh.path)
 
         let planted = directory.appendingPathComponent("lethen-planted-tool")
         FileManager.default.createFile(atPath: planted.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
