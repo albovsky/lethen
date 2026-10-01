@@ -365,10 +365,16 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
 
         // A project of the same name elsewhere shares the DerivedData directory, but its build does not count.
         let marker = debugDerivedData.appending(Xcodebuild.completedBuildMarker).string
-        FileManager.default.createFile(atPath: marker, contents: Data("/elsewhere/ConfigurationsProject.xcodeproj".utf8))
+        let ownMark = try XCTUnwrap(String(
+            bytes: Xcodebuild.markerContents(project: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments),
+            encoding: .utf8
+        ))
+        let elsewhere = ownMark.replacingOccurrences(of: project.path.lexicallyNormalized().string, with: "/elsewhere/ConfigurationsProject.xcodeproj")
+        XCTAssertNotEqual(elsewhere, ownMark)
+        FileManager.default.createFile(atPath: marker, contents: Data(elsewhere.utf8))
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
 
-        FileManager.default.createFile(atPath: marker, contents: Data(Xcodebuild.markerContents(for: project).utf8))
+        try xcodebuild.setCompletedBuild(true, project: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments)
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configuration Release."))
     }
 
@@ -387,7 +393,9 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         defer { derivedData.forEach { try? FileManager.default.removeItem(atPath: $0.string) } }
         for directory in derivedData {
             try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
-            FileManager.default.createFile(atPath: directory.appending(Xcodebuild.completedBuildMarker).string, contents: Data(Xcodebuild.markerContents(for: project).utf8))
+        }
+        for name in ["Debug", "Release"] {
+            try xcodebuild.setCompletedBuild(true, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
         }
 
         func completed() throws -> [Bool] {
@@ -406,6 +414,24 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         let succeeding = try Self.recordingDriver(configuration, shell: RecordingShell())
         try succeeding.build()
         XCTAssertEqual(try completed(), [true, true])
+    }
+
+    /// Scheme sets whose names join to the same string share a DerivedData directory, so the mark must tell them apart.
+    func testCompletedBuildNamesTheExactSchemes() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let buildArguments = ["LETHEN_TEST_SCHEMES=\(UUID().uuidString)"]
+        let built = try xcodebuild.derivedDataPath(for: project, schemes: ["A", "BC"], configuration: "Debug", buildArguments: buildArguments)
+        let other = try xcodebuild.derivedDataPath(for: project, schemes: ["AB", "C"], configuration: "Debug", buildArguments: buildArguments)
+        XCTAssertEqual(built, other)
+        defer { try? FileManager.default.removeItem(atPath: built.string) }
+        try FileManager.default.createDirectory(atPath: built.string, withIntermediateDirectories: true)
+
+        try xcodebuild.setCompletedBuild(true, project: project, schemes: ["BC", "A"], configuration: "Debug", buildArguments: buildArguments)
+
+        XCTAssertTrue(try xcodebuild.hasCompletedBuild(project: project, schemes: ["A", "BC"], configuration: "Debug", buildArguments: buildArguments))
+        XCTAssertFalse(try xcodebuild.hasCompletedBuild(project: project, schemes: ["AB", "C"], configuration: "Debug", buildArguments: buildArguments))
     }
 
     // MARK: - Private

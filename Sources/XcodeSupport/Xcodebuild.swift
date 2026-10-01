@@ -89,7 +89,8 @@ public final class Xcodebuild {
             .appending(Self.completedBuildMarker)
         if completed {
             // Without the directory there is no store to mark; a later `--skip-build` reports it missing either way.
-            FileManager.default.createFile(atPath: marker.string, contents: Data(Self.markerContents(for: project).utf8))
+            let contents = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            FileManager.default.createFile(atPath: marker.string, contents: contents)
         } else if marker.exists {
             try FileManager.default.removeItem(atPath: marker.string)
         }
@@ -131,14 +132,31 @@ public final class Xcodebuild {
     ) throws -> Bool {
         let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
             .appending(Self.completedBuildMarker)
-        // The directory is keyed by the project's name, not its path, so the mark names the project it was built for.
-        return (try? String(contentsOfFile: marker.string, encoding: .utf8)) == Self.markerContents(for: project)
+        return try FileManager.default.contents(atPath: marker.string)
+            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
     }
 
     static let completedBuildMarker = "lethen-build-completed"
 
-    static func markerContents(for project: XcodeProjectlike) -> String {
-        project.path.lexicallyNormalized().string
+    /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
+    /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can
+    /// share it; the mark names exactly what was built.
+    static func markerContents(project: XcodeProjectlike, schemes: [String], configuration: String?, buildArguments: [String]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(CompletedBuild(
+            project: project.path.lexicallyNormalized().string,
+            schemes: schemes.sorted(),
+            configuration: configuration,
+            buildArguments: buildArguments
+        ))
+    }
+
+    private struct CompletedBuild: Encodable {
+        let project: String
+        let schemes: [String]
+        let configuration: String?
+        let buildArguments: [String]
     }
 
     func schemes(project: XcodeProjectlike, additionalArguments: [String]) throws -> Set<String> {
