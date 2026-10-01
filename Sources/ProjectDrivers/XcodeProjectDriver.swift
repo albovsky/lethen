@@ -142,7 +142,7 @@
             let indexStorePaths: Set<FilePath> = if !configuration.indexStorePath.isEmpty {
                 Set(configuration.indexStorePath)
             } else if configuration.skipBuild {
-                try [skipBuildIndexStore()]
+                try configuration.configurations.isEmpty ? [skipBuildIndexStore()] : skipBuildConfigurationIndexStores()
             } else {
                 // One store per configuration; the collector keeps every store's units, so a reference
                 // compiled in any configuration counts.
@@ -207,6 +207,39 @@
 
             return store
         }
+
+        /// Without a build, `--configurations` reads the index Lethen built for each configuration. Xcode's own
+        /// DerivedData holds whichever configuration it last built, so it is never a stand-in for one of them.
+        private func skipBuildConfigurationIndexStores() throws -> Set<FilePath> {
+            var stores: [(configuration: String, path: FilePath)] = []
+            var missing: [String] = []
+            for case let buildConfiguration? in buildConfigurations {
+                do {
+                    let store = try xcodebuild.indexStorePath(
+                        project: project,
+                        schemes: Array(schemes),
+                        configuration: buildConfiguration,
+                        buildArguments: configuration.buildArguments
+                    )
+                    stores.append((buildConfiguration, store))
+                } catch LethenError.indexStoreNotFound {
+                    missing.append(buildConfiguration)
+                }
+            }
+
+            guard missing.isEmpty else {
+                let names = (missing.count == 1 ? "configuration " : "configurations ") + missing.map(Self.shellWord).joined(separator: " ")
+                throw LethenError.usageError("--skip-build found no index from Lethen's build of \(names). Scan once with --configurations and without --skip-build, or pass each configuration's store with --index-store-path.")
+            }
+
+            if configuration.outputFormat.supportsAuxiliaryOutput {
+                for (name, store) in stores {
+                    logger.info("Using the index from Lethen's build of configuration \(name) at \(store), last written \(XcodeDerivedDataLocator.lastWritten(store).formatted(.iso8601)).")
+                }
+            }
+
+            return stores.mapSet(\.path)
+        }
     }
 
     extension XcodeProjectDriver {
@@ -224,10 +257,6 @@
             if !unknown.isEmpty {
                 let available = known.sorted().joined(separator: ", ")
                 throw LethenError.usageError("--configurations names \(unknown.joined(separator: ", ")), which \(project.path.lastComponent?.string ?? "the project") does not define. Its build configurations are: \(available).")
-            }
-
-            if configuration.skipBuild, configuration.indexStorePath.isEmpty {
-                throw LethenError.usageError("--skip-build does not yet read one index per configuration for Xcode projects; build without --skip-build, or pass each configuration's store with --index-store-path.")
             }
         }
     }

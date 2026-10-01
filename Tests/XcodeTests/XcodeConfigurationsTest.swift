@@ -247,15 +247,114 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         }
     }
 
-    func testRejectsSkipBuildWithoutIndexStorePaths() throws {
+    func testAcceptsSkipBuildWithAndWithoutIndexStorePaths() throws {
         let configuration = Self.configuration(["Debug", "Release"])
         configuration.skipBuild = true
-        XCTAssertThrowsError(try Self.driver(configuration)) { error in
-            guard case LethenError.usageError = error else { return XCTFail("\(error)") }
-        }
+        XCTAssertNoThrow(try Self.driver(configuration))
 
         configuration.indexStorePath = [FilePath("/nonexistent/DataStore")]
         XCTAssertNoThrow(try Self.driver(configuration))
+    }
+
+    // MARK: - Skip build
+
+    /// `--skip-build --configurations` scans the index of each configuration's earlier build together, and refuses a
+    /// configuration's index that predates an edit even when another configuration's index was rebuilt since.
+    func testSkipBuildReadsEveryConfigurationsIndexAndRejectsAStaleOne() throws {
+        let root = FilePath(NSTemporaryDirectory()).appending("lethen configurations \(UUID().uuidString)")
+        let copy = root.appending("ConfigurationsProject")
+        try FileManager.default.createDirectory(atPath: root.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: ConfigurationsProjectPath.removingLastComponent().string, toPath: copy.string)
+        let project = copy.appending("ConfigurationsProject.xcodeproj")
+        // A build setting of its own keys this copy's DerivedData apart from the fixture's.
+        let buildArguments = ["LETHEN_TEST_COPY=\(UUID().uuidString)"]
+        let xcodebuild = Xcodebuild(shell: Self.shell, logger: Self.logger)
+        defer {
+            for name in ["Debug", "Release"] {
+                try? xcodebuild.removeDerivedData(for: Self.project(at: project), allSchemes: ["ConfigurationsProject"], configuration: name, buildArguments: buildArguments)
+            }
+            try? FileManager.default.removeItem(atPath: root.string)
+        }
+
+        func configuration(_ configurations: [String], skipBuild: Bool) -> Configuration {
+            let configuration = Self.configuration(configurations)
+            configuration.buildArguments = buildArguments
+            configuration.skipBuild = skipBuild
+            return configuration
+        }
+
+        try Self.build(projectPath: project, configuration: configuration(["Debug", "Release"], skipBuild: false))
+        Self.plan = nil
+
+        let skipBuild = configuration(["Debug", "Release"], skipBuild: true)
+        try project.chdir {
+            let driver = try XcodeProjectDriver(projectPath: project, configuration: skipBuild, shell: Self.shell, logger: Self.logger)
+            Self.plan = try driver.plan(logger: Self.logger.contextualized(with: "index"))
+        }
+        try Self.index(configuration: skipBuild)
+        assertReferenced(.functionFree("calledOnlyInDebug()"))
+        assertReferenced(.functionFree("calledOnlyInRelease()"))
+
+        // Edited, then rebuilt in Release only: Debug's index still describes the old file.
+        Thread.sleep(forTimeInterval: 1.1)
+        let conditional = copy.appending("ConfigurationsProject/Conditional.swift")
+        let text = try String(contentsOf: conditional.url, encoding: .utf8)
+        try (text + "\n// edited after indexing\n").write(to: conditional.url, atomically: true, encoding: .utf8)
+        try Self.build(projectPath: project, configuration: configuration(["Release"], skipBuild: false))
+
+        let debugStore = try xcodebuild.indexStorePath(project: Self.project(at: project), schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: buildArguments)
+        XCTAssertThrowsError(try project.chdir {
+            let driver = try XcodeProjectDriver(projectPath: project, configuration: skipBuild, shell: Self.shell, logger: Self.logger)
+            _ = try driver.plan(logger: Self.logger.contextualized(with: "index"))
+        }) { error in
+            guard case let LethenError.staleIndexStore(path, staleFiles) = error else { return XCTFail("\(error)") }
+
+            XCTAssertEqual(path, debugStore.string)
+            XCTAssertEqual(staleFiles.map { FilePath($0).lastComponent?.string }, ["Conditional.swift"])
+        }
+    }
+
+    /// Each listed configuration needs Lethen's own index for it; Xcode's DerivedData index, which holds one
+    /// configuration, never stands in for a missing one.
+    func testSkipBuildFailsWhenAConfigurationHasNoIndexOfItsOwn() throws {
+        let root = FilePath(NSTemporaryDirectory()).appending("lethen configurations \(UUID().uuidString)")
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.skipBuild = true
+        configuration.buildArguments = ["LETHEN_TEST_MISSING=\(UUID().uuidString)"]
+        let debugDerivedData = try xcodebuild.derivedDataPath(for: project, schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: configuration.buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: root.string)
+            try? FileManager.default.removeItem(atPath: debugDerivedData.string)
+        }
+
+        // Xcode has indexed the project, which is what a plain --skip-build would read.
+        let xcodeDerivedData = root.appending("DerivedData/ConfigurationsProject-xcode")
+        try FileManager.default.createDirectory(atPath: xcodeDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        let info = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": ConfigurationsProjectPath.string], format: .xml, options: 0)
+        try info.write(to: xcodeDerivedData.appending("info.plist").url)
+        let locator = XcodeDerivedDataLocator(root: root.appending("DerivedData"))
+        XCTAssertEqual(locator.indexStores(for: ConfigurationsProjectPath).count, 1)
+
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: project, schemes: ["ConfigurationsProject"], derivedDataLocator: locator)
+
+        func message() -> String? {
+            do {
+                _ = try driver.plan(logger: Self.logger.contextualized(with: "index"))
+            } catch let LethenError.usageError(message) {
+                return message
+            } catch {
+                XCTFail("\(error)")
+            }
+            return nil
+        }
+
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from Lethen's build of configurations Debug Release."))
+
+        try FileManager.default.createDirectory(atPath: debugDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from Lethen's build of configuration Release."))
     }
 
     // MARK: - Private
@@ -272,10 +371,10 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try XcodeProjectDriver(projectPath: ConfigurationsProjectPath, configuration: configuration, shell: shell, logger: logger)
     }
 
-    private static func project(shell: Shell = RecordingShell()) throws -> XcodeProject {
+    private static func project(at path: FilePath = ConfigurationsProjectPath, shell: Shell = RecordingShell()) throws -> XcodeProject {
         var loaded: Set<FilePath> = []
         return try XcodeProject(
-            path: ConfigurationsProjectPath,
+            path: path,
             loadedProjectPaths: &loaded,
             xcodebuild: Xcodebuild(shell: shell, logger: logger),
             shell: shell,
