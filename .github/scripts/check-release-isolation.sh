@@ -11,6 +11,7 @@
 # this check.
 #
 # Usage: check-release-isolation.sh [workflow-file]
+# check-release-isolation-test.sh runs it against mutated copies of the workflow.
 set -euo pipefail
 
 workflow="${1:-.github/workflows/release.yml}"
@@ -44,6 +45,10 @@ def mentions?(job, needle)
   text(job).any? { |value| needle.is_a?(Regexp) ? value.match?(needle) : value.include?(needle) }
 end
 
+# Any use of the `secrets` context in an expression: `secrets.NAME`, `secrets['NAME']`,
+# `toJSON(secrets)`, and so on.
+SECRETS = /\$\{\{[^}]*\bsecrets\b/
+
 # Commands that run the release binary.
 BINARY_RUNNERS = {
   "release-smoke-test.sh" => "release-smoke-test.sh",
@@ -55,13 +60,16 @@ def effective_permissions(workflow, job)
   job.key?("permissions") ? job["permissions"] : workflow["permissions"]
 end
 
+# Workflow-level `env` and `defaults` reach every job, the smoke test included.
+problems << "references secrets at the workflow level, which every job inherits" if mentions?(workflow.slice("env", "defaults"), SECRETS)
+
 smoke = jobs["smoke-test"]
 if smoke.nil?
   problems << "has no smoke-test job"
 else
   problems << "gives the smoke-test job an environment" if smoke.key?("environment")
   problems << "gives the smoke-test job secrets" if smoke.key?("secrets")
-  problems << "references secrets in the smoke-test job" if mentions?(smoke, "secrets.")
+  problems << "references secrets in the smoke-test job" if mentions?(smoke, SECRETS)
   if workflow.key?("permissions") || smoke.key?("permissions")
     scopes = write_scopes(effective_permissions(workflow, smoke))
     problems << "gives the smoke-test job write permissions: #{scopes.join(', ')}" unless scopes.empty?
@@ -75,7 +83,7 @@ jobs.each do |name, job|
     next unless mentions?(job, pattern)
 
     problems << "runs #{command} in #{name}, which has an environment" if job.key?("environment")
-    problems << "runs #{command} in #{name}, which has secrets" if job.key?("secrets") || mentions?(job, "secrets.")
+    problems << "runs #{command} in #{name}, which has secrets" if job.key?("secrets") || mentions?(job, SECRETS)
     permissions = effective_permissions(workflow, job)
     scopes = permissions.nil? ? ["the repository's default token permissions"] : write_scopes(permissions)
     problems << "runs #{command} in #{name}, which can write: #{scopes.join(', ')}" unless scopes.empty?
