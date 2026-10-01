@@ -367,27 +367,40 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configuration Release."))
     }
 
-    /// A build that fails leaves no marker, even where an earlier build of that configuration completed.
-    func testFailedBuildRemovesTheCompletedBuildMarker() throws {
-        let shell = RecordingShell(failingArgument: "Release")
+    /// Each configuration's DerivedData is marked complete only once every scheme has built into it, so a scan that
+    /// stops after one scheme leaves no configuration marked, even one an earlier scan completed.
+    func testOnlyBuildsOfEverySchemeMarkAConfigurationComplete() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        configuration.schemes = ["ConfigurationsProject", "ReleaseTests"]
+        configuration.buildArguments = ["LETHEN_TEST_MARKER=\(UUID().uuidString)"]
+        let shell = RecordingShell(failingArgument: "ReleaseTests")
         let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
         let project = try Self.project(shell: shell)
-        let buildArguments = ["LETHEN_TEST_MARKER=\(UUID().uuidString)"]
-        let derivedData = try xcodebuild.derivedDataPath(for: project, schemes: ["ConfigurationsProject"], configuration: "Release", buildArguments: buildArguments)
-        defer { try? FileManager.default.removeItem(atPath: derivedData.string) }
-        try FileManager.default.createDirectory(atPath: derivedData.string, withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: derivedData.appending(Xcodebuild.completedBuildMarker).string, contents: nil)
-
-        func completed() throws -> Bool {
-            try xcodebuild.hasCompletedBuild(project: project, schemes: ["ConfigurationsProject"], configuration: "Release", buildArguments: buildArguments)
+        let derivedData = try ["Debug", "Release"].map {
+            try xcodebuild.derivedDataPath(for: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+        }
+        defer { derivedData.forEach { try? FileManager.default.removeItem(atPath: $0.string) } }
+        for directory in derivedData {
+            try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: directory.appending(Xcodebuild.completedBuildMarker).string, contents: nil)
         }
 
-        XCTAssertTrue(try completed())
-        XCTAssertThrowsError(try xcodebuild.build(project: project, scheme: "ConfigurationsProject", allSchemes: ["ConfigurationsProject"], configuration: "Release", additionalArguments: buildArguments))
-        XCTAssertFalse(try completed())
+        func completed() throws -> [Bool] {
+            try ["Debug", "Release"].map {
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+            }
+        }
 
-        try xcodebuild.build(project: project, scheme: "ConfigurationsProject", allSchemes: ["ConfigurationsProject"], configuration: "Debug", additionalArguments: buildArguments)
-        XCTAssertFalse(try completed(), "A build of another configuration must not mark this one complete.")
+        // ConfigurationsProject builds in both configurations, then ReleaseTests fails.
+        XCTAssertEqual(try completed(), [true, true])
+        let failing = try Self.recordingDriver(configuration, shell: shell)
+        XCTAssertThrowsError(try failing.build())
+        XCTAssertEqual(shell.streamed.count, 3)
+        XCTAssertEqual(try completed(), [false, false])
+
+        let succeeding = try Self.recordingDriver(configuration, shell: RecordingShell())
+        try succeeding.build()
+        XCTAssertEqual(try completed(), [true, true])
     }
 
     // MARK: - Private

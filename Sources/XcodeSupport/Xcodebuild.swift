@@ -71,17 +71,28 @@ public final class Xcodebuild {
             "INDEX_ENABLE_DATA_STORE=YES",
         ]
 
-        // A store left by a failed or interrupted build lacks units for what it never compiled, which no freshness check
-        // can see, so the marker is removed first and written only once the build succeeds.
-        let marker = derivedDataPath.appending(Self.completedBuildMarker)
-        if marker.exists {
+        let xcodebuild = ["xcodebuild"] + args + envs + additionalArguments
+        return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
+    }
+
+    /// Records whether every scheme built into a DerivedData directory completed. A store left by a failed or
+    /// interrupted build lacks units for what it never compiled, which no freshness check can see, so the driver
+    /// clears the mark before its first build and sets it only after the last one succeeds.
+    public func setCompletedBuild(
+        _ completed: Bool,
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws {
+        let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            .appending(Self.completedBuildMarker)
+        if completed {
+            // Without the directory there is no store to mark; a later `--skip-build` reports it missing either way.
+            FileManager.default.createFile(atPath: marker.string, contents: nil)
+        } else if marker.exists {
             try FileManager.default.removeItem(atPath: marker.string)
         }
-
-        let xcodebuild = ["xcodebuild"] + args + envs + additionalArguments
-        let output = try shell.exec(xcodebuild, onOutputLine: onOutputLine)
-        FileManager.default.createFile(atPath: marker.string, contents: nil)
-        return output
     }
 
     public func removeDerivedData(
@@ -110,8 +121,8 @@ public final class Xcodebuild {
         return path
     }
 
-    /// Whether the last build into this DerivedData directory completed. A store whose build failed or was
-    /// interrupted can lack units for whole files, so `--skip-build` must not read it as a complete index.
+    /// Whether the last build of every scheme into this DerivedData directory completed. A store whose build failed
+    /// or was interrupted can lack units for whole files, so `--skip-build` must not read it as a complete index.
     public func hasCompletedBuild(
         project: XcodeProjectlike,
         schemes: [String],
