@@ -89,7 +89,7 @@ public final class Xcodebuild {
             .appending(Self.completedBuildMarker)
         if completed {
             // Without the directory there is no store to mark; a later `--skip-build` reports it missing either way.
-            FileManager.default.createFile(atPath: marker.string, contents: nil)
+            FileManager.default.createFile(atPath: marker.string, contents: Data(Self.markerContents(for: project).utf8))
         } else if marker.exists {
             try FileManager.default.removeItem(atPath: marker.string)
         }
@@ -129,12 +129,17 @@ public final class Xcodebuild {
         configuration: String? = nil,
         buildArguments: [String] = []
     ) throws -> Bool {
-        try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
             .appending(Self.completedBuildMarker)
-            .exists
+        // The directory is keyed by the project's name, not its path, so the mark names the project it was built for.
+        return (try? String(contentsOfFile: marker.string, encoding: .utf8)) == Self.markerContents(for: project)
     }
 
     static let completedBuildMarker = "lethen-build-completed"
+
+    static func markerContents(for project: XcodeProjectlike) -> String {
+        project.path.lexicallyNormalized().string
+    }
 
     func schemes(project: XcodeProjectlike, additionalArguments: [String]) throws -> Set<String> {
         try schemes(

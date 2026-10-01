@@ -363,7 +363,12 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try FileManager.default.createDirectory(atPath: debugDerivedData.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
 
-        FileManager.default.createFile(atPath: debugDerivedData.appending(Xcodebuild.completedBuildMarker).string, contents: nil)
+        // A project of the same name elsewhere shares the DerivedData directory, but its build does not count.
+        let marker = debugDerivedData.appending(Xcodebuild.completedBuildMarker).string
+        FileManager.default.createFile(atPath: marker, contents: Data("/elsewhere/ConfigurationsProject.xcodeproj".utf8))
+        XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configurations Debug Release."))
+
+        FileManager.default.createFile(atPath: marker, contents: Data(Xcodebuild.markerContents(for: project).utf8))
         XCTAssertTrue(try XCTUnwrap(message()).contains("no index from a completed Lethen build of configuration Release."))
     }
 
@@ -382,7 +387,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         defer { derivedData.forEach { try? FileManager.default.removeItem(atPath: $0.string) } }
         for directory in derivedData {
             try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
-            FileManager.default.createFile(atPath: directory.appending(Xcodebuild.completedBuildMarker).string, contents: nil)
+            FileManager.default.createFile(atPath: directory.appending(Xcodebuild.completedBuildMarker).string, contents: Data(Xcodebuild.markerContents(for: project).utf8))
         }
 
         func completed() throws -> [Bool] {
