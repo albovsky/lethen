@@ -45,6 +45,7 @@ expect pass "a smoke-test step mentions secrets in plain text" 'smoke["steps"] <
 expect pass "a smoke-test step uses the read-only job token" 'smoke["steps"][0]["env"] = { "T" => "${{ github.token }}" }'
 expect pass "brew test runs in the unprivileged smoke-test job" 'smoke["steps"] << { "run" => "brew test lethen" }'
 expect pass "the unprivileged smoke-test job runs the binary" 'smoke["steps"] << { "run" => "released/lethen version" }'
+expect pass "the smoke-test job passes the binary through env" 'smoke["steps"] << { "env" => { "BINARY" => "released/lethen" }, "run" => "\"$BINARY\" version" }'
 expect pass "a publish step is named after lethen" 'publish["steps"] << { "name" => "Publish lethen", "run" => "true" }'
 expect pass "sign only passes the binary's path to other commands" 'sign["steps"] << { "run" => "chmod +x build/lethen\ncodesign --verify --strict build/lethen\nswift build --product lethen" }'
 
@@ -73,6 +74,11 @@ expect fail "sign runs the binary through arch" 'sign["steps"] << { "run" => "ar
 expect fail "publish opens the binary" 'publish["steps"] << { "run" => "open released/lethen" }'
 expect fail "publish runs the binary through swift run" 'publish["steps"] << { "run" => "swift run lethen version" }'
 expect fail "sign passes the binary to an unlisted repository script" 'sign["steps"] << { "run" => "bash tools/.github/scripts/run-lethen.sh build/lethen" }'
+expect fail "sign passes the binary through a step env" 'sign["steps"] << { "env" => { "BINARY" => "build/lethen" }, "run" => "\"$BINARY\" version" }'
+expect fail "publish passes the binary through the job env" 'publish["env"]["BINARY"] = "released/lethen"'
+expect fail "sign passes the binary to an action input" 'sign["steps"] << { "uses" => "./.github/actions/run", "with" => { "binary" => "build/lethen" } }'
+expect fail "the workflow env names the binary" 'w["env"] = (w["env"] || {}).merge("BINARY" => "build/lethen")'
+expect fail "sign assigns the binary to a shell variable" 'sign["steps"] << { "run" => "b=build/lethen\n\"$b\" version" }'
 expect fail "publish runs an installed lethen" 'publish["steps"] << { "run" => "lethen version" }'
 expect fail "publish runs the formula test" 'publish["steps"] << { "run" => "bash tools/.github/scripts/release-homebrew.sh test x y" }'
 

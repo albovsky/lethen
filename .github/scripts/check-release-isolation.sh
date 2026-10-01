@@ -43,10 +43,9 @@ def text(node)
   end
 end
 
-# A Method needle is a shell-script check, so it sees only the job's `run` scripts, not
-# step names or other text.
+# A Method needle is a check of the whole job, given the job.
 def mentions?(job, needle)
-  return Array(job["steps"]).any? { |step| step.is_a?(Hash) && needle.call(step["run"]) } if needle.is_a?(Method)
+  return needle.call(job) if needle.is_a?(Method)
 
   text(job).any? { |value| needle.is_a?(Regexp) ? value.match?(needle) : value.include?(needle) }
 end
@@ -84,9 +83,19 @@ def runs_lethen?(script)
   end
 end
 
+# Whether a job runs the binary from a `run` script, or hands its path to a step through `env`
+# or `with`, where a script could run it as `"$BINARY"` without naming it. Step names and other
+# text are not checked.
+def uses_lethen?(job)
+  passes_path = ->(node) { text(node).any? { |value| value.match?(LETHEN_WORD) } }
+  passes_path.call(job.slice("env", "defaults")) || Array(job["steps"]).any? do |step|
+    step.is_a?(Hash) && (runs_lethen?(step["run"]) || passes_path.call(step.slice("env", "with")))
+  end
+end
+
 # Commands that run the release binary.
 BINARY_RUNNERS = {
-  "the lethen binary" => method(:runs_lethen?),
+  "the lethen binary" => method(:uses_lethen?),
   "release-smoke-test.sh" => "release-smoke-test.sh",
   "brew install, reinstall or test" => /\bbrew\s+(install|reinstall|test)\b/,
   "release-homebrew.sh test" => /release-homebrew\.sh\s+test\b/,
@@ -98,6 +107,7 @@ end
 
 # Workflow-level `env` and `defaults` reach every job, the smoke test included.
 problems << "references secrets at the workflow level, which every job inherits" if mentions?(workflow.slice("env", "defaults"), SECRETS)
+problems << "passes the lethen binary's path at the workflow level, which every job inherits" if mentions?(workflow.slice("env", "defaults"), LETHEN_WORD)
 
 smoke = jobs["smoke-test"]
 if smoke.nil?
