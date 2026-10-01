@@ -28,6 +28,7 @@ swift_library(
         "XcodeSupport/XcodeProject.swift",
         "XcodeSupport/XcodeProjectSetupGuide.swift",
         "XcodeSupport/XcodeProjectlike.swift",
+        "XcodeSupport/XcodeSchemeConfigurations.swift",
         "XcodeSupport/XcodeTarget.swift",
         "XcodeSupport/XcodeWorkspace.swift",
         "XcodeSupport/Xcodebuild.swift",

@@ -74,8 +74,8 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
         let shell = ShellImpl(logger: logger)
         // What Xcode does when it builds the project: its DerivedData gets an info.plist naming the project.
         try shell.exec([
-            "xcodebuild", "-project", "'\(project.string)'", "-scheme", "SwiftUIProject",
-            "-derivedDataPath", "'\(derivedData.appending("SwiftUIProject-discovery").string)'",
+            "xcodebuild", "-project", project.string, "-scheme", "SwiftUIProject",
+            "-derivedDataPath", derivedData.appending("SwiftUIProject-discovery").string,
             "-quiet", "build-for-testing", "CODE_SIGNING_ALLOWED=NO",
         ])
 

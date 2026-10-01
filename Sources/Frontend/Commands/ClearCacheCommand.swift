@@ -1,8 +1,7 @@
 import ArgumentParser
-import Configuration
 import Foundation
-import Logger
 import Shared
+import SystemPackage
 
 struct ClearCacheCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -11,9 +10,12 @@ struct ClearCacheCommand: ParsableCommand {
     )
 
     func run() throws {
-        let configuration = Configuration()
-        let logger = Logger(configuration: configuration)
-        let shell = ShellImpl(logger: logger)
-        try shell.exec(["rm", "-rf", Constants.cachePath().string])
+        try Self.removeCache(at: Constants.cachePath())
+    }
+
+    /// Removes the cache directory and everything in it, or a link in its place; a cache that does not exist is already
+    /// clear.
+    static func removeCache(at path: FilePath) throws {
+        try path.removeIfPresent()
     }
 }

@@ -93,7 +93,7 @@ final class SourceFileCollectorFreshnessTest: XCTestCase {
         let twoVersions = root.appending("two-versions")
         try root.chdir {
             let shell = ShellImpl(logger: logger)
-            let arguments = ["--build-system", "native", "-Xswiftc", "-index-store-path", "-Xswiftc", "'\(twoVersions.string)'"]
+            let arguments = ["--build-system", "native", "-Xswiftc", "-index-store-path", "-Xswiftc", twoVersions.string]
             try append("\nfunc versionOneOnly() {}\n", to: "Sources/MainTarget/main.swift")
             try shell.exec(["swift", "build", "-c", "debug"] + arguments)
             // A second build a moment later, so the two versions' units have different dates.
