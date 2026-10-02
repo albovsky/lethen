@@ -57,7 +57,8 @@
       "verdict": "FP",
       "note": "Objective-C reads this `@objc static` property as `[WMFCommonStringsWrapper relatedPagesTitle]` at WMFContentGroup+WMFFeedContentDisplaying.m:18.",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "No longer reported when the expectation was refreshed at b876583 (#106)"
     },
     {
       "path": "WMF Framework/MWKDataStore+LegacyPageViews.swift",
@@ -104,7 +105,8 @@
       "note": "This `@objc static` property is called from Objective-C as `[UIColor wmf_blue_300]` at WMFSettingsMenuItem.m:55, 75 and 117. That file is compiled into the Wikipedia, Experimental and Staging targets.",
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
-      "reference": "wikipedia-ios-25"
+      "reference": "wikipedia-ios-25",
+      "retired": "No longer reported after #77, which reads Objective-C uses from the clang index"
     },
     {
       "path": "WMF Framework/Theme.swift",
@@ -115,7 +117,8 @@
       "verdict": "FP",
       "note": "Objective-C calls this `@objc static` property as `[UIColor wmf_red_600]` at WMFSettingsMenuItem.m:45, 85 and 177.",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "No longer reported after #77, which reads Objective-C uses from the clang index"
     },
     {
       "path": "WMF Framework/TimelineView.swift",
@@ -210,7 +213,8 @@
       "verdict": "FP",
       "note": "`close(_:)` is a target-action method registered as `#selector(close(_:))` at WMFEditorInputView.swift:82, so the `sender` parameter is part of the selector signature.",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "No longer reported when the expectation was refreshed at b876583 (#106)"
     },
     {
       "path": "WMFComponents/Sources/WMFComponents/Components/Shared/Buttons/WMFMediumButton.swift",
@@ -894,7 +898,8 @@
       "verdict": "FP",
       "note": "This is an Objective-C file that uses the imported module: `@import WMF.NSDateFormatter_WMFExtensions` supplies `+[NSDateFormatter wmf_englishHyphenatedYearMonthDayFormatter]` (declared in NSDateFormatter+WMFExtensions.h:55, part of WMF.h), which is called at NSDate+WMFPOTDTitle.m:13. Lethen does not see Objective-C uses.",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "No longer reported after #96: the clang index shows the import used"
     },
     {
       "path": "Wikipedia/Code/NotificationsCenterCommonViewModel+ActionExtensions.swift",
@@ -978,7 +983,8 @@
       "verdict": "FP",
       "note": "Objective-C sets this `@objc public` property at MWKDataStore.m:951 (`self.readingListsController.maxListsPerUser = ...`, from the reading-lists config at :949), and the setter persists the value to the view context (:503-507). The getter is unread, but the property cannot be removed.",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "No longer reported when the expectation was refreshed at b876583 (#106)"
     },
     {
       "path": "Wikipedia/Code/ReadingListsViewController.swift",
