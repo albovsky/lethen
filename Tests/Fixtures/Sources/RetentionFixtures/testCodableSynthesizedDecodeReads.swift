@@ -185,6 +185,24 @@ struct FixtureStruct312Tag: Decodable {
     let tagNotDecoded: Int
 }
 
+struct FixtureStruct312Envelope<Value>: Decodable {
+    // Stores the parameter only inside another generic wrapper, which this rule does not follow.
+    let wrapped: FixtureStruct312Phantom<Value>
+}
+
+struct FixtureStruct312Nested2: Decodable {
+    // Control: reached only through Phantom<T> inside a decoded Envelope<T>.
+    let nested2NotDecoded: Int
+}
+
+struct FixtureStruct312Dictionary<Value: Decodable>: Decodable {
+    let table: [String: Value]
+}
+
+struct FixtureStruct312Entry: Decodable {
+    let entryDecoded: Int
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -226,6 +244,9 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312Page<FixtureStruct312Item>.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312Phantom<FixtureStruct312Tag>.self, from: data)
         _ = FixtureStruct312Tag(tagNotDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Envelope<FixtureStruct312Nested2>.self, from: data)
+        _ = FixtureStruct312Nested2(nested2NotDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Dictionary<FixtureStruct312Entry>.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 

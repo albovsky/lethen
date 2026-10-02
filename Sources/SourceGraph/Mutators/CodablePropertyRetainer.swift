@@ -236,7 +236,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     /// A specialized metatype such as `Page<Model>.self` decodes `Model` only when `Page` stores a value of that
     /// generic parameter in a decoded property; a phantom parameter is never decoded. The parameter is matched by
-    /// name against the declared types of the base type's decoded properties.
+    /// name against the declared types of the base type's decoded properties, and only when a type is the parameter or a
+    /// standard container of it. A parameter inside another generic wrapper such as `Phantom<T>` is not followed.
     private func withDecodedGenericArguments(_ references: Set<Reference>) -> Set<Reference> {
         var result = references
         for reference in references where !reference.genericArguments.isEmpty {
@@ -247,8 +248,13 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                 .filter { $0.kind == .varInstance && decodeUse(of: $0, in: base) != .skip }
                 .compactMap(\.declaredType)
             for (parameter, arguments) in zip(parameters, reference.genericArguments) {
+                let name = NSRegularExpression.escapedPattern(for: parameter.name)
+                let other = "[A-Za-z_][A-Za-z0-9_.]*"
+                let shapes = [name, "\\[\(name)\\]", "\\[\(name):\(other)\\]", "\\[\(other):\(name)\\]"]
+                    + ["Set<\(name)>", "Array<\(name)>", "Optional<\(name)>", "Dictionary<\(name),\(other)>", "Dictionary<\(other),\(name)>"]
+                let pattern = "^(Swift\\.)?(\(shapes.joined(separator: "|")))$"
                 let mentioned = storedTypes.contains {
-                    $0.range(of: "\\b\(NSRegularExpression.escapedPattern(for: parameter.name))\\b", options: .regularExpression) != nil
+                    $0.filter { !$0.isWhitespace }.range(of: pattern, options: .regularExpression) != nil
                 }
                 if mentioned {
                     result.formUnion(arguments)
