@@ -148,6 +148,8 @@ final class SwiftIndexer: Indexer {
             let isImplicit: Bool
             let isObjcAccessible: Bool
             let location: Location
+            /// The module of the index unit that recorded the declaration.
+            var module = ""
 
             var key: Key {
                 Key(kind: kind, name: name, isImplicit: isImplicit, isObjcAccessible: isObjcAccessible, location: location)
@@ -197,6 +199,8 @@ final class SwiftIndexer: Indexer {
                                 location,
                                 relations
                             ) {
+                                var decl = decl
+                                decl.module = unit.unit.moduleName
                                 rawDeclsByKey[decl.key, default: []].append((decl, relations))
                             }
                         }
@@ -236,6 +240,7 @@ final class SwiftIndexer: Indexer {
                 let decl = Declaration(name: key.name, kind: key.kind, usrs: usrs, location: key.location)
 
                 decl.isImplicit = key.isImplicit
+                decl.indexedModules = values.mapSet { $0.0.module }
                 decl.isObjcAccessible = key.isObjcAccessible
 
                 if decl.isObjcAccessible, configuration.retainObjcAccessible {

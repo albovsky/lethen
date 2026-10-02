@@ -2156,6 +2156,11 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotReferenced(.struct("FixtureTakenType312"))
                 self.assertConfidence(.struct("FixtureTakenType312"), .certain)
             }
+            assertReferenced(.class("FixtureGeneric312")) {
+                self.assertNotReferenced(.functionMethodInstance("windowsGeneric()"))
+                self.assertConfidence(.functionMethodInstance("windowsGeneric()"), .likely)
+                self.assertReferenced(.functionMethodInstance("takenGeneric()"))
+            }
             assertReferenced(.class("FixtureKeyPath312")) {
                 self.assertNotReferenced(.varInstance("windowsKeyPathValue"))
                 self.assertConfidence(.varInstance("windowsKeyPathValue"), .likely)

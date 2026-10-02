@@ -98,8 +98,11 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
                 uses[postfix.operator.text] = uses[postfix.operator.text] ?? false
             } else if let reference = node.as(DeclReferenceExprSyntax.self) {
                 let name = reference.baseName.identifier?.name ?? reference.baseName.text
+                // `process<Int>()` wraps the reference in a generic specialization before the call.
+                let specialized = reference.parent?.as(GenericSpecializationExprSyntax.self)
+                let callee = specialized.flatMap { $0.expression.id == reference.id ? Syntax($0) : nil } ?? Syntax(reference)
                 let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
-                    || reference.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == reference.id
+                    || callee.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == callee.id
                     || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
                 uses[name] = (uses[name] ?? false) || isMember
                 if isMember, !inPattern { constructionUses.insert(name) }

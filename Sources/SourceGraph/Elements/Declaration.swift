@@ -231,6 +231,9 @@ public final class Declaration {
     public var related: Set<Reference> = []
     public var isImplicit: Bool = false
     public var isObjcAccessible: Bool = false
+    /// The modules whose index units recorded the declaration. A file built into several modules with
+    /// different compilation conditions can declare it in only some of them. Empty when not recorded.
+    public var indexedModules: Set<String> = []
 
     private let hashValueCache: Int
 

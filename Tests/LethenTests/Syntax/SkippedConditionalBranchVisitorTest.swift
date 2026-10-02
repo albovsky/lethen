@@ -91,6 +91,8 @@ final class SkippedConditionalBranchVisitorTest: XCTestCase {
             ("_ = x is IsType", "IsType", false),
             ("_ = x as! ForcedType", "ForcedType", false),
             ("_ = Box<GenericArg>()", "GenericArg", false),
+            ("_ = process<Int>()", "process", true),
+            ("_ = Type.process<Int>()", "process", true),
             ("_ = Meta.self", "Meta", false),
             ("let t: MetaType.Type = z", "MetaType", false),
             ("_ = \\Model.keyPathProperty", "keyPathProperty", true),

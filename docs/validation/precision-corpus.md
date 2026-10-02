@@ -692,3 +692,6 @@ symbol language, lies in it; and type-only syntax (casts, generic arguments, met
 Which clause compiled is read per module: a file built into two modules with different conditions is
 checked against each module's own index occurrences, and the names of the clauses it skipped are
 recorded for that module only. No corpus row changed.
+
+A declaration's module for this rule is the module of the index unit that recorded it, not the union of the
+modules of its file, and a generic call such as `process<Int>()` is a call of `process`. No corpus row changed.

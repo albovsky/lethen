@@ -127,3 +127,17 @@ public class FixtureKeyPath312 {
         #endif
     }
 }
+
+public class FixtureGeneric312 {
+    func windowsGeneric<T>() -> T? { nil }
+    func takenGeneric<T>() -> T? { nil }
+
+    public func run() {
+        #if os(Windows)
+            _ = windowsGeneric<Int>()
+        #endif
+        #if os(Linux) || os(macOS)
+            let _: Int? = takenGeneric()
+        #endif
+    }
+}

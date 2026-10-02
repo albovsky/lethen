@@ -78,7 +78,8 @@ public final class SourceGraph {
             skippedBranchNames
         }
         let baseName = Self.baseName(of: declaration.name)
-        return declaration.location.file.modules.compactMap { names[$0]?[baseName] }.min()
+        let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
+        return modules.compactMap { names[$0]?[baseName] }.min()
     }
 
     private static let memberKinds: Set<Declaration.Kind> = [
