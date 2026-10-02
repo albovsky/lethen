@@ -186,6 +186,16 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         }
     }
 
+    /// `FrameworkWidthW100` is a case of an `@objc` enum nested in a class, which the Swift index
+    /// records under its Swift USR only, so the use resolves to no Swift declaration; the module in the
+    /// clang USR still says the import is needed.
+    func testRetainsImportUsedOnlyThroughAnUnresolvableSwiftSymbol() {
+        file("ImportsUsedNestedEnum.m") {
+            self.assertImport("MixedFramework", inFile: "ImportsUsedNestedEnum.m")
+            self.assertReferenced(.module("MixedFramework"))
+        }
+    }
+
     /// The only use is in a header the file includes, which is a compile requirement of the file too.
     func testRetainsImportUsedOnlyByAnIncludedHeader() {
         file("ImportsUsedByHeader.m") {

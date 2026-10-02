@@ -272,6 +272,10 @@ final class ObjCReferenceIndexer: Indexer {
         for file in checkedFiles {
             let usrs = recordKeys(of: file).reduce(into: Set<String>()) { $0.formUnion(referencedUSRs[$1] ?? []) }
             var referenced = symbols.modules(declaring: usrs)
+            // A Swift declaration's clang USR names its module, so a use of one counts for that module even
+            // when no Swift declaration resolves to the USR: the Swift index records a case of an `@objc`
+            // enum nested in a class under its Swift USR only.
+            referenced.formUnion(usrs.compactMap(ClangUSR.module(of:)))
             let referencedTopLevel = Set(referenced.map(ClangModuleSymbolMap.topLevel))
             let importedByUnits = importedModules(of: file)
 
@@ -357,6 +361,20 @@ enum ClangUSR {
         }
 
         return usr
+    }
+
+    /// The module a Swift-generated USR names: `WMFData` for `c:@M@WMFData@E@ImageWidth@ImageWidthW3840`
+    /// and for `c:@CM@WMFData@objc(cs)Store(im)reload`. `nil` for any other USR, including the module-less
+    /// forms clang writes for symbols it knows only from Objective-C declarations.
+    static func module(of usr: String) -> String? {
+        for prefix in ["c:@M@", "c:@CM@"] where usr.hasPrefix(prefix) {
+            let afterPrefix = usr.dropFirst(prefix.count)
+            guard let moduleEnd = afterPrefix.firstIndex(of: "@"), moduleEnd != afterPrefix.startIndex else { return nil }
+
+            return String(afterPrefix[..<moduleEnd])
+        }
+
+        return nil
     }
 
     /// What follows `prefix` and the module name after it, or `nil` when `usr` does not start with them.
