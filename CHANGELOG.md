@@ -11,6 +11,7 @@
 
 ##### Bug Fixes
 
+- `--verbose` writes its log lines to standard error, so `--format json --verbose` is valid JSON ([#95](https://github.com/albovsky/lethen/issues/95)).
 - Managed SwiftPM scans reuse the build of a package that has a target `swift build --build-tests` never compiles, such as an executable used only by a command plugin, instead of cleaning on every scan ([#89](https://github.com/albovsky/lethen/issues/89)). Lethen records such targets in the build stamp, warns that they are not scanned, and still cleans when one gains objects or units. The first scan after upgrading cleans once because the stamp format changed.
 - The warning about excluded targets that depend on scanned targets now appears for real packages. Lethen read the `target_dependencies` key of `swift package describe` with a decoder that had already converted it to camel case, so it never found any dependency.
 
