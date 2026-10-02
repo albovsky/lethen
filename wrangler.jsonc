@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lethen",
+  "compatibility_date": "2026-10-02",
+  "assets": {
+    "directory": "./site",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    { "pattern": "lethen.dev", "custom_domain": true },
+    { "pattern": "www.lethen.dev", "custom_domain": true }
+  ]
+}
