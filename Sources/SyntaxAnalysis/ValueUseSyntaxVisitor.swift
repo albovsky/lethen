@@ -138,7 +138,13 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let member = expression.as(MemberAccessExprSyntax.self) {
             // `Type.self` names no declaration of its own; the metatype carries the type reference.
             if member.declName.baseName.tokenKind == .keyword(.self), let base = member.base {
-                return resolvesMetatypes ? origins(of: base) : []
+                guard resolvesMetatypes else { return [] }
+
+                // `Page<Model>.self` decodes `Model` as well: resolve the specialized type and its arguments.
+                if let specialized = base.as(GenericSpecializationExprSyntax.self) {
+                    return specializedOrigins(of: specialized)
+                }
+                return origins(of: base)
             }
             // Passing value.field passes the field, not the containing value.
             return [locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)]
@@ -162,6 +168,18 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return origins(of: tried.expression)
         }
         return []
+    }
+
+    private func specializedOrigins(of specialized: GenericSpecializationExprSyntax) -> Set<Location> {
+        var result = origins(of: specialized.expression)
+        for argument in specialized.genericArgumentClause.arguments {
+            if case let .type(type) = argument.argument {
+                result.formUnion(TypeSyntaxInspector(sourceLocationBuilder: locations).types(for: type).map {
+                    locations.location(at: $0.positionAfterSkippingLeadingTrivia)
+                })
+            }
+        }
+        return result
     }
 
     private func recordParameterTypeNames(

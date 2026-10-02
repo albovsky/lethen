@@ -2254,8 +2254,50 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct312Key")) {
                 self.assertAssignOnlyProperty(.varInstance("keyNotDecoded"))
             }
+            assertReferenced(.struct("FixtureStruct312Lazy")) {
+                self.assertNotAssignOnlyProperty(.varInstance("lazyAnchor"))
+            }
+            assertReferenced(.struct("FixtureStruct312Holder")) {
+                self.assertAssignOnlyProperty(.varInstance("child"))
+            }
+            assertReferenced(.struct("FixtureStruct312Child")) {
+                self.assertNotAssignOnlyProperty(.varInstance("childRequired"))
+            }
+            assertReferenced(.struct("FixtureStruct312Page")) {
+                self.assertNotAssignOnlyProperty(.varInstance("items"))
+                self.assertNotAssignOnlyProperty(.varInstance("total"))
+            }
+            assertReferenced(.struct("FixtureStruct312Item")) {
+                self.assertNotAssignOnlyProperty(.varInstance("itemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312LabeledA")) {
+                self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312LabeledB")) {
+                self.assertNotAssignOnlyProperty(.varInstance("labeledBDecoded"))
+            }
             assertReferenced(.struct("FixtureStruct312Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notDecodedByCustom"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedDecodeTopLevel() throws {
+        let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
+
+        try analyze(retainPublic: true, additionalFilesToIndex: [main]) {
+            assertReferenced(.struct("FixtureStruct314")) {
+                self.assertNotAssignOnlyProperty(.varInstance("topLevelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct314Undecoded")) {
+                self.assertAssignOnlyProperty(.varInstance("topLevelNotDecoded"))
+            }
+        }
+
+        // Without the top-level file nothing decodes FixtureStruct314.
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct314")) {
+                self.assertAssignOnlyProperty(.varInstance("topLevelDecoded"))
             }
         }
     }

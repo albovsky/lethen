@@ -148,6 +148,41 @@ public struct FixtureStruct312Key: CodingKey, Decodable {
     }
 }
 
+struct FixtureStruct312Lazy: Decodable {
+    let lazyAnchor: Int
+    // The synthesized initializer does not decode a lazy property. Lethen never reports one as assign-only, so this
+    // is not observable in the results; the rule only keeps the model from inventing reads.
+    lazy var lazyNotDecoded = 0
+}
+
+struct FixtureStruct312Holder: Decodable {
+    // Control: optional, so decoded with decodeIfPresent and not required itself.
+    let child: FixtureStruct312Child?
+}
+
+struct FixtureStruct312Child: Decodable {
+    // Retained: decodeIfPresent still runs Child's synthesized initializer when the key is present.
+    let childRequired: Int
+}
+
+struct FixtureStruct312Page<Value: Decodable>: Decodable {
+    let items: [Value]
+    let total: Int
+}
+
+struct FixtureStruct312Item: Decodable {
+    // Decoded as the generic argument of a decoded Page.
+    let itemDecoded: Int
+}
+
+struct FixtureStruct312LabeledA: Decodable {
+    let labeledADecoded: Int
+}
+
+struct FixtureStruct312LabeledB: Decodable {
+    let labeledBDecoded: Int
+}
+
 struct FixtureStruct312Custom: Decodable {
     // Control: an explicit init(from:) replaces the synthesized one, so its writes count normally.
     let notDecodedByCustom: Int
@@ -176,9 +211,15 @@ public class FixtureClass312Retainer {
         valueOnly(FixtureStruct312ValueOnly(valueNotDecoded: 2))
         composed(FixtureStruct312Composed.self)
         aliased(FixtureStruct312Aliased.self)
+        _ = try JSONDecoder().decode(FixtureStruct312Lazy.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Holder.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Page<FixtureStruct312Item>.self, from: data)
+        labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 
     func variadic<T: Decodable>(_: T.Type...) {}
+
+    func labeled(types _: any Decodable.Type...) {}
 
     func boxed<T: Decodable>(_: FixtureStruct312Box<T>) {}
 

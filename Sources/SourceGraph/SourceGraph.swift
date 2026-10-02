@@ -261,6 +261,12 @@ public final class SourceGraph {
         allReferencesByUsr[reference.usr, default: []].insert(reference)
     }
 
+    /// Adds a reference from top-level code, which has no declaration to hold it, after `indexingComplete`.
+    public func addRoot(_ reference: Reference) {
+        add(reference)
+        _ = rootReferences.insert(reference)
+    }
+
     public func add(_ references: Set<Reference>) {
         allReferences.formUnion(references)
         references.forEach { allReferencesByUsr[$0.usr, default: []].insert($0) }

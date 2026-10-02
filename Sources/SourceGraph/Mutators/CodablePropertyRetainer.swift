@@ -102,7 +102,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
         markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences) { _, property in
-            !property.isImplicit && !property.isComplexProperty
+            !property.isImplicit && !property.isComplexProperty ? .read : .skip
         }
     }
 
@@ -129,7 +129,9 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         let decodableNames = decodableProtocolNames
 
         for use in graph.allReferences where use.kind == .normal && !use.valueArguments.isEmpty {
-            guard let caller = use.parent, !caller.isImplicit else { continue }
+            // A use with no parent is top-level code, which holds its reads as root references.
+            let caller = use.parent
+            guard caller?.isImplicit != true else { continue }
 
             let decoded: Set<Reference>
             if let callee = graph.declaration(withUsr: use.usr) {
@@ -148,7 +150,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             guard !decoded.isEmpty else { continue }
 
             markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: decoded) { type, property in
-                isDecoded(property, of: type)
+                decodeUse(of: property, in: type)
             }
         }
     }
@@ -172,7 +174,17 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         let parameters = callee.parameterTypeNames
         var decoded: Set<Reference> = []
         var index = 0
+        var variadic: Int?
         for argument in use.valueArguments {
+            // Only the first argument of a variadic parameter carries its label; the rest follow unlabeled.
+            if let current = variadic, argument.label == nil {
+                if !parameters[current].names.isDisjoint(with: decodableNames) {
+                    decoded.formUnion(argument.references)
+                }
+                continue
+            }
+            variadic = nil
+
             while index < parameters.count, parameters[index].label != argument.label {
                 index += 1
             }
@@ -181,10 +193,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             if !parameters[index].names.isDisjoint(with: decodableNames) {
                 decoded.formUnion(argument.references)
             }
-            // A variadic parameter takes the arguments that follow it too.
-            if !parameters[index].isVariadic {
-                index += 1
+            if parameters[index].isVariadic {
+                variadic = index
             }
+            index += 1
         }
         return decoded
     }
@@ -222,15 +234,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         return (isDecoder || isContainer) && usr.range(of: "(6decode|15decodeIfPresent)_", options: .regularExpression) != nil
     }
 
-    private func isDecoded(_ property: Declaration, of type: Declaration) -> Bool {
-        // A `let` with an initial value cannot be assigned, so the synthesized initializer skips it.
-        guard !property.isImplicit, !property.isComplexProperty, !property.isInitializedConstant else { return false }
-
-        // `declaredType` is sanitized of `?` and `!`, so read optionality from the property's mangled
-        // type: `Int?`, `Int!` and `Optional<Int>` all end in the `Sg` sugar before the `vp` suffix.
-        if property.usrs.contains(where: { $0.hasSuffix("Sgvp") }) {
-            return false
-        }
+    /// How the synthesized `init(from:)` treats a stored property.
+    private func decodeUse(of property: Declaration, in type: Declaration) -> PropertyUse {
+        // Computed properties, lazy properties and a `let` with an initial value are never decoded: the
+        // synthesized initializer does not assign them.
+        guard !property.isImplicit, !property.isComplexProperty, !property.isInitializedConstant,
+              !property.modifiers.contains("lazy") else { return .skip }
 
         // An explicit CodingKeys enum limits the properties the synthesized initializer decodes.
         let extensions = graph.extensions[type] ?? []
@@ -239,19 +248,35 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             $0.kind == .enum && $0.name == "CodingKeys" && !$0.isImplicit
                 && graph.inheritedTypeReferences(of: $0).contains { $0.declarationKind == .protocol && $0.name == "CodingKey" }
         }
-        if let codingKeys {
-            return codingKeys.declarations.contains { $0.kind == .enumelement && $0.name == property.name }
+        if let codingKeys, !codingKeys.declarations.contains(where: { $0.kind == .enumelement && $0.name == property.name }) {
+            return .skip
         }
 
-        return true
+        // `declaredType` is sanitized of `?` and `!`, so read optionality from the property's mangled
+        // type: `Int?`, `Int!` and `Optional<Int>` all end in the `Sg` sugar before the `vp` suffix. An optional
+        // property is decoded with `decodeIfPresent`, so it is not required, but its type is still decoded.
+        if property.usrs.contains(where: { $0.hasSuffix("Sgvp") }) {
+            return .traverse
+        }
+
+        return .read
+    }
+
+    private enum PropertyUse {
+        /// Not decoded or encoded at all.
+        case skip
+        /// Its type is coded, but nothing requires the property itself.
+        case traverse
+        /// Required by the synthesized initializer or encoder.
+        case read
     }
 
     private func markReads(
         from use: Reference,
-        caller: Declaration,
+        caller: Declaration?,
         synthesizedTypes: Set<Declaration>,
         referencedBy references: Set<Reference>,
-        includes: (Declaration, Declaration) -> Bool
+        classify: (Declaration, Declaration) -> PropertyUse
     ) {
         var visited: Set<Declaration> = []
         var types = ValueTypeResolver.valueTypes(referencedBy: references, in: graph, visited: &visited)
@@ -259,15 +284,23 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         while let type = types.popFirst() {
             guard synthesizedTypes.contains(type), seen.insert(type).inserted else { continue }
 
-            let properties = type.declarations.filter { $0.kind == .varInstance && includes(type, $0) }
-            for property in properties {
+            for property in type.declarations where property.kind == .varInstance {
+                let propertyUse = classify(type, property)
+                guard propertyUse != .skip else { continue }
+
                 // Synthesized coding handles stored values recursively.
                 types.formUnion(ValueTypeResolver.valueTypes(referencedBy: property.references, in: graph, visited: &visited))
+                guard propertyUse == .read else { continue }
+
                 for target in [property] + property.declarations.filter({ $0.kind == .functionAccessorGetter }) {
                     for usr in target.usrs {
                         let reference = Reference(name: target.name, kind: .normal, declarationKind: target.kind, usr: usr, location: use.location)
                         reference.parent = caller
-                        graph.add(reference, from: caller)
+                        if let caller {
+                            graph.add(reference, from: caller)
+                        } else {
+                            graph.addRoot(reference)
+                        }
                     }
                 }
             }
