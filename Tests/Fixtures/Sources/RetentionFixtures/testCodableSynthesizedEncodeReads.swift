@@ -126,6 +126,17 @@ struct FixtureStruct226Computed: Encodable {
     }
 }
 
+struct FixtureStruct226ObservedChild: Encodable {
+    // Held by a stored property with an observer, which is still encoded.
+    let observedChildEncoded: Int
+}
+
+struct FixtureStruct226Observed: Encodable {
+    var observedChild: FixtureStruct226ObservedChild {
+        didSet {}
+    }
+}
+
 struct FixtureStruct226Custom: Encodable {
     // Control: an explicit encode(to:) replaces the synthesized one, so nothing reads it.
     let notEncodedByCustom: Int
@@ -145,6 +156,7 @@ public class FixtureClass226Retainer {
         try [
             JSONEncoder().encode(FixtureStruct226(encoded: 1, nested: FixtureStruct226Nested(nestedValue: 2))),
             JSONEncoder().encode(FixtureStruct226Codable(codableEncoded: 3)),
+            JSONEncoder().encode(FixtureStruct226Observed(observedChild: FixtureStruct226ObservedChild(observedChildEncoded: 15))),
             JSONEncoder().encode(FixtureStruct226Computed(computedEncoded: 14)),
             JSONEncoder().encode(FixtureStruct226Outer(box: FixtureStruct226Box())),
             JSONEncoder().encode(FixtureStruct226Overload(overloadEncoded: 13)),

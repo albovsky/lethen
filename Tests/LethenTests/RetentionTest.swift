@@ -2274,6 +2274,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotAssignOnlyProperty(.varInstance("computedEncoded"))
                 self.assertNotReferenced(.varInstance("computedNotEncoded"))
             }
+            assertReferenced(.struct("FixtureStruct226ObservedChild")) {
+                self.assertNotAssignOnlyProperty(.varInstance("observedChildEncoded"))
+            }
             assertReferenced(.struct("FixtureStruct226Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
             }
@@ -2464,6 +2467,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct312QualifiedConcrete")) {
                 self.assertAssignOnlyProperty(.varInstance("qualifiedConcreteNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ObservedChild")) {
+                self.assertNotAssignOnlyProperty(.varInstance("observedChildDecoded"))
             }
             assertReferenced(.struct("FixtureStruct312LabeledA")) {
                 self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))

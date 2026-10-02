@@ -426,6 +426,17 @@ struct FixtureStruct312QualifiedOuter: Decodable {
     let value: FixtureQualifier312Phantom.Wrapper<FixtureStruct312QualifiedConcrete>
 }
 
+struct FixtureStruct312ObservedChild: Decodable {
+    // Held by a stored property with an observer, which is still decoded.
+    let observedChildDecoded: Int
+}
+
+struct FixtureStruct312Observed: Decodable {
+    var observedChild: FixtureStruct312ObservedChild {
+        didSet {}
+    }
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -500,6 +511,8 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureAlias312Custom.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312QualifiedOuter.self, from: data)
         _ = FixtureStruct312QualifiedConcrete(qualifiedConcreteNotDecoded: 1)
+        _ = FixtureStruct312ObservedChild(observedChildDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Observed.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 
