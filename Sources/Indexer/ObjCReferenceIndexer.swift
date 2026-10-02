@@ -35,17 +35,50 @@ final class ObjCReferenceIndexer: Indexer {
 
     /// Indexes the references and returns the files whose text could not be read for string literals.
     func perform() throws -> [FilePath] {
-        let records = recordJobs()
         let interval = logger.beginInterval("index:objc")
 
-        let occurrences = try JobPool(jobs: records).flatMap { record -> [Occurrence] in
+        // The index shows references by symbol, not the names that runtime lookups spell in strings and
+        // selectors, so those count for the string-literal rule as Swift literals do. Each source file
+        // is read once for both that and its `@import` statements.
+        let sourcesByPath = Dictionary(uniqueKeysWithValues: sourceFiles.keys.map { ($0.path, $0) })
+        var importsByFile: [SourceFile: [ImportStatement]] = [:]
+        let analyzesImports = !configuration.disableUnusedImportAnalysis
+        let sourceLiterals = ClangLiteralScanner.scan(files: sourceFiles.keys.map(\.path).sorted()) { path, bytes in
+            guard analyzesImports, let file = sourcesByPath[path] else { return }
+
+            let statements = ClangImportScanner.imports(in: bytes, file: file)
+            if !statements.isEmpty {
+                importsByFile[file] = statements
+            }
+        }
+
+        // An import is checked only for a module the scan indexed Swift code of, as for Swift imports.
+        let indexedModules = graph.withLock { graph in
+            Set(importsByFile.values.joined().map(\.module).filter { graph.isModuleIndexed($0) })
+        }
+        let checkedFiles = importsByFile.filter { $0.value.contains { indexedModules.contains($0.module) } }.keys.sorted()
+        var neededRecords: Set<RecordKey> = []
+        for file in checkedFiles {
+            neededRecords.formUnion(recordKeys(of: file))
+        }
+
+        let records = recordJobs(neededRecords: neededRecords)
+
+        let results = try JobPool(jobs: records).flatMap { record -> [RecordResult] in
             let reader = try RecordReader(indexStore: record.store, recordName: record.name)
             var occurrences: [Occurrence] = []
+            var referencedUSRs: Set<String> = []
 
             reader.forEach(occurrence: { occurrence in
                 let usr = occurrence.symbol.usr
-                guard usr.hasPrefix("c:"),
-                      occurrence.roles.contains(.reference),
+                guard occurrence.roles.contains(.reference) else { return }
+
+                if record.collectsReferencedUSRs {
+                    referencedUSRs.insert(usr)
+                }
+
+                guard record.reportsReferences,
+                      usr.hasPrefix("c:"),
                       occurrence.roles.isDisjoint(with: [.definition, .declaration])
                 else { return }
 
@@ -61,16 +94,27 @@ final class ObjCReferenceIndexer: Indexer {
                 occurrences.append(Occurrence(usr: usr, file: record.file, line: location.line, column: location.column))
             })
 
-            return occurrences
+            return [RecordResult(key: record.key, occurrences: occurrences, referencedUSRs: referencedUSRs)]
         }
+        let occurrences = results.flatMap(\.occurrences)
 
-        // The index shows references by symbol, not the names that runtime lookups spell in strings and
-        // selectors, so those count for the string-literal rule as Swift literals do.
-        let literalFiles = Set(records.map(\.file.path)).union(sourceFiles.keys.map(\.path)).sorted()
-        let literals = ClangLiteralScanner.scan(files: literalFiles)
+        let headerLiterals = ClangLiteralScanner.scan(
+            files: Set(records.filter(\.reportsReferences).map(\.file.path)).subtracting(sourcesByPath.keys).sorted()
+        )
+        let literals = (
+            tokens: sourceLiterals.tokens.union(headerLiterals.tokens),
+            unreadFiles: (sourceLiterals.unreadFiles + headerLiterals.unreadFiles).sorted()
+        )
         for file in literals.unreadFiles {
             logger.debug("Cannot read \(file.string) for string literals")
         }
+
+        let referencedModules = try referencedModulesByFile(
+            checkedFiles: checkedFiles,
+            importsByFile: importsByFile,
+            indexedModules: indexedModules,
+            referencedUSRs: Dictionary(results.map { ($0.key, $0.referencedUSRs) }, uniquingKeysWith: { $0.union($1) })
+        )
 
         var unmatched = 0
         graph.withLock { graph in
@@ -97,6 +141,14 @@ final class ObjCReferenceIndexer: Indexer {
 
             graph.add(references)
             graph.addLiteralTokens(literals.tokens)
+
+            // Not `addIndexedModules`: the app target's clang units name no module, and a module written
+            // in Objective-C must not become one the Swift imports of are checked.
+            for (file, statements) in importsByFile.sorted(by: { $0.key < $1.key }) {
+                file.importStatements = statements
+                file.clangReferencedModules = referencedModules[file] ?? []
+                graph.addIndexedSourceFile(file)
+            }
             logger.debug("Added \(references.count) references from \(sourceFiles.count) C and Objective-C files; \(unmatched) clang references name no Swift declaration")
         }
 
@@ -124,6 +176,12 @@ final class ObjCReferenceIndexer: Indexer {
         let store: IndexStore
         let name: String
         let file: SourceFile
+        let key: RecordKey
+        /// Whether the record's references count as uses of Swift declarations. A record excluded from
+        /// indexing does not, but when an imported module's file includes it, its uses still decide
+        /// whether the import is needed.
+        let reportsReferences: Bool
+        let collectsReferencedUSRs: Bool
     }
 
     private struct Occurrence {
@@ -133,9 +191,28 @@ final class ObjCReferenceIndexer: Indexer {
         let column: Int
     }
 
+    private struct RecordResult {
+        let key: RecordKey
+        let occurrences: [Occurrence]
+        let referencedUSRs: Set<String>
+    }
+
+    /// The records of the file's units that are not system headers: its own and those it includes.
+    private func recordKeys(of file: SourceFile) -> Set<RecordKey> {
+        var keys: Set<RecordKey> = []
+        for unit in sourceFiles[file] ?? [] {
+            unit.unit.forEach(dependency: { dependency in
+                guard dependency.kind == .record, !dependency.isSystem else { return }
+
+                keys.insert(RecordKey(store: ObjectIdentifier(unit.store), name: dependency.name))
+            })
+        }
+        return keys
+    }
+
     /// Each record once: a header's record is shared by every unit that includes it. A record's
     /// occurrences are located in the record's own file, which for a header is not the unit's main file.
-    private func recordJobs() -> [RecordJob] {
+    private func recordJobs(neededRecords: Set<RecordKey>) -> [RecordJob] {
         let filesByPath = Dictionary(uniqueKeysWithValues: sourceFiles.keys.map { ($0.path, $0) })
         var seen: Set<RecordKey> = []
         var jobs: [RecordJob] = []
@@ -149,10 +226,19 @@ final class ObjCReferenceIndexer: Indexer {
                     guard seen.insert(key).inserted else { return }
 
                     let path = FilePath.makeAbsolute(dependency.filePath)
-                    guard !configuration.indexExcludeMatchers.anyMatch(filename: path.string) else { return }
+                    let reportsReferences = !configuration.indexExcludeMatchers.anyMatch(filename: path.string)
+                    let collectsReferencedUSRs = neededRecords.contains(key)
+                    guard reportsReferences || collectsReferencedUSRs else { return }
 
                     let file = filesByPath[path] ?? SourceFile(path: path, modules: sourceFile.modules)
-                    jobs.append(RecordJob(store: unit.store, name: dependency.name, file: file))
+                    jobs.append(RecordJob(
+                        store: unit.store,
+                        name: dependency.name,
+                        file: file,
+                        key: key,
+                        reportsReferences: reportsReferences,
+                        collectsReferencedUSRs: collectsReferencedUSRs
+                    ))
                 })
             }
         }
@@ -160,9 +246,60 @@ final class ObjCReferenceIndexer: Indexer {
         return jobs
     }
 
-    private struct RecordKey: Hashable {
-        let store: ObjectIdentifier
-        let name: String
+    /// The modules, by qualified name, whose symbols each checked file uses, as far as the index shows.
+    ///
+    /// A file uses what its own record and the headers it includes reference, since a header's uses are
+    /// compile requirements of the translation unit too, and counting them errs toward keeping imports.
+    /// A module also counts as used when the file uses a symbol of a non-system module it depends on:
+    /// the module may re-export it, as `export *` in a module map does by default. And a module the
+    /// index cannot speak for counts as used, never as unused: one with no module unit in the stores,
+    /// as every SwiftPM module is, or one the file's units do not list as imported.
+    private func referencedModulesByFile(
+        checkedFiles: [SourceFile],
+        importsByFile: [SourceFile: [ImportStatement]],
+        indexedModules: Set<String>,
+        referencedUSRs: [RecordKey: Set<String>]
+    ) throws -> [SourceFile: Set<String>] {
+        guard !checkedFiles.isEmpty else { return [:] }
+
+        var stores: [IndexStore] = []
+        for unit in sourceFiles.values.joined() where !stores.contains(where: { $0 === unit.store }) {
+            stores.append(unit.store)
+        }
+        let symbols = try ClangModuleSymbolMap(stores: stores, importedModules: indexedModules, logger: logger)
+
+        var result: [SourceFile: Set<String>] = [:]
+        for file in checkedFiles {
+            let usrs = recordKeys(of: file).reduce(into: Set<String>()) { $0.formUnion(referencedUSRs[$1] ?? []) }
+            var referenced = symbols.modules(declaring: usrs)
+            let referencedTopLevel = Set(referenced.map(ClangModuleSymbolMap.topLevel))
+            let importedByUnits = importedModules(of: file)
+
+            for module in Set((importsByFile[file] ?? []).map(\.module)) where indexedModules.contains(module) {
+                let uses = !symbols.modulesWithUnits.contains(module) || !importedByUnits.contains(module)
+                    || !referencedTopLevel.isDisjoint(with: symbols.transitiveDependencies(of: module))
+                if uses {
+                    referenced.insert(module)
+                }
+            }
+
+            result[file] = referenced
+        }
+
+        return result
+    }
+
+    /// The top-level names of the modules the file's units import.
+    private func importedModules(of file: SourceFile) -> Set<String> {
+        var modules: Set<String> = []
+        for unit in sourceFiles[file] ?? [] {
+            unit.unit.forEach(dependency: { dependency in
+                if dependency.kind == .unit {
+                    modules.insert(ClangModuleSymbolMap.topLevel(dependency.moduleName))
+                }
+            })
+        }
+        return modules
     }
 
     /// Resolves a clang USR to the Swift declaration it names: by the USR itself, which clang writes

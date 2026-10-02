@@ -233,6 +233,7 @@ swift_library(
 swift_library(
     name = "Indexer",
     srcs = [
+        "Indexer/ClangImportScanner.swift",
         "Indexer/ClangLiteralScanner.swift",
         "Indexer/IndexPipeline.swift",
         "Indexer/IndexPlan.swift",

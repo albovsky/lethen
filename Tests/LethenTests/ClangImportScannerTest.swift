@@ -1,0 +1,152 @@
+@testable import Indexer
+@testable import SourceGraph
+import SystemPackage
+import XCTest
+
+final class ClangImportScannerTest: XCTestCase {
+    private let file = SourceFile(path: FilePath("/project/File.m"), modules: [])
+
+    private func imports(_ source: String) -> [ImportStatement] {
+        ClangImportScanner.imports(in: Array(source.utf8), file: file)
+    }
+
+    func testFindsPlainImport() throws {
+        let statement = try XCTUnwrap(imports("@import WMF;\n").first)
+
+        XCTAssertEqual(statement.module, "WMF")
+        XCTAssertEqual(statement.qualifiedModule, "WMF")
+        XCTAssertFalse(statement.isConditional)
+        XCTAssertFalse(statement.isTestable)
+        XCTAssertFalse(statement.isExported)
+        XCTAssertEqual(statement.commentCommands, [])
+    }
+
+    func testSubmodulePathKeepsTheTopLevelModule() throws {
+        let statement = try XCTUnwrap(imports("@import WMF.WMFLogging;").first)
+
+        XCTAssertEqual(statement.module, "WMF")
+        XCTAssertEqual(statement.qualifiedModule, "WMF.WMFLogging")
+    }
+
+    func testWhitespaceAroundDotsAndSemicolon() throws {
+        let statement = try XCTUnwrap(imports("@import   WMF . WMFLogging\t;").first)
+
+        XCTAssertEqual(statement.qualifiedModule, "WMF.WMFLogging")
+    }
+
+    func testLineAndColumnPointAtTheAtSign() throws {
+        let source = "#import <Foundation/Foundation.h>\n\n  @import Foundation;\nint x;\n\t@import WMF;\n"
+        let found = imports(source)
+
+        XCTAssertEqual(found.map(\.qualifiedModule), ["Foundation", "WMF"])
+        XCTAssertEqual(found.map(\.location.line), [3, 5])
+        XCTAssertEqual(found.map(\.location.column), [3, 2])
+    }
+
+    func testLineNumbersCountSplicedLines() throws {
+        let statement = try XCTUnwrap(imports("#define A \\\n  1\n@import WMF;\n").first)
+
+        XCTAssertEqual(statement.location.line, 3)
+    }
+
+    func testImportSplitAcrossSplicedLines() throws {
+        let statement = try XCTUnwrap(imports("@import WMF.\\\nWMFLogging;\n").first)
+
+        XCTAssertEqual(statement.qualifiedModule, "WMF.WMFLogging")
+    }
+
+    func testImportsInCommentsAndStringsAreNotFound() {
+        XCTAssertEqual(imports("// @import WMF;\n").count, 0)
+        XCTAssertEqual(imports("/* @import WMF;\n@import Other; */\n").count, 0)
+        XCTAssertEqual(imports(#"NSString *s = @"@import WMF;";"#).count, 0)
+        XCTAssertEqual(imports("char c = '@'; // @import WMF;\n").count, 0)
+        XCTAssertEqual(imports("const char *s = R\"(@import WMF;)\";\n").count, 0)
+    }
+
+    func testImportAfterCommentsIsFound() {
+        XCTAssertEqual(imports("/* a */ @import WMF; // b\n@import Other;\n").map(\.module), ["WMF", "Other"])
+    }
+
+    func testHeaderImportsAreNotModuleImports() {
+        XCTAssertEqual(imports("#import <WMF/WMF.h>\n#import \"WMF.h\"\n#include <WMF/WMF.h>\n").count, 0)
+    }
+
+    func testMalformedImportsAreNotFound() {
+        XCTAssertEqual(imports("@importFoo;\n").count, 0)
+        XCTAssertEqual(imports("@import;\n").count, 0)
+        XCTAssertEqual(imports("@import WMF\n").count, 0)
+        XCTAssertEqual(imports("@import WMF.;\n").count, 0)
+        XCTAssertEqual(imports("@import 1WMF;\n").count, 0)
+    }
+
+    func testConditionalImports() {
+        let source = """
+        @import A;
+        #if FLAG
+        @import B;
+        #if NESTED
+        @import C;
+        #endif
+        @import D;
+        #endif
+        @import E;
+        #ifdef X
+          # endif
+        @import F;
+        #ifndef Y
+        @import G;
+        #else
+        @import H;
+        #endif
+        """
+        let conditional = Dictionary(uniqueKeysWithValues: imports(source).map { ($0.module, $0.isConditional) })
+
+        XCTAssertEqual(conditional, [
+            "A": false, "B": true, "C": true, "D": true, "E": false, "F": false, "G": true, "H": true,
+        ])
+    }
+
+    func testIgnoreCommandOnTheSameLine() throws {
+        let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
+
+        XCTAssertEqual(statement.commentCommands, [.ignore])
+    }
+
+    func testIgnoreCommandInBlockCommentOnTheSameLine() throws {
+        let statement = try XCTUnwrap(imports("@import WMF; /* periphery:ignore */\n").first)
+
+        XCTAssertEqual(statement.commentCommands, [.ignore])
+    }
+
+    func testIgnoreCommandOnThePreviousLine() throws {
+        let statement = try XCTUnwrap(imports("// periphery:ignore\n@import WMF;\n").first)
+
+        XCTAssertEqual(statement.commentCommands, [.ignore])
+    }
+
+    func testCommentCommandsDoNotReachOtherImports() {
+        let found = imports("// periphery:ignore\n@import A;\n@import B;\n@import C; // periphery:ignore\n@import D;\n")
+
+        XCTAssertEqual(found.map(\.commentCommands), [[.ignore], [], [.ignore], []])
+    }
+
+    /// A comment that trails other code belongs to that code, as trivia does in Swift.
+    func testCommentTrailingOtherCodeIsNotACommandForTheNextImport() throws {
+        let statement = try XCTUnwrap(imports("int x; // periphery:ignore\n@import WMF;\n").first)
+
+        XCTAssertEqual(statement.commentCommands, [])
+    }
+
+    func testOrdinaryCommentsAreNotCommands() throws {
+        let statement = try XCTUnwrap(imports("// needed for the logger\n@import WMF; // keep\n").first)
+
+        XCTAssertEqual(statement.commentCommands, [])
+    }
+
+    func testCarriageReturnLineEndings() throws {
+        let found = imports("@import A; // periphery:ignore\r\n@import B;\r\n")
+
+        XCTAssertEqual(found.map(\.location.line), [1, 2])
+        XCTAssertEqual(found.map(\.commentCommands), [[.ignore], []])
+    }
+}

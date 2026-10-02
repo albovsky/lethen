@@ -14,19 +14,33 @@ extension CommentCommand {
             default: nil
             }
 
-            guard let (comment, markerLength) = parsed,
-                  let range = comment.range(of: "periphery:") else { return nil }
+            guard let (comment, markerLength) = parsed else { return nil }
 
-            // Only respect commands at the start of a comment (after the marker and whitespace).
-            let prefixStart = comment.index(comment.startIndex, offsetBy: markerLength)
-            let prefixBeforeCommand = String(comment[prefixStart ..< range.lowerBound])
-            guard prefixBeforeCommand.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-
-            var rawCommand = String(comment[range.upperBound...]).replacingOccurrences(of: "*/", with: "").trimmed
-            // Anything after '-' in a comment command is ignored.
-            rawCommand = String(rawCommand.split(separator: "-").first ?? "").trimmed
-            return CommentCommand.parse(rawCommand)
+            return parseCommand(inComment: comment, markerLength: markerLength)
         } ?? []
+    }
+
+    /// The command in a comment's text, marker included (`// periphery:ignore`, `/* periphery:ignore */`),
+    /// for sources SwiftSyntax does not parse, such as C and Objective-C files.
+    public static func parseCommand(inComment comment: String) -> CommentCommand? {
+        let markerLength = comment.hasPrefix("///") || comment.hasPrefix("/**") ? 3 : 2
+        return parseCommand(inComment: comment, markerLength: markerLength)
+    }
+
+    private static func parseCommand(inComment comment: String, markerLength: Int) -> CommentCommand? {
+        guard let range = comment.range(of: "periphery:") else { return nil }
+
+        // Only respect commands at the start of a comment (after the marker and whitespace).
+        let prefixStart = comment.index(comment.startIndex, offsetBy: markerLength, limitedBy: comment.endIndex) ?? comment.endIndex
+        guard prefixStart <= range.lowerBound else { return nil }
+
+        let prefixBeforeCommand = String(comment[prefixStart ..< range.lowerBound])
+        guard prefixBeforeCommand.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+
+        var rawCommand = String(comment[range.upperBound...]).replacingOccurrences(of: "*/", with: "").trimmed
+        // Anything after '-' in a comment command is ignored.
+        rawCommand = String(rawCommand.split(separator: "-").first ?? "").trimmed
+        return CommentCommand.parse(rawCommand)
     }
 
     static func parse(_ rawCommand: String) -> Self? {

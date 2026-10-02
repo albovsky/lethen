@@ -241,7 +241,11 @@ Subscripts are analyzed like functions, and so are closures stored in a property
 
 ### Unused imports
 
-An `import` of a module scanned in the same run that the file never uses. Modules outside the scan are never reported, because a module can re-export others with `@_exported`, and neither are `public`, `@testable`, or conditional imports. Mixed Swift and Objective-C targets produce false positives here; disable the analysis with `--disable-unused-import-analysis` or exclude those files from the results, and keep specific modules with `--retain-unused-imported-modules`.
+An `import` of a module scanned in the same run that the file never uses. Modules outside the scan are never reported, because a module can re-export others with `@_exported`, and neither are `public`, `@testable`, or conditional imports.
+
+An `@import` in a C or Objective-C file is reported when the file, and the headers it includes, uses no symbol of that module or submodule, nor of a module it depends on, as clang's index shows. The finding names the import as written, such as `MyFramework.Logging`. A symbol counts through any submodule the umbrella header may have brought it from, and a module counts as used when the file uses a symbol of a module it depends on, because it may re-export that module. `#import` and `#include` lines are not considered, only `@import`. A module is checked only when the scan indexed its Swift code, and system modules a module re-exports are not considered. A module the index holds no module unit for, as in a SwiftPM build, is never reported.
+
+Disable the analysis with `--disable-unused-import-analysis` or exclude files from the results, and keep specific modules with `--retain-unused-imported-modules`. A `// periphery:ignore` comment on the line of an `@import`, or the line above it, keeps it.
 
 ### Assign-only properties
 

@@ -6,11 +6,16 @@ import XCTest
 /// generated `MixedLanguageProject-Swift.h` and calls into `ObjCExposed.swift`; `ObjCCaller.h` names one
 /// Swift class in a function prototype.
 final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
+    private static func makeConfiguration() -> Configuration {
+        let configuration = Configuration()
+        configuration.schemes = ["MixedLanguageProject"]
+        return configuration
+    }
+
     override static func setUp() {
         super.setUp()
 
-        let configuration = Configuration()
-        configuration.schemes = ["MixedLanguageProject"]
+        let configuration = makeConfiguration()
 
         setupState.capture {
             try build(projectPath: MixedLanguageProjectPath, configuration: configuration)
@@ -143,5 +148,85 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
 
         let header = try XCTUnwrap(explanation(of: .class("NamedInObjCHeader")))
         XCTAssertTrue(header.contains("ObjCCaller.h:6:28 references class NamedInObjCHeader"), header)
+    }
+
+    // MARK: - Unused `@import`
+
+    /// An `@import` of a module whose Swift code the scan indexed (`MixedFramework`) is unused when the
+    /// file uses no symbol of it. `@import Foundation` is never checked: the scan indexed no Swift code
+    /// of it.
+    func testReportsImportsThatUseNothingFromTheModule() {
+        file("ImportsNothing.m") {
+            self.assertImport("MixedFramework", inFile: "ImportsNothing.m")
+            self.assertNotReferenced(.module("MixedFramework", line: 2))
+            self.assertReferenced(.module("Foundation"))
+        }
+    }
+
+    /// Submodule precision: the file uses `MFIsEqual` from `MixedFramework.MFComparison` but nothing
+    /// from `MixedFramework.MFLogging`, which is reported by its qualified name.
+    func testReportsUnusedSubmoduleImportButKeepsTheUsedOne() {
+        file("ImportsUsedFunction.m") {
+            self.assertImport("MixedFramework.MFComparison", inFile: "ImportsUsedFunction.m")
+            self.assertNotReferenced(.module("MixedFramework.MFLogging"))
+            self.assertReferenced(.module("MixedFramework.MFComparison"))
+            self.assertReferenced(.module("MixedFramework"))
+        }
+    }
+
+    func testRetainsImportsWhoseModuleIsUsed() {
+        file("ImportsUsedMacro.m") {
+            self.assertImport("MixedFramework.MFLogging", inFile: "ImportsUsedMacro.m")
+            self.assertReferenced(.module("MixedFramework.MFLogging"))
+        }
+        // A Swift class of the framework, reached through the generated header's submodule.
+        file("ImportsUsedSwiftClass.m") {
+            self.assertImport("MixedFramework", inFile: "ImportsUsedSwiftClass.m")
+            self.assertReferenced(.module("MixedFramework"))
+        }
+    }
+
+    /// The only use is in a header the file includes, which is a compile requirement of the file too.
+    func testRetainsImportUsedOnlyByAnIncludedHeader() {
+        file("ImportsUsedByHeader.m") {
+            self.assertImport("MixedFramework.MFComparison", inFile: "ImportsUsedByHeader.m")
+            self.assertReferenced(.module("MixedFramework.MFComparison"))
+        }
+    }
+
+    /// Controls: an ignore command and a conditional import are read and kept.
+    func testRetainsIgnoredAndConditionalImports() {
+        file("ImportsIgnored.m") {
+            self.assertImport("MixedFramework", inFile: "ImportsIgnored.m")
+            self.assertImport("MixedFramework.MFComparison", inFile: "ImportsIgnored.m")
+            self.assertReferenced(.module("MixedFramework"))
+            self.assertReferenced(.module("MixedFramework.MFComparison"))
+        }
+    }
+
+    func testRetainedModuleIsNotReported() throws {
+        let configuration = Self.makeConfiguration()
+        configuration.retainUnusedImportedModules = ["MixedFramework"]
+        try index(configuration: configuration)
+        defer { XCTAssertNoThrow(try index(configuration: Self.makeConfiguration())) }
+
+        file("ImportsNothing.m") {
+            self.assertImport("MixedFramework", inFile: "ImportsNothing.m")
+            self.assertReferenced(.module("MixedFramework"))
+        }
+        file("ImportsUsedFunction.m") {
+            self.assertReferenced(.module("MixedFramework.MFLogging"))
+        }
+    }
+
+    func testDisabledAnalysisReportsNoImports() throws {
+        let configuration = Self.makeConfiguration()
+        configuration.disableUnusedImportAnalysis = true
+        try index(configuration: configuration)
+        defer { XCTAssertNoThrow(try index(configuration: Self.makeConfiguration())) }
+
+        file("ImportsNothing.m") {
+            self.assertReferenced(.module("MixedFramework"))
+        }
     }
 }
