@@ -75,7 +75,10 @@ public struct IndexPipeline {
             ).perform()
         }
 
-        graph.withLock { $0.indexingComplete() }
+        graph.withLock {
+            $0.setClangCoverage(plan.clangCoverage)
+            $0.indexingComplete()
+        }
         return scannedLOC
     }
 }

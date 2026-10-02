@@ -10,6 +10,9 @@ public struct IndexPlan {
     public let xibPaths: Set<FilePath>
     public let xcDataModelPaths: Set<FilePath>
     public let xcMappingModelPaths: Set<FilePath>
+    /// Whether every C and Objective-C file the build compiled has an index unit; `nil` when the project
+    /// kind cannot list its source files.
+    public let clangCoverage: ClangCoverage?
 
     public init(
         sourceFiles: [SourceFile: [IndexUnit]],
@@ -17,7 +20,8 @@ public struct IndexPlan {
         plistPaths: Set<FilePath> = [],
         xibPaths: Set<FilePath> = [],
         xcDataModelPaths: Set<FilePath> = [],
-        xcMappingModelPaths: Set<FilePath> = []
+        xcMappingModelPaths: Set<FilePath> = [],
+        clangCoverage: ClangCoverage? = nil
     ) {
         self.sourceFiles = sourceFiles
         self.clangSourceFiles = clangSourceFiles
@@ -25,5 +29,6 @@ public struct IndexPlan {
         self.xibPaths = xibPaths
         self.xcDataModelPaths = xcDataModelPaths
         self.xcMappingModelPaths = xcMappingModelPaths
+        self.clangCoverage = clangCoverage
     }
 }

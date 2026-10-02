@@ -117,7 +117,7 @@ final class OutputFormatterTest: XCTestCase {
 
     func testJsonFormatGivesRedundantConformancesTheProtocolsConfidenceReason() throws {
         let redundant = redundantProtocol(inherited: [])
-        let likely = ScanResult(declaration: redundant.declaration, annotation: redundant.annotation, confidence: .likely, confidenceReason: "it is accessible from Objective-C, and Lethen cannot see references made from Objective-C")
+        let likely = ScanResult(declaration: redundant.declaration, annotation: redundant.annotation, confidence: .likely, confidenceReason: "it is accessible from Objective-C, and 1 Objective-C file (Foo.m) has no index unit, so a reference made from it would be missed")
         let objects = try json(format(.json, [likely]))
         XCTAssertGreaterThan(objects.count, 1)
         XCTAssertEqual(Set(objects.map { $0["confidenceReason"] as? String }), [likely.confidenceReason])

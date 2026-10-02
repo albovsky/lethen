@@ -31,6 +31,9 @@ public final class SourceGraph {
     public private(set) var unconstructedEnumCases: Set<Declaration> = []
     /// Identifier-like words found in string literals across the scanned sources.
     public private(set) var literalTokens: Set<String> = []
+    /// Whether the index has a unit for every C and Objective-C file the build compiled. `nil` until the
+    /// pipeline records it, and for project kinds that cannot list their source files.
+    public private(set) var clangCoverage: ClangCoverage?
     /// Names used in `#if` clauses this build did not compile, by the module whose file has the
     /// clause, each with the clause that uses it.
     public private(set) var skippedBranchNames: [String: [String: String]] = [:]
@@ -52,6 +55,10 @@ public final class SourceGraph {
     public init(configuration: Configuration, logger: Logger) {
         self.configuration = configuration
         self.logger = logger
+    }
+
+    public func setClangCoverage(_ coverage: ClangCoverage?) {
+        clangCoverage = coverage
     }
 
     public func addLiteralTokens(_ tokens: Set<String>) {
@@ -93,7 +100,18 @@ public final class SourceGraph {
             || declaration.modifiers.contains("dynamic")
 
         if isObjcExposed, !configuration.retainObjcAccessible, !configuration.retainObjcAnnotated {
-            return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot see references made from Objective-C")
+            switch clangCoverage {
+            case nil:
+                return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot tell whether every Objective-C file of this project was indexed")
+            case let coverage? where !coverage.isComplete:
+                let count = coverage.unindexedFiles.count
+                let files = count == 1 ? "1 Objective-C file" : "\(count) Objective-C files"
+                let verb = count == 1 ? "has" : "have"
+                return .init(confidence: .likely, reason: "it is accessible from Objective-C, and \(files) (\(ClangCoverage.describe(coverage.unindexedFiles))) \(verb) no index unit, so a reference made from \(count == 1 ? "it" : "them") would be missed")
+            default:
+                // Every Objective-C file was read, so its references are in the graph. The rules below still apply.
+                break
+            }
         }
 
         if Self.dynamicallyNamedKinds.contains(declaration.kind), literalTokens.contains(Self.baseName(of: declaration.name)) {

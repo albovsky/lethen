@@ -38,6 +38,28 @@ final class XcodeTargetTest: XCTestCase {
         })
     }
 
+    func testIdentifiesSwiftAndClangSourceFiles() throws {
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+        let shell = ShellImpl(logger: logger)
+        var loadedProjectPaths: Set<FilePath> = []
+        let mixed = try XcodeProject(
+            path: MixedLanguageProjectPath,
+            loadedProjectPaths: &loadedProjectPaths,
+            xcodebuild: Xcodebuild(shell: shell, logger: logger),
+            shell: shell,
+            logger: logger
+        )
+        let target = try XCTUnwrap(mixed.targets.first { $0.name == "MixedLanguageProject" })
+        try target.identifyFiles()
+
+        let clangNames = target.files(kind: .clangSource).compactMap { $0.lastComponent?.string }
+        let swiftNames = target.files(kind: .swiftSource).compactMap { $0.lastComponent?.string }
+        XCTAssertTrue(clangNames.contains("ObjCCaller.m"), "\(clangNames.sorted())")
+        XCTAssertFalse(clangNames.contains("ObjCCaller.h"), "Headers are not compiled into a unit")
+        XCTAssertTrue(swiftNames.contains("ObjCExposed.swift"), "\(swiftNames.sorted())")
+        XCTAssertFalse(swiftNames.contains("ObjCCaller.m"))
+    }
+
     func testIsTestTarget() throws {
         let projectTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
         let testTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProjectTests" })
