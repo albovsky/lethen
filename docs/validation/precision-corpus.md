@@ -638,7 +638,7 @@ to the callee's parameters, variadics take the arguments that follow, functions 
 handled). Values, `Box<T>`, `T?`, `inout`, function-typed and typealiased parameters do not. An unindexed
 callee counts only for the standard decoding calls (`JSONDecoder` and `PropertyListDecoder` `decode`, the
 decoding containers' `decode` and `decodeIfPresent`, matched on the exact standard library or Foundation module and type in the USR, so a same-named type from another module does not count; the macOS Foundation manglings are not observed here) and only for the first argument, the metatype, so
-`container.decode([Int].self, forKey: key)` does not read `key`'s type. A nested `typealias CodingKeys` resolves to its enum, and an unresolvable `CodingKeys` leaves the type unmodeled; an `init(from:)` whose parameter names a typealias counts as custom. A `let` with an initial value
+`container.decode([Int].self, forKey: key)` does not read `key`'s type. A nested `typealias CodingKeys` resolves to its enum through any chain of aliases (cycles and aliases of several types are unresolvable), and an unresolvable `CodingKeys` leaves the type unmodeled; an `init(from:)` whose parameter alias resolves to `Decoder` counts as custom, an alias of another type does not, and an unresolvable alias counts as custom. A `let` with an initial value
 or a `lazy` property is never decoded and is not modeled. An optional property is not read itself, but its
 type is still traversed, since `decodeIfPresent` runs that type's synthesized initializer. A generic
 specialization such as `Page<Model>.self` resolves to `Page`, and to each plain, array or optional argument only

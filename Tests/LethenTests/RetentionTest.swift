@@ -2388,6 +2388,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotAssignOnlyProperty(.varInstance("sharedKept"))
                 self.assertAssignOnlyProperty(.varInstance("sharedSkipped"))
             }
+            assertReferenced(.struct("FixtureStruct312ChainInit")) {
+                self.assertAssignOnlyProperty(.varInstance("chainInitNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312NumberOverload")) {
+                self.assertNotAssignOnlyProperty(.varInstance("numberOverloadDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ChainKeys")) {
+                self.assertNotAssignOnlyProperty(.varInstance("sharedKept"))
+                self.assertAssignOnlyProperty(.varInstance("sharedSkipped"))
+            }
             assertReferenced(.struct("FixtureStruct312LabeledA")) {
                 self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))
             }

@@ -8,7 +8,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     private let graph: SourceGraph
     private let configuration: Configuration
-    private lazy var typealiasNames: Set<String> = Set(graph.declarations(ofKind: .typealias).map(\.name))
+    private lazy var typealiasesByName: [String: [Declaration]] = Dictionary(grouping: graph.declarations(ofKind: .typealias), by: \.name)
 
     required init(graph: SourceGraph, configuration: Configuration, swiftVersion _: SwiftVersion) {
         self.graph = graph
@@ -213,8 +213,40 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         for prefix in ["any ", "Swift."] where type.hasPrefix(prefix) {
             type.removeFirst(prefix.count)
         }
-        // A typealias of the coder is still the coder; a spelled type that names any typealias in the graph counts.
-        return type == parameterType || typealiasNames.contains(type)
+        // A typealias of the coder is still the coder. Any other type, including an alias of one, is an unrelated
+        // overload. An alias that cannot be resolved counts as the coder.
+        if type == parameterType {
+            return true
+        }
+        for alias in typealiasesByName[type] ?? [] {
+            guard let target = resolveTypealias(alias) else { return true }
+
+            if target.name == parameterType {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Follows a typealias through any chain of typealiases to the type it finally names, with cycles and
+    /// aliases of more than one type reported as unresolvable.
+    private func resolveTypealias(_ alias: Declaration) -> (name: String, declaration: Declaration?)? {
+        var current = alias
+        var visited: Set<Declaration> = []
+        while visited.insert(current).inserted {
+            let targets = current.references.filter {
+                $0.kind == .normal && [.enum, .struct, .class, .protocol, .typealias, .associatedtype].contains($0.declarationKind)
+            }
+            guard targets.count == 1, let target = targets.first else { return nil }
+
+            if let next = graph.declaration(withUsr: target.usr), next.kind == .typealias {
+                current = next
+                continue
+            }
+
+            return (target.name, graph.declaration(withUsr: target.usr))
+        }
+        return nil
     }
 
     private func mayDecode(indexed callee: Declaration) -> Bool {
@@ -288,9 +320,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     private func codingKeyEnum(for declaration: Declaration) -> Declaration? {
         var keys = declaration
         if declaration.kind == .typealias {
-            guard let target = declaration.references.compactMap({ graph.declaration(withUsr: $0.usr) }).first(where: { $0.kind == .enum }) else {
-                return nil
-            }
+            guard let target = resolveTypealias(declaration)?.declaration, target.kind == .enum else { return nil }
 
             keys = target
         }

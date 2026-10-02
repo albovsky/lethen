@@ -242,6 +242,35 @@ struct FixtureStruct312SharedKeys: Decodable {
     var sharedSkipped: Int = 0
 }
 
+typealias FixtureAlias312Middle = FixtureAlias312Decoder
+typealias FixtureAlias312Number = Int
+typealias FixtureAlias312Keys = FixtureSharedKeys312
+
+struct FixtureStruct312ChainInit: Decodable {
+    // Control: a two-step alias of Decoder is still the coder.
+    let chainInitNotDecoded: Int
+
+    init(from _: FixtureAlias312Middle) throws {
+        chainInitNotDecoded = 0
+    }
+}
+
+struct FixtureStruct312NumberOverload: Decodable {
+    // An overload taking an alias of Int is unrelated to the coder, so decoding stays synthesized.
+    let numberOverloadDecoded: Int
+
+    init(from number: FixtureAlias312Number) {
+        numberOverloadDecoded = number
+    }
+}
+
+struct FixtureStruct312ChainKeys: Decodable {
+    typealias CodingKeys = FixtureAlias312Keys
+
+    let sharedKept: Int
+    var sharedSkipped: Int = 0
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -292,6 +321,10 @@ public class FixtureClass312Retainer {
         _ = FakeDecodingContainer().decode(FixtureStruct312Fake.self, forKey: "fake")
         _ = try JSONDecoder().decode(FixtureStruct312SharedKeys.self, from: data)
         _ = FixtureStruct312SharedKeys(sharedKept: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312ChainInit.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312NumberOverload.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312ChainKeys.self, from: data)
+        _ = FixtureStruct312ChainKeys(sharedKept: 1)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 
