@@ -41,6 +41,9 @@ final class ClangLiteralScannerTest: XCTestCase {
     func testAdjacentLiteralsAreOneString() {
         XCTAssertEqual(tokens(#"NSClassFromString(@"Renamed" @"Class");"#), ["RenamedClass"])
         XCTAssertEqual(tokens("x = \"split\"\n    \"Name:\";"), ["splitName"])
+        // Comments are whitespace to the compiler.
+        XCTAssertEqual(tokens(#"NSClassFromString(@"Renamed" /* note */ @"Class");"#), ["RenamedClass"])
+        XCTAssertEqual(tokens("x = @\"Renamed\" // note\n    @\"Class\";"), ["RenamedClass"])
         // The control: a comma separates two strings.
         XCTAssertEqual(tokens(#"f(@"first", @"second");"#), ["first", "second"])
     }

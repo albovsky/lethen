@@ -96,11 +96,19 @@ enum ClangLiteralScanner {
     // MARK: - Private
 
     /// The index after the opening quote of a string literal that directly follows the one ending before
-    /// `index`, with only whitespace and an optional `@` between them, or `nil`.
+    /// `index`, with only whitespace, comments, and an optional `@` between them, or `nil`.
     private static func adjacentLiteralStart(from index: Int, in bytes: [UInt8]) -> Int? {
         var cursor = index
-        while cursor < bytes.count, isBlank(bytes[cursor]) || bytes[cursor] == newline {
-            cursor += 1
+        while cursor < bytes.count {
+            if isBlank(bytes[cursor]) || bytes[cursor] == newline {
+                cursor += 1
+            } else if bytes[cursor] == slash, bytes[safe: cursor + 1] == slash {
+                cursor = endOfLine(from: cursor, in: bytes)
+            } else if bytes[cursor] == slash, bytes[safe: cursor + 1] == star {
+                cursor = endOfBlockComment(from: cursor + 2, in: bytes)
+            } else {
+                break
+            }
         }
 
         if bytes[safe: cursor] == at { cursor += 1 }
