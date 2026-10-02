@@ -9,6 +9,7 @@ final class CalledFromObjC: NSObject {
     @objc static var staticReadByMessage: Int { 1 }
     @objc(renamedForObjC) func renamedInSwift() {}
     @objc func namedInSelector() {}
+    @objc(renamedSelectorOnly) func renamedSelectorInSwift() {}
     @objc var kvcRead: Int { 1 }
     func notExposed() {}
 }
@@ -46,3 +47,5 @@ final class OnlyForwardDeclared: NSObject {}
 final class NotReferencedFromObjC: NSObject {}
 
 final class NamedInObjCString: NSObject {}
+
+@objc(RenamedStringClassForObjC) final class RenamedStringClass: NSObject {}

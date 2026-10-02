@@ -29,6 +29,8 @@
     (void)selector;
     (void)NSClassFromString(@"NamedInObjCString");
     (void)[object valueForKey:@"kvcRead"];
+    (void)NSSelectorFromString(@"renamedSelectorOnly");
+    (void)NSClassFromString(@"RenamedStringClassForObjC");
 }
 
 @end

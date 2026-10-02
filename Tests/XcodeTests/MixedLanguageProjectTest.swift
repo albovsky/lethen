@@ -108,6 +108,16 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         assertConfidence(.class("NamedInObjCString"), .likely)
     }
 
+    /// `@objc(name)` renames the declaration for Objective-C, and the string spells that name.
+    func testObjectiveCNamesSpelledInLiteralsAreLikely() {
+        assertReferenced(.class("CalledFromObjC")) {
+            self.assertNotReferenced(.functionMethodInstance("renamedSelectorInSwift()"))
+            self.assertConfidence(.functionMethodInstance("renamedSelectorInSwift()"), .likely)
+        }
+        assertNotReferenced(.class("RenamedStringClass"))
+        assertConfidence(.class("RenamedStringClass"), .likely)
+    }
+
     func testPlanRecordsCompleteClangCoverage() throws {
         let coverage = try XCTUnwrap(Self.plan?.clangCoverage)
         XCTAssertEqual(coverage.unindexedFiles, [])

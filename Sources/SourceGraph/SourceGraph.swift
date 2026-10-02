@@ -114,7 +114,9 @@ public final class SourceGraph {
             }
         }
 
-        if Self.dynamicallyNamedKinds.contains(declaration.kind), literalTokens.contains(Self.baseName(of: declaration.name)) {
+        if Self.dynamicallyNamedKinds.contains(declaration.kind),
+           !literalTokens.isDisjoint(with: Self.lookupNames(of: declaration))
+        {
             return .init(confidence: .likely, reason: "its name appears in a string literal")
         }
 
@@ -139,6 +141,29 @@ public final class SourceGraph {
     private static let skippedBranchKinds = dynamicallyNamedKinds.union([
         .typealias, .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
     ])
+
+    /// The names a runtime lookup can spell for the declaration: its Swift base name, and the
+    /// Objective-C name of an exposed declaration when `@objc(name)` differs from it.
+    static func lookupNames(of declaration: Declaration) -> Set<String> {
+        var names: Set<String> = [baseName(of: declaration.name)]
+        for usr in declaration.usrs {
+            if let name = objcName(fromUSR: usr) {
+                names.insert(name)
+            }
+        }
+        return names
+    }
+
+    /// The Objective-C name a clang USR ends with: `c:objc(cs)Store(im)load:from:` names `load`, and
+    /// `c:@M@App@objc(cs)Store` names `Store`. `nil` for a USR that is not an Objective-C one.
+    static func objcName(fromUSR usr: String) -> String? {
+        guard usr.hasPrefix("c:"), let kind = usr.lastIndex(of: ")") else { return nil }
+
+        let selector = usr[usr.index(after: kind)...]
+        guard !selector.isEmpty else { return nil }
+
+        return String(selector.split(separator: ":", maxSplits: 1).first ?? selector)
+    }
 
     /// The name without argument labels: `load(from:)` becomes `load`.
     public static func baseName(of name: String) -> String {
