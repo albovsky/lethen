@@ -68,12 +68,14 @@ final class ObjCReferenceIndexer: Indexer {
         let literalFiles = Set(records.map(\.file.path)).union(sourceFiles.keys.map(\.path)).sorted()
         let logger = logger
         let literalTokens = JobPool(jobs: literalFiles).flatMap { path -> [String] in
-            guard let data = FileManager.default.contents(atPath: path.string) else {
-                logger.debug("Cannot read \(path.string) for string literals")
+            guard let data = FileManager.default.contents(atPath: path.string),
+                  let source = String(bytes: data, encoding: .utf8)
+            else {
+                logger.debug("Cannot read \(path.string) as UTF-8 for string literals")
                 return []
             }
 
-            return Array(ClangLiteralScanner.tokens(in: String(decoding: data, as: UTF8.self)))
+            return Array(ClangLiteralScanner.tokens(in: source))
         }
 
         var unmatched = 0

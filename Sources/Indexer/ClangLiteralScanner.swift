@@ -30,9 +30,11 @@ enum ClangLiteralScanner {
         var atLineStart = true
 
         func add(_ literal: [UInt8]) {
-            if let identifiers = StringLiteralTokenVisitor.symbolIdentifiers(in: String(decoding: literal, as: UTF8.self)) {
-                tokens.formUnion(identifiers)
-            }
+            guard let text = String(bytes: literal, encoding: .utf8),
+                  let identifiers = StringLiteralTokenVisitor.symbolIdentifiers(in: text)
+            else { return }
+
+            tokens.formUnion(identifiers)
         }
 
         while index < bytes.count {
@@ -93,13 +95,17 @@ enum ClangLiteralScanner {
     /// Whether the directive after the `#` at `index` is `import` or `include`.
     private static func isIncludeDirective(at index: Int, in bytes: [UInt8]) -> Bool {
         var cursor = index + 1
-        while cursor < bytes.count, isBlank(bytes[cursor]) { cursor += 1 }
+        while cursor < bytes.count, isBlank(bytes[cursor]) {
+            cursor += 1
+        }
 
         let start = cursor
-        while cursor < bytes.count, bytes[cursor] >= UInt8(ascii: "a"), bytes[cursor] <= UInt8(ascii: "z") { cursor += 1 }
+        while cursor < bytes.count, bytes[cursor] >= UInt8(ascii: "a"), bytes[cursor] <= UInt8(ascii: "z") {
+            cursor += 1
+        }
 
-        let name = String(decoding: bytes[start ..< cursor], as: UTF8.self)
-        return name == "import" || name == "include" || name == "include_next"
+        let name = String(bytes: bytes[start ..< cursor], encoding: .utf8)
+        return ["import", "include", "include_next"].contains(name)
     }
 
     /// The text of a string literal whose opening quote precedes `index`, and the index after it. An
@@ -149,7 +155,9 @@ enum ClangLiteralScanner {
     /// `nil` when no parenthesis follows. A selector that reaches the end of its line unclosed ends there.
     private static func selectorName(from index: Int, in bytes: [UInt8]) -> (name: [UInt8]?, next: Int) {
         var cursor = index
-        while cursor < bytes.count, isBlank(bytes[cursor]) { cursor += 1 }
+        while cursor < bytes.count, isBlank(bytes[cursor]) {
+            cursor += 1
+        }
 
         guard bytes[safe: cursor] == openParen else { return (nil, cursor) }
 
