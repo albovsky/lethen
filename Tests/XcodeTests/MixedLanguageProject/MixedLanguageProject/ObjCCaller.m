@@ -31,6 +31,8 @@
     (void)[object valueForKey:@"kvcRead"];
     (void)NSSelectorFromString(@"renamedSelectorOnly");
     (void)NSClassFromString(@"RenamedStringClassForObjC");
+    (void)NSSelectorFromString(@"setWrittenBySetterSelector:");
+    (void)NSSelectorFromString(@"initWithObjCName:");
 }
 
 @end

@@ -14,13 +14,15 @@ final class ObjcConfidenceTest: XCTestCase {
         isObjcAccessible: Bool = true,
         configuration: Configuration = Configuration(),
         literalTokens: Set<String> = [],
-        usrs: Set<String> = ["s:exposed"]
+        usrs: Set<String> = ["s:exposed"],
+        kind: Declaration.Kind = .functionMethodInstance,
+        name: String = "exposed()"
     ) -> ConfidenceAssessment {
         let graph = SourceGraph(configuration: configuration, logger: Logger(quiet: true, verbose: false, colorMode: .never))
         graph.setClangCoverage(coverage)
         graph.addLiteralTokens(literalTokens)
         let file = SourceFile(path: FilePath("/p/A.swift"), modules: ["A"])
-        let declaration = Declaration(name: "exposed()", kind: .functionMethodInstance, usrs: usrs, location: Location(file: file, line: 1, column: 1))
+        let declaration = Declaration(name: name, kind: kind, usrs: usrs, location: Location(file: file, line: 1, column: 1))
         declaration.isObjcAccessible = isObjcAccessible
         return graph.assessConfidence(of: declaration)
     }
@@ -93,6 +95,26 @@ final class ObjcConfidenceTest: XCTestCase {
 
         // The control: the same declaration with no literal naming it either way.
         XCTAssertEqual(assess(coverage: files([]), literalTokens: ["other"], usrs: usrs).confidence, .certain)
+    }
+
+    /// An initializer is reached by its Objective-C selector, never by the word `init`.
+    func testInitializerMatchesItsObjectiveCNameOnly() {
+        let usrs: Set<String> = ["s:init", "c:@M@App@objc(cs)Store(im)initWithFoo:"]
+        XCTAssertEqual(assess(coverage: files([]), literalTokens: ["initWithFoo"], usrs: usrs, kind: .functionConstructor, name: "init(foo:)").confidence, .likely)
+        // The controls: `init` is not a lookup, and an unrelated token is not a match.
+        XCTAssertEqual(assess(coverage: files([]), literalTokens: ["init"], usrs: usrs, kind: .functionConstructor, name: "init(foo:)").confidence, .certain)
+        XCTAssertEqual(assess(coverage: files([]), literalTokens: ["other"], usrs: usrs, kind: .functionConstructor, name: "init(foo:)").confidence, .certain)
+    }
+
+    /// A property is written through its setter selector, `setFoo:`.
+    func testPropertyMatchesItsSetterSelector() {
+        let property: Set<String> = ["s:foo", "c:@M@App@objc(cs)Store(py)foo"]
+        XCTAssertEqual(assess(coverage: files([]), literalTokens: ["setFoo"], usrs: property, kind: .varInstance, name: "foo").confidence, .likely)
+        XCTAssertEqual(assess(coverage: files([]), literalTokens: ["foo"], usrs: property, kind: .varInstance, name: "foo").confidence, .likely)
+        // The controls: a method has no setter, and an unrelated token is not a match.
+        let method: Set<String> = ["s:foo", "c:@M@App@objc(cs)Store(im)foo"]
+        XCTAssertEqual(assess(coverage: files([]), literalTokens: ["setFoo"], usrs: method).confidence, .certain)
+        XCTAssertEqual(assess(coverage: files([]), literalTokens: ["setBar"], usrs: property, kind: .varInstance, name: "foo").confidence, .certain)
     }
 
     func testObjectiveCNameOfAUSR() {

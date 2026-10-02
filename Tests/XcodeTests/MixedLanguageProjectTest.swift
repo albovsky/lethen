@@ -118,6 +118,16 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         assertConfidence(.class("RenamedStringClass"), .likely)
     }
 
+    /// A property's setter selector and an initializer's Objective-C selector are lookups by name too.
+    func testSetterAndInitializerSelectorsSpelledInLiteralsAreLikely() {
+        assertReferenced(.class("CalledFromObjC")) {
+            self.assertNotReferenced(.varInstance("writtenBySetterSelector"))
+            self.assertConfidence(.varInstance("writtenBySetterSelector"), .likely)
+            self.assertNotReferenced(.functionConstructor("init(objcName:)"))
+            self.assertConfidence(.functionConstructor("init(objcName:)"), .likely)
+        }
+    }
+
     func testPlanRecordsCompleteClangCoverage() throws {
         let coverage = try XCTUnwrap(Self.plan?.clangCoverage)
         XCTAssertEqual(coverage.unindexedFiles, [])

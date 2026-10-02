@@ -10,6 +10,8 @@ final class CalledFromObjC: NSObject {
     @objc(renamedForObjC) func renamedInSwift() {}
     @objc func namedInSelector() {}
     @objc(renamedSelectorOnly) func renamedSelectorInSwift() {}
+    @objc var writtenBySetterSelector: Int = 0
+    @objc(initWithObjCName:) convenience init(objcName _: Int) { self.init() }
     @objc var kvcRead: Int { 1 }
     func notExposed() {}
 }

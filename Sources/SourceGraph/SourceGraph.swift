@@ -130,7 +130,7 @@ public final class SourceGraph {
     /// parameters, locals, imports, or extensions.
     private static let dynamicallyNamedKinds: Set<Declaration.Kind> = [
         .class, .struct, .enum, .protocol, .enumelement,
-        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic,
+        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .functionConstructor,
         .varClass, .varGlobal, .varInstance, .varStatic,
     ]
 
@@ -139,13 +139,18 @@ public final class SourceGraph {
         .typealias, .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
     ])
 
-    /// The names a runtime lookup can spell for the declaration: its Swift base name, and the
-    /// Objective-C name of an exposed declaration when `@objc(name)` differs from it.
+    /// The names a runtime lookup can spell for the declaration: its Swift base name, the Objective-C
+    /// name of an exposed declaration when `@objc(name)` differs from it, and the setter selector of an
+    /// exposed property (`setFoo` for `foo`). An initializer is reachable only by its Objective-C name
+    /// (`initWithFoo`); `init` alone is not a lookup.
     static func lookupNames(of declaration: Declaration) -> Set<String> {
-        var names: Set<String> = [baseName(of: declaration.name)]
+        var names: Set<String> = declaration.kind == .functionConstructor ? [] : [baseName(of: declaration.name)]
         for usr in declaration.usrs {
-            if let name = objcName(fromUSR: usr) {
-                names.insert(name)
+            guard let name = objcName(fromUSR: usr) else { continue }
+
+            names.insert(name)
+            if declaration.kind.isVariableKind, let first = name.first {
+                names.insert("set" + first.uppercased() + name.dropFirst())
             }
         }
         return names
