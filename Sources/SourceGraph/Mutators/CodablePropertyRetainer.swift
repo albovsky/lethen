@@ -330,6 +330,13 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                 }
                 continue
             }
+
+            // A generic typealias such as `Payload<T> = Page<T>` is not mapped to its target's parameters: every argument
+            // passes through, which retains more than strictly necessary.
+            if base.kind == .typealias {
+                result.formUnion(reference.genericArguments.flatMap(\.self))
+                continue
+            }
             guard base.kind == .struct else { continue }
 
             let parameters = base.declarations.filter { $0.kind == .genericTypeParam }.sorted()

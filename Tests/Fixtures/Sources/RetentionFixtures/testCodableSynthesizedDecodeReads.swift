@@ -437,6 +437,13 @@ struct FixtureStruct312Observed: Decodable {
     }
 }
 
+typealias FixtureAlias312GenericPayload<T: Decodable> = FixtureStruct312Page<T>
+
+struct FixtureStruct312AliasPageItem: Decodable {
+    // Decoded as the argument of a generic typealias of a Page.
+    let aliasPageItemDecoded: Int
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -513,6 +520,8 @@ public class FixtureClass312Retainer {
         _ = FixtureStruct312QualifiedConcrete(qualifiedConcreteNotDecoded: 1)
         _ = FixtureStruct312ObservedChild(observedChildDecoded: 1)
         _ = try JSONDecoder().decode(FixtureStruct312Observed.self, from: data)
+        _ = FixtureStruct312AliasPageItem(aliasPageItemDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureAlias312GenericPayload<FixtureStruct312AliasPageItem>.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 
