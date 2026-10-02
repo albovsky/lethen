@@ -387,6 +387,45 @@ enum FixtureQualifiedHolder312 {
     }
 }
 
+struct FixtureStruct312Aliased1: Decodable {
+    // Decoded through a typealias of itself.
+    let aliased1Decoded: Int
+}
+
+struct FixtureStruct312Aliased2: Decodable {
+    // Decoded through a two-step chain of aliases.
+    let aliased2Decoded: Int
+}
+
+struct FixtureStruct312AliasedCustom: Decodable {
+    // Control: an alias of a type with its own init(from:) changes nothing.
+    let aliasedCustomNotDecoded: Int
+
+    init(from _: Decoder) throws {
+        aliasedCustomNotDecoded = 0
+    }
+}
+
+typealias FixtureAlias312Payload1 = FixtureStruct312Aliased1
+typealias FixtureAlias312Payload2Step = FixtureStruct312Aliased2
+typealias FixtureAlias312Payload2 = FixtureAlias312Payload2Step
+typealias FixtureAlias312Custom = FixtureStruct312AliasedCustom
+
+enum FixtureQualifier312Phantom {
+    struct Wrapper<Tag>: Decodable {
+        let wrapperCount: Int
+    }
+}
+
+struct FixtureStruct312QualifiedConcrete: Decodable {
+    // Control: held only as the argument of a qualified phantom wrapper.
+    let qualifiedConcreteNotDecoded: Int
+}
+
+struct FixtureStruct312QualifiedOuter: Decodable {
+    let value: FixtureQualifier312Phantom.Wrapper<FixtureStruct312QualifiedConcrete>
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -454,6 +493,13 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode([String: FixtureStruct312DictModel].self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312Computed.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312Page<FixtureQualifiedHolder312.Model>.self, from: data)
+        _ = FixtureStruct312Aliased1(aliased1Decoded: 1)
+        _ = FixtureStruct312Aliased2(aliased2Decoded: 2)
+        _ = try JSONDecoder().decode(FixtureAlias312Payload1.self, from: data)
+        _ = try JSONDecoder().decode(FixtureAlias312Payload2.self, from: data)
+        _ = try JSONDecoder().decode(FixtureAlias312Custom.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312QualifiedOuter.self, from: data)
+        _ = FixtureStruct312QualifiedConcrete(qualifiedConcreteNotDecoded: 1)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 

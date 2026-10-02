@@ -205,7 +205,7 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         for node in collector.specializations {
             let base = locations.location(at: node.name.positionAfterSkippingLeadingTrivia)
             var arguments: [Set<Location>] = []
-            for argument in node.genericArgumentClause?.arguments ?? [] {
+            for argument in node.clause.arguments {
                 guard case let .type(argumentType) = argument.argument else {
                     arguments.append([])
                     continue
@@ -370,12 +370,22 @@ private final class TypeNameCollector: SyntaxVisitor {
 
 private final class SpecializationCollector: SyntaxVisitor {
     private static let transparent: Set<String> = ["Array", "Optional", "Set", "Dictionary", "ContiguousArray"]
-    var specializations: [IdentifierTypeSyntax] = []
+    var specializations: [(name: TokenSyntax, clause: GenericArgumentClauseSyntax)] = []
 
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
-        if node.genericArgumentClause != nil, !Self.transparent.contains(node.name.text) {
-            specializations.append(node)
-        }
+        record(node.name, node.genericArgumentClause)
         return .visitChildren
+    }
+
+    /// A qualified type such as `Namespace.Phantom<Model>` is specialized at its last component.
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+        record(node.name, node.genericArgumentClause)
+        return .visitChildren
+    }
+
+    private func record(_ name: TokenSyntax, _ clause: GenericArgumentClauseSyntax?) {
+        if let clause, !Self.transparent.contains(name.text) {
+            specializations.append((name, clause))
+        }
     }
 }
