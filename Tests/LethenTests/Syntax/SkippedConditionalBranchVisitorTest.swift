@@ -42,6 +42,22 @@ final class SkippedConditionalBranchVisitorTest: XCTestCase {
         XCTAssertEqual(names, ["otherCall": "#if os(Windows) at Test.swift:12"])
     }
 
+    /// A file built into two modules compiles different clauses in each, so evidence is per module: the
+    /// indexer runs the visitor once per module's evidence, and each run sees only its own taken clauses.
+    func testEvidenceOfOneModuleDoesNotMakeAClauseTakenForAnother() {
+        // Module A compiled the `os(Linux)` clause (line 6), module B the `os(Windows)` one (line 8).
+        let moduleA = collect(source, evidenceLines: [6, 10])
+        let moduleB = collect(source, evidenceLines: [8, 10])
+        XCTAssertNotNil(moduleA["windowsCall"])
+        XCTAssertNil(moduleA["linuxCall"])
+        XCTAssertNotNil(moduleB["linuxCall"])
+        XCTAssertNil(moduleB["windowsCall"])
+        // The union, which a shared evidence set would give, hides both.
+        let union = collect(source, evidenceLines: [6, 8, 10])
+        XCTAssertNil(union["windowsCall"])
+        XCTAssertNil(union["linuxCall"])
+    }
+
     func testNamesAreNotCollectedWhenEveryClauseIsTaken() {
         XCTAssertEqual(collect(source, evidenceLines: [6, 8, 10, 13]), [:])
     }

@@ -688,3 +688,7 @@ operators; enum cases need a member access and are not constructed by a pattern,
 read in a pattern counts; a clause counts as compiled when any index occurrence of the file, of any
 symbol language, lies in it; and type-only syntax (casts, generic arguments, metatypes), key paths
 (components are member uses), subscripts and macro expansions count as content of a skipped clause.
+
+Which clause compiled is read per module: a file built into two modules with different conditions is
+checked against each module's own index occurrences, and the names of the clauses it skipped are
+recorded for that module only. No corpus row changed.

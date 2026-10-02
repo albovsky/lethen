@@ -173,7 +173,7 @@ final class SwiftIndexer: Indexer {
 
                         // Every occurrence is evidence that its line was compiled, including the parameters and
                         // locals that analysis drops and symbols of any language.
-                        occurrenceLocations.insert(location)
+                        occurrenceLocations[unit.unit.moduleName, default: []].insert(location)
 
                         guard Self.shouldProcessOccurrence(occurrence) else { return }
 
@@ -324,11 +324,21 @@ final class SwiftIndexer: Indexer {
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
             graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
-            let evidence = occurrenceLocations
-            let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: evidence)
-            skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
-            let modules = sourceFile.modules
-            graph.withLock { $0.addSkippedBranchNames(skippedBranches.names, members: skippedBranches.memberNames, construction: skippedBranches.constructionNames, modules: modules) }
+            // A module with no occurrence in the file, such as a file conditionally compiled out entirely,
+            // has no evidence for any clause.
+            for module in sourceFile.modules.sorted() {
+                let evidence = occurrenceLocations[module] ?? []
+                let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: evidence)
+                skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
+                graph.withLock {
+                    $0.addSkippedBranchNames(
+                        skippedBranches.names,
+                        members: skippedBranches.memberNames,
+                        construction: skippedBranches.constructionNames,
+                        modules: [module]
+                    )
+                }
+            }
             let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
             for (call, arguments) in valueUses.arguments {
                 let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })
@@ -345,7 +355,9 @@ final class SwiftIndexer: Indexer {
 
         private var declarations: [Declaration] = []
         private var indexedReferences: Set<Reference> = []
-        private var occurrenceLocations: Set<Location> = []
+        /// Locations of every index occurrence, by the module whose unit recorded them. A file built into
+        /// several modules can compile different clauses in each.
+        private var occurrenceLocations: [String: Set<Location>] = [:]
         private var childDeclsByParentUsr: [String: Set<Declaration>] = [:]
         private var referencesByUsr: [String: Set<Reference>] = [:]
         private var danglingReferences: [Reference] = []
