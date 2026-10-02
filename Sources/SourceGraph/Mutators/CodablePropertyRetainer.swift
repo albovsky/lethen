@@ -4,6 +4,7 @@ import Shared
 
 final class CodablePropertyRetainer: SourceGraphMutator {
     private static let encodableUsrs: Set<String> = ["s:SE", "s:s7Codablea"]
+    private static let decodableUsrs: Set<String> = ["s:Se", "s:s7Codablea"]
 
     private let graph: SourceGraph
     private let configuration: Configuration
@@ -16,6 +17,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     func mutate() {
         if !configuration.retainCodableProperties, !configuration.retainEncodableProperties {
             buildSynthesizedEncodeReads()
+        }
+
+        if !configuration.retainCodableProperties {
+            buildSynthesizedDecodeReads()
         }
 
         if configuration.retainCodableProperties {
@@ -96,15 +101,108 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
+        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes) { _, property in
+            !property.isImplicit && !property.isComplexProperty
+        }
+    }
+
+    /// Synthesized `init(from:)` requires every non-optional stored property to be present in the
+    /// decoded value (`decode`), so removing one relaxes response-shape validation. Model that only
+    /// where a type reaches a call that may decode it, as for encoding, and only for properties the
+    /// synthesized initializer decodes with `decode`: optional properties use `decodeIfPresent`, and a
+    /// nested `CodingKeys` enum restricts the decoded set to its cases. Writing a custom `init(from:)`
+    /// opts out, and its writes are indexed normally. `--retain-codable-properties` retains every property.
+    private func buildSynthesizedDecodeReads() {
+        var synthesizedTypes: Set<Declaration> = []
+        for type in graph.declarations(ofKind: .struct) {
+            guard graph.isDecodable(type) else { continue }
+
+            let extensions = graph.extensions[type] ?? []
+            let members = type.declarations.union(extensions.flatMap(\.declarations))
+            guard !members.contains(where: { $0.name == "init(from:)" && !$0.isImplicit }) else { continue }
+
+            synthesizedTypes.insert(type)
+        }
+
+        guard !synthesizedTypes.isEmpty else { return }
+
+        for use in graph.allReferences where use.kind == .normal && !use.valueArgumentReferences.isEmpty {
+            guard let caller = use.parent, !caller.isImplicit else { continue }
+
+            let mayDecode = if let callee = graph.declaration(withUsr: use.usr) {
+                mayDecode(indexed: callee)
+            } else {
+                Self.mayDecode(unindexedUsr: use.usr)
+            }
+            guard mayDecode else { continue }
+
+            markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes) { type, property in
+                isDecoded(property, of: type)
+            }
+        }
+    }
+
+    private func mayDecode(indexed callee: Declaration) -> Bool {
+        callee.references.contains { reference in
+            switch reference.role {
+            case .genericParameterType, .genericRequirementType:
+                Self.decodableUsrs.contains(reference.usr)
+                    || graph.declaration(withUsr: reference.usr).map { graph.isDecodable($0) } == true
+            case .parameterType:
+                // Only an existential parameter; a concrete Decodable type is not evidence.
+                Self.decodableUsrs.contains(reference.usr)
+                    || graph.declaration(withUsr: reference.usr).map { $0.kind == .protocol && graph.isDecodable($0) } == true
+            default:
+                false
+            }
+        }
+    }
+
+    /// A parameter constrained to `Decodable` (`…SeRz…`, `…SeRd__…`) or a `Decodable` existential (`Se_`),
+    /// in Swift's mangling of the callee's signature, such as `JSONDecoder.decode(_:from:)` or
+    /// `KeyedDecodingContainer.decode(_:forKey:)`.
+    private static func mayDecode(unindexedUsr usr: String) -> Bool {
+        usr.range(of: "Se(R[zd]|_)", options: .regularExpression) != nil
+    }
+
+    private func isDecoded(_ property: Declaration, of type: Declaration) -> Bool {
+        guard !property.isImplicit, !property.isComplexProperty else { return false }
+
+        // `declaredType` is sanitized of `?` and `!`, so read optionality from the property's mangled
+        // type: `Int?`, `Int!` and `Optional<Int>` all end in the `Sg` sugar before the `vp` suffix.
+        if property.usrs.contains(where: { $0.hasSuffix("Sgvp") }) {
+            return false
+        }
+
+        // An explicit CodingKeys enum limits the properties the synthesized initializer decodes.
+        let extensions = graph.extensions[type] ?? []
+        let nested = type.declarations.union(extensions.flatMap(\.declarations))
+        let codingKeys = nested.first {
+            $0.kind == .enum && $0.name == "CodingKeys" && !$0.isImplicit
+                && graph.inheritedTypeReferences(of: $0).contains { $0.declarationKind == .protocol && $0.name == "CodingKey" }
+        }
+        if let codingKeys {
+            return codingKeys.declarations.contains { $0.kind == .enumelement && $0.name == property.name }
+        }
+
+        return true
+    }
+
+    private func markReads(
+        from use: Reference,
+        caller: Declaration,
+        synthesizedTypes: Set<Declaration>,
+        includes: (Declaration, Declaration) -> Bool
+    ) {
         var visited: Set<Declaration> = []
         var types = ValueTypeResolver.valueTypes(referencedBy: use.valueArgumentReferences, in: graph, visited: &visited)
-        var encoded: Set<Declaration> = []
+        var seen: Set<Declaration> = []
         while let type = types.popFirst() {
-            guard synthesizedTypes.contains(type), encoded.insert(type).inserted else { continue }
+            guard synthesizedTypes.contains(type), seen.insert(type).inserted else { continue }
 
-            let properties = type.declarations.filter { $0.kind == .varInstance && !$0.isImplicit && !$0.isComplexProperty }
+            let properties = type.declarations.filter { $0.kind == .varInstance && includes(type, $0) }
             for property in properties {
-                // Synthesized encoding encodes stored values recursively.
+                // Synthesized coding handles stored values recursively.
                 types.formUnion(ValueTypeResolver.valueTypes(referencedBy: property.references, in: graph, visited: &visited))
                 for target in [property] + property.declarations.filter({ $0.kind == .functionAccessorGetter }) {
                     for usr in target.usrs {

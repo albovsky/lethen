@@ -476,6 +476,14 @@ public final class SourceGraph {
         }
     }
 
+    func isDecodable(_ decl: Declaration) -> Bool {
+        let decodableTypes = ["Decodable"] + configuration.externalCodableProtocols
+
+        return inheritedTypeReferences(of: decl).contains {
+            [.protocol, .typealias].contains($0.declarationKind) && decodableTypes.contains($0.name)
+        }
+    }
+
     func isRawRepresentable(_ enumDeclaration: Declaration) -> Bool {
         // If the enum has a related struct it's very likely to be raw representable,
         // and thus is dynamic in nature.

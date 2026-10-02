@@ -106,6 +106,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return [calleeLocation(call.calledExpression)]
         }
         if let member = expression.as(MemberAccessExprSyntax.self) {
+            // `Type.self` names no declaration of its own; the metatype carries the type reference.
+            if member.declName.baseName.tokenKind == .keyword(.self), let base = member.base {
+                return origins(of: base)
+            }
             // Passing value.field passes the field, not the containing value.
             return [locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)]
         }

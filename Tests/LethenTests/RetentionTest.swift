@@ -2177,6 +2177,49 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedDecodeReads() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct312")) {
+                self.assertNotAssignOnlyProperty(.varInstance("decoded"))
+                self.assertNotAssignOnlyProperty(.varInstance("nested"))
+                self.assertNotAssignOnlyProperty(.varInstance("withDefault"))
+            }
+            assertReferenced(.struct("FixtureStruct312Nested")) {
+                self.assertNotAssignOnlyProperty(.varInstance("nestedValue"))
+            }
+            assertReferenced(.struct("FixtureStruct312Codable")) {
+                self.assertNotAssignOnlyProperty(.varInstance("codableDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Generic")) {
+                self.assertNotAssignOnlyProperty(.varInstance("genericDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Extension")) {
+                self.assertNotAssignOnlyProperty(.varInstance("extensionDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Keyed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("kept"))
+                self.assertAssignOnlyProperty(.varInstance("skipped"))
+            }
+            assertReferenced(.struct("FixtureStruct312Undecoded")) {
+                self.assertAssignOnlyProperty(.varInstance("neverDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Optional")) {
+                self.assertAssignOnlyProperty(.varInstance("optionalDecoded"))
+                self.assertAssignOnlyProperty(.varInstance("spelledOutOptional"))
+                self.assertAssignOnlyProperty(.varInstance("implicitlyUnwrapped"))
+            }
+            assertReferenced(.struct("FixtureStruct312Passed")) {
+                self.assertAssignOnlyProperty(.varInstance("passedButNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Printed")) {
+                self.assertAssignOnlyProperty(.varInstance("printedButNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Custom")) {
+                self.assertAssignOnlyProperty(.varInstance("notDecodedByCustom"))
+            }
+        }
+    }
+
     /// The macro's generated extension must not keep its own class alive.
     func testReportsUnusedObservableClass() throws {
         try analyze(retainPublic: true) {
