@@ -24,21 +24,25 @@ public struct ClangCoverage: Equatable {
         self.unindexedFiles = unindexedFiles
     }
 
-    /// A target counts as built when any of its source files has a unit; a target the scanned
-    /// schemes or products never compile has no units at all, and is not missing anything, just as
-    /// its Swift files are not indexed. Within a built target, every implementation file with no unit
-    /// is unindexed. Headers have no unit of their own; their occurrences are in the records of the
-    /// units that include them.
+    /// A target counts as built when any of its source files has a unit. Within a built target, every
+    /// implementation file with no unit is unindexed. Headers have no unit of their own; their
+    /// occurrences are in the records of the units that include them.
+    ///
+    /// A target with no units at all is ambiguous: in a store Lethen has just built it was not compiled
+    /// (the scanned schemes or products leave it out, and its Swift files are not indexed either), so it
+    /// is missing nothing. A store Lethen did not build (`--skip-build`, `--index-store-path`) can be
+    /// partial, so `trustsAbsentUnits` is false there and such a target's implementation files count as
+    /// unindexed.
     ///
     /// Callers leave out the files the index collector drops: those of excluded targets, matching an
     /// index exclusion, or missing on disk.
-    public static func assess(targets: [Target], indexedFiles: Set<FilePath>) -> ClangCoverage {
+    public static func assess(targets: [Target], indexedFiles: Set<FilePath>, trustsAbsentUnits: Bool) -> ClangCoverage {
         let indexed = Set(indexedFiles.map { $0.lexicallyNormalized() })
         var unindexed: Set<FilePath> = []
 
         for target in targets {
             let files = Set(target.sourceFiles.map { $0.lexicallyNormalized() })
-            guard !files.isDisjoint(with: indexed) else { continue }
+            if trustsAbsentUnits, files.isDisjoint(with: indexed) { continue }
 
             for file in files where isImplementationFile(file) && !indexed.contains(file) {
                 unindexed.insert(file)

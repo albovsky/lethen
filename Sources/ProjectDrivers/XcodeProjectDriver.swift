@@ -243,7 +243,9 @@
                         let files = target.files(kind: .swiftSource).union(target.files(kind: .clangSource))
                         return ClangCoverage.Target(sourceFiles: files.filter(isCollectable))
                     },
-                indexedFiles: Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path))
+                indexedFiles: Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path)),
+                // Only a store this scan built says that a target with no units was not compiled.
+                trustsAbsentUnits: !configuration.skipBuild && configuration.indexStorePath.isEmpty
             )
             if let warning = coverage.warning {
                 self.logger.warn(warning)

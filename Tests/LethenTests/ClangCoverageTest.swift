@@ -7,8 +7,8 @@ final class ClangCoverageTest: XCTestCase {
         FilePath("/p/\(name)")
     }
 
-    private func assess(_ targets: [ClangCoverage.Target], indexed: [String]) -> ClangCoverage {
-        ClangCoverage.assess(targets: targets, indexedFiles: Set(indexed.map(path)))
+    private func assess(_ targets: [ClangCoverage.Target], indexed: [String], trustsAbsentUnits: Bool = true) -> ClangCoverage {
+        ClangCoverage.assess(targets: targets, indexedFiles: Set(indexed.map(path)), trustsAbsentUnits: trustsAbsentUnits)
     }
 
     private func target(_ files: [String]) -> ClangCoverage.Target {
@@ -27,10 +27,30 @@ final class ClangCoverageTest: XCTestCase {
         XCTAssertEqual(coverage.unindexedFiles, [path("B.m")])
     }
 
-    func testTargetWithNoUnitsIsNotBuiltAndNotMissingAnything() {
+    func testTargetWithNoUnitsIsNotBuiltAndNotMissingAnythingInAStoreLethenBuilt() {
         let coverage = assess(
-            [target(["A.swift", "B.m"]), target(["C.m", "D.swift"])],
+            [target(["A.swift", "B.m"]), target(["C.m", "D.swift"]), target(["E.m"])],
             indexed: ["A.swift", "B.m"]
+        )
+        XCTAssertTrue(coverage.isComplete)
+    }
+
+    /// A store Lethen did not build can be partial, so a target with no units may have been compiled
+    /// after all: its implementation files are unindexed, as are those of a built target.
+    func testTargetWithNoUnitsIsUnindexedInAStoreLethenDidNotBuild() {
+        let coverage = assess(
+            [target(["A.swift", "B.m"]), target(["C.m", "D.swift"]), target(["E.m"]), target(["F.swift"])],
+            indexed: ["A.swift", "B.m"],
+            trustsAbsentUnits: false
+        )
+        XCTAssertEqual(coverage.unindexedFiles, [path("C.m"), path("E.m")])
+    }
+
+    func testStoreLethenDidNotBuildIsCompleteWhenEveryImplementationFileHasAUnit() {
+        let coverage = assess(
+            [target(["A.swift", "B.m"]), target(["C.m"]), target(["D.swift"])],
+            indexed: ["A.swift", "B.m", "C.m"],
+            trustsAbsentUnits: false
         )
         XCTAssertTrue(coverage.isComplete)
     }
@@ -51,7 +71,8 @@ final class ClangCoverageTest: XCTestCase {
     func testPathsAreComparedNormalized() {
         let coverage = ClangCoverage.assess(
             targets: [.init(sourceFiles: [FilePath("/p/sub/../A.swift"), FilePath("/p/sub/../B.m")])],
-            indexedFiles: [FilePath("/p/A.swift"), FilePath("/p/B.m")]
+            indexedFiles: [FilePath("/p/A.swift"), FilePath("/p/B.m")],
+            trustsAbsentUnits: true
         )
         XCTAssertTrue(coverage.isComplete)
     }

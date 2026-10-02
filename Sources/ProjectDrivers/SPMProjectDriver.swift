@@ -171,7 +171,12 @@ extension SPMProjectDriver: ProjectDriver {
                 }
                 return ClangCoverage.Target(sourceFiles: Set(files))
             }
-        return ClangCoverage.assess(targets: targets, indexedFiles: indexedFiles)
+        return ClangCoverage.assess(
+            targets: targets,
+            indexedFiles: indexedFiles,
+            // Only a store this scan built says that a target with no units was not compiled.
+            trustsAbsentUnits: !configuration.skipBuild && configuration.indexStorePath.isEmpty
+        )
     }
 
     private func testTargetNames(from description: PackageDescription) -> Set<String> {
