@@ -30,7 +30,7 @@ struct ScanCommand: ParsableCommand {
     @Option(help: "Path to your project's .xcodeproj or .xcworkspace")
     var project: FilePath?
 
-    @Option(parsing: .upToNextOption, help: "Schemes to build. All targets built by these schemes will be scanned")
+    @Option(parsing: .upToNextOption, help: "Schemes to build. All targets built by these schemes will be scanned. Defaults to the project's only shared scheme")
     var schemes: [String] = defaultConfiguration.$schemes.defaultValue
 
     @Option(help: "Output format")

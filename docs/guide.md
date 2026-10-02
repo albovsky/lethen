@@ -132,7 +132,7 @@ Code inside `#if DEBUG` or its `#else` is compiled in only one configuration, so
 
 ### Xcode projects and workspaces
 
-Pass `--project` with the `.xcodeproj` or `.xcworkspace` and `--schemes` with the schemes to build. Lethen runs `xcodebuild build-for-testing` once per scheme into its own DerivedData directory under `~/Library/Caches/com.github.peripheryapp`, keyed by Xcode version, project name, and the set of schemes, and also by the configuration and the build arguments when either is given, so a second scan with the same options reuses the build. `--clean-build` deletes that directory first. `lethen clear-cache` removes the whole cache directory.
+Pass `--project` with the `.xcodeproj` or `.xcworkspace` and `--schemes` with the schemes to build. Without `--schemes`, Lethen builds the project's only shared scheme and says so; when the project shares several schemes, or none, it stops and lists the schemes to pass. Lethen runs `xcodebuild build-for-testing` once per scheme into its own DerivedData directory under `~/Library/Caches/com.github.peripheryapp`, keyed by Xcode version, project name, and the set of schemes, and also by the configuration and the build arguments when either is given, so a second scan with the same options reuses the build. `--clean-build` deletes that directory first. `lethen clear-cache` removes the whole cache directory.
 
 Interface Builder files, Info.plist files, and Core Data models found in the project are read for class and member references.
 

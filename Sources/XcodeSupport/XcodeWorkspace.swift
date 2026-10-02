@@ -53,6 +53,11 @@ public final class XcodeWorkspace: XcodeProjectlike {
         XcodeSchemeConfigurations.read(scheme: scheme, in: [path] + projects.flatMap(\.schemeContainerPaths))
     }
 
+    /// The workspace's own and those of each project it lists, as `xcodebuild -list -workspace` lists.
+    public var sharedSchemes: [String] {
+        XcodeSharedSchemes.names(in: [path] + projects.map(\.path))
+    }
+
     // MARK: - Private
 
     private func collectProjectPaths(in elements: [XCWorkspaceDataElement], groups: [XCWorkspaceDataGroup] = []) -> [FilePath] {

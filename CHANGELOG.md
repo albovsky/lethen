@@ -8,6 +8,7 @@
 
 - Releases use calendar versions, `YYYY.M.N` (year, month without a leading zero, release number within the month), starting with the next release after 3.10.0; see [CONTRIBUTING.md](CONTRIBUTING.md#validation-and-releases). Release tags, the GitHub Action's `version` input, and the update checker reject zero-padded versions such as `2026.09.1`, which are not valid Semantic Versioning.
 - A declaration whose name is used in a `#if` branch the scanned build did not compile, such as a helper called only under `#if canImport(Darwin)` when scanning on Linux, is now reported with `likely` confidence and the reason `its name appears in #if ... at File.swift:N, a branch this build did not compile`. Which branch compiled is read from the index, matching is by name within the module, and members and enum cases need a member access or call, so nothing is hidden unless `--min-confidence certain` is set (#94).
+- `lethen scan` on an Xcode project without `--schemes` builds the project's only shared scheme and says so, instead of failing. A project that shares several schemes, or none, still stops, and the error lists the schemes to pass ([#91](https://github.com/albovsky/lethen/issues/91)).
 
 ##### Bug Fixes
 
