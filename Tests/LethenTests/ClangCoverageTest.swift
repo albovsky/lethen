@@ -1,0 +1,106 @@
+@testable import SourceGraph
+import SystemPackage
+import XCTest
+
+final class ClangCoverageTest: XCTestCase {
+    private func path(_ name: String) -> FilePath {
+        FilePath("/p/\(name)")
+    }
+
+    private func assess(_ targets: [ClangCoverage.Target], indexed: [String], trustsAbsentUnits: Bool = true) -> ClangCoverage {
+        ClangCoverage.assess(targets: targets, indexedFiles: Set(indexed.map(path)), trustsAbsentUnits: trustsAbsentUnits)
+    }
+
+    private func target(_ files: [String]) -> ClangCoverage.Target {
+        .init(sourceFiles: Set(files.map(path)))
+    }
+
+    func testBuiltTargetWhoseObjectiveCFileHasAUnitIsComplete() {
+        let coverage = assess([target(["A.swift", "B.m"])], indexed: ["A.swift", "B.m"])
+        XCTAssertTrue(coverage.isComplete)
+        XCTAssertEqual(coverage.unindexedFiles, [])
+    }
+
+    func testBuiltTargetWhoseObjectiveCFileHasNoUnitReportsIt() {
+        let coverage = assess([target(["A.swift", "B.m"])], indexed: ["A.swift"])
+        XCTAssertFalse(coverage.isComplete)
+        XCTAssertEqual(coverage.unindexedFiles, [path("B.m")])
+    }
+
+    func testTargetWithNoUnitsIsNotBuiltAndNotMissingAnythingInAStoreLethenBuilt() {
+        let coverage = assess(
+            [target(["A.swift", "B.m"]), target(["C.m", "D.swift"]), target(["E.m"])],
+            indexed: ["A.swift", "B.m"]
+        )
+        XCTAssertTrue(coverage.isComplete)
+    }
+
+    /// A store Lethen did not build can be partial, so a target with no units may have been compiled
+    /// after all: its implementation files are unindexed, as are those of a built target.
+    func testTargetWithNoUnitsIsUnindexedInAStoreLethenDidNotBuild() {
+        let coverage = assess(
+            [target(["A.swift", "B.m"]), target(["C.m", "D.swift"]), target(["E.m"]), target(["F.swift"])],
+            indexed: ["A.swift", "B.m"],
+            trustsAbsentUnits: false
+        )
+        XCTAssertEqual(coverage.unindexedFiles, [path("C.m"), path("E.m")])
+    }
+
+    func testStoreLethenDidNotBuildIsCompleteWhenEveryImplementationFileHasAUnit() {
+        let coverage = assess(
+            [target(["A.swift", "B.m"]), target(["C.m"]), target(["D.swift"])],
+            indexed: ["A.swift", "B.m", "C.m"],
+            trustsAbsentUnits: false
+        )
+        XCTAssertTrue(coverage.isComplete)
+    }
+
+    func testHeadersAndSwiftFilesWithoutUnitsAreNeverReported() {
+        let coverage = assess([target(["A.swift", "B.swift", "B.h", "C.hpp", "D.m"])], indexed: ["A.swift", "D.m"])
+        XCTAssertTrue(coverage.isComplete)
+    }
+
+    func testEveryImplementationExtensionCountsCaseInsensitivelyAndTheOutputIsSorted() {
+        let coverage = assess(
+            [target(["A.swift", "z.mm", "y.c", "x.cpp", "w.cc", "v.cxx", "u.M", "t.m"])],
+            indexed: ["A.swift"]
+        )
+        XCTAssertEqual(coverage.unindexedFiles, ["t.m", "u.M", "v.cxx", "w.cc", "x.cpp", "y.c", "z.mm"].map(path))
+    }
+
+    func testPathsAreComparedNormalized() {
+        let coverage = ClangCoverage.assess(
+            targets: [.init(sourceFiles: [FilePath("/p/sub/../A.swift"), FilePath("/p/sub/../B.m")])],
+            indexedFiles: [FilePath("/p/A.swift"), FilePath("/p/B.m")],
+            trustsAbsentUnits: true
+        )
+        XCTAssertTrue(coverage.isComplete)
+    }
+
+    func testUnindexedFilesOfSeveralBuiltTargetsAreCombined() {
+        let coverage = assess(
+            [target(["A.swift", "B.m"]), target(["C.swift", "D.m"])],
+            indexed: ["A.swift", "C.swift"]
+        )
+        XCTAssertEqual(coverage.unindexedFiles, [path("B.m"), path("D.m")])
+    }
+
+    func testUnreadFilesMakeTheCoverageIncomplete() {
+        let coverage = ClangCoverage(unindexedFiles: []).addingUnreadFiles([path("B.m"), path("A.m")])
+        XCTAssertFalse(coverage.isComplete)
+        XCTAssertEqual(coverage.unreadFiles, [path("A.m"), path("B.m")])
+        XCTAssertEqual(coverage.warning, "2 Objective-C files could not be read for string literals (A.m, B.m), so declarations accessible from Objective-C are reported as likely rather than certain.")
+    }
+
+    func testWarningNamesTheCountAndAFewFiles() {
+        XCTAssertNil(ClangCoverage(unindexedFiles: []).warning)
+        XCTAssertEqual(
+            ClangCoverage(unindexedFiles: [path("A.m")]).warning,
+            "1 Objective-C file has no index unit (A.m), so declarations accessible from Objective-C are reported as likely rather than certain."
+        )
+        XCTAssertEqual(
+            ClangCoverage(unindexedFiles: ["A.m", "B.m", "C.m", "D.m"].map(path)).warning,
+            "4 Objective-C files have no index unit (A.m, B.m, C.m, and 1 more), so declarations accessible from Objective-C are reported as likely rather than certain."
+        )
+    }
+}

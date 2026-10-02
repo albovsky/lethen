@@ -84,11 +84,13 @@ import XCTest
             }
         }
 
-        func testConfidenceLikelyForObjcAccessible() throws {
+        func testConfidenceCertainForObjcAccessibleWhenEveryObjectiveCFileWasIndexed() throws {
+            // The fixture package's coverage is complete: every Objective-C file it builds has a unit, so
+            // no reference from Objective-C is missing.
             try analyze(retainPublic: true) {
                 assertReferenced(.class("FixtureClass232")) {
                     self.assertNotReferenced(.functionMethodInstance("exposed()"))
-                    self.assertConfidence(.functionMethodInstance("exposed()"), .likely)
+                    self.assertConfidence(.functionMethodInstance("exposed()"), .certain)
                     self.assertConfidence(.functionMethodInstance("plain()"), .certain)
                 }
             }

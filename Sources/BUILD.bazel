@@ -75,6 +75,7 @@ swift_library(
     srcs = [
         "SourceGraph/Elements/Accessibility.swift",
         "SourceGraph/Elements/AssetReference.swift",
+        "SourceGraph/Elements/ClangCoverage.swift",
         "SourceGraph/Elements/CommandIgnoreKind.swift",
         "SourceGraph/Elements/CommentCommand.swift",
         "SourceGraph/Elements/Confidence.swift",
@@ -232,6 +233,7 @@ swift_library(
 swift_library(
     name = "Indexer",
     srcs = [
+        "Indexer/ClangLiteralScanner.swift",
         "Indexer/IndexPipeline.swift",
         "Indexer/IndexPlan.swift",
         "Indexer/Indexer.swift",

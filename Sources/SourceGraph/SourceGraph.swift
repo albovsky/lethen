@@ -31,6 +31,9 @@ public final class SourceGraph {
     public private(set) var unconstructedEnumCases: Set<Declaration> = []
     /// Identifier-like words found in string literals across the scanned sources.
     public private(set) var literalTokens: Set<String> = []
+    /// Whether the index has a unit for every C and Objective-C file the build compiled. `nil` until the
+    /// pipeline records it, and for project kinds that cannot list their source files.
+    public private(set) var clangCoverage: ClangCoverage?
     /// Names used in `#if` clauses this build did not compile, by the module whose file has the
     /// clause, each with the clause that uses it.
     public private(set) var skippedBranchNames: [String: [String: String]] = [:]
@@ -52,6 +55,10 @@ public final class SourceGraph {
     public init(configuration: Configuration, logger: Logger) {
         self.configuration = configuration
         self.logger = logger
+    }
+
+    public func setClangCoverage(_ coverage: ClangCoverage?) {
+        clangCoverage = coverage
     }
 
     public func addLiteralTokens(_ tokens: Set<String>) {
@@ -93,10 +100,20 @@ public final class SourceGraph {
             || declaration.modifiers.contains("dynamic")
 
         if isObjcExposed, !configuration.retainObjcAccessible, !configuration.retainObjcAnnotated {
-            return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot see references made from Objective-C")
+            switch clangCoverage {
+            case nil:
+                return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot tell whether every Objective-C file of this project was indexed")
+            case let coverage? where !coverage.isComplete:
+                return .init(confidence: .likely, reason: coverage.confidenceReason)
+            default:
+                // Every Objective-C file was read, so its references are in the graph. The rules below still apply.
+                break
+            }
         }
 
-        if Self.dynamicallyNamedKinds.contains(declaration.kind), literalTokens.contains(Self.baseName(of: declaration.name)) {
+        if Self.dynamicallyNamedKinds.contains(declaration.kind),
+           !literalTokens.isDisjoint(with: Self.lookupNames(of: declaration))
+        {
             return .init(confidence: .likely, reason: "its name appears in a string literal")
         }
 
@@ -113,7 +130,7 @@ public final class SourceGraph {
     /// parameters, locals, imports, or extensions.
     private static let dynamicallyNamedKinds: Set<Declaration.Kind> = [
         .class, .struct, .enum, .protocol, .enumelement,
-        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic,
+        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .functionConstructor,
         .varClass, .varGlobal, .varInstance, .varStatic,
     ]
 
@@ -121,6 +138,34 @@ public final class SourceGraph {
     private static let skippedBranchKinds = dynamicallyNamedKinds.union([
         .typealias, .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
     ])
+
+    /// The names a runtime lookup can spell for the declaration: its Swift base name, the Objective-C
+    /// name of an exposed declaration when `@objc(name)` differs from it, and the setter selector of an
+    /// exposed property (`setFoo` for `foo`). An initializer is reachable only by its Objective-C name
+    /// (`initWithFoo`); `init` alone is not a lookup.
+    static func lookupNames(of declaration: Declaration) -> Set<String> {
+        var names: Set<String> = declaration.kind == .functionConstructor ? [] : [baseName(of: declaration.name)]
+        for usr in declaration.usrs {
+            guard let name = objcName(fromUSR: usr) else { continue }
+
+            names.insert(name)
+            if declaration.kind.isVariableKind, let first = name.first {
+                names.insert("set" + first.uppercased() + name.dropFirst())
+            }
+        }
+        return names
+    }
+
+    /// The Objective-C name a clang USR ends with: `c:objc(cs)Store(im)load:from:` names `load`, and
+    /// `c:@M@App@objc(cs)Store` names `Store`. `nil` for a USR that is not an Objective-C one.
+    static func objcName(fromUSR usr: String) -> String? {
+        guard usr.hasPrefix("c:"), let kind = usr.lastIndex(of: ")") else { return nil }
+
+        let selector = usr[usr.index(after: kind)...]
+        guard !selector.isEmpty else { return nil }
+
+        return String(selector.split(separator: ":", maxSplits: 1).first ?? selector)
+    }
 
     /// The name without argument labels: `load(from:)` becomes `load`.
     public static func baseName(of name: String) -> String {

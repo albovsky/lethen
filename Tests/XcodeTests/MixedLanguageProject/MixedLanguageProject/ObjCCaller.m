@@ -24,6 +24,15 @@
     (void)[[PublicAllocatedFromObjC alloc] init];
     EnumUsedFromObjC enumValue = EnumUsedFromObjCUsedCase;
     (void)enumValue;
+    // Names that clang's index cannot show as references: only their spelling in the source says so.
+    SEL selector = @selector(namedInSelector);
+    (void)selector;
+    (void)NSClassFromString(@"NamedInObjCString");
+    (void)[object valueForKey:@"kvcRead"];
+    (void)NSSelectorFromString(@"renamedSelectorOnly");
+    (void)NSClassFromString(@"RenamedStringClassForObjC");
+    (void)NSSelectorFromString(@"setWrittenBySetterSelector:");
+    (void)NSSelectorFromString(@"initWithObjCName:");
 }
 
 @end

@@ -236,17 +236,39 @@
             let xcDataModelPaths = targets.flatMapSet { $0.files(kind: .xcDataModel) }
             let xcMappingModelPaths = targets.flatMapSet { $0.files(kind: .xcMappingModel) }
 
+            let coverage = ClangCoverage.assess(
+                targets: targets
+                    .filter { !excludedTestTargets.contains($0.name) && !configuration.excludeTargets.contains($0.name) }
+                    .map { target in
+                        let files = target.files(kind: .swiftSource).union(target.files(kind: .clangSource))
+                        return ClangCoverage.Target(sourceFiles: files.filter(isCollectable))
+                    },
+                indexedFiles: Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path)),
+                // Only a store this scan built says that a target with no units was not compiled.
+                trustsAbsentUnits: !configuration.skipBuild && configuration.indexStorePath.isEmpty
+            )
+            if let warning = coverage.warning {
+                self.logger.warn(warning)
+            }
+
             return IndexPlan(
                 sourceFiles: sourceFiles.sourceFiles,
                 clangSourceFiles: sourceFiles.clangSourceFiles,
                 plistPaths: infoPlistPaths,
                 xibPaths: xibPaths,
                 xcDataModelPaths: xcDataModelPaths,
-                xcMappingModelPaths: xcMappingModelPaths
+                xcMappingModelPaths: xcMappingModelPaths,
+                clangCoverage: coverage
             )
         }
 
         // MARK: - Private
+
+        /// Whether the collector can read a unit for the file: it drops the files that match an index
+        /// exclusion and the ones missing on disk.
+        private func isCollectable(_ file: FilePath) -> Bool {
+            file.exists && !configuration.indexExcludeMatchers.anyMatch(filename: file.string)
+        }
 
         /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.
         private var buildConfigurations: [String?] {

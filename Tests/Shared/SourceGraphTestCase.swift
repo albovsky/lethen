@@ -73,7 +73,8 @@ open class SourceGraphTestCase: XCTestCase {
                 plistPaths: plan.plistPaths,
                 xibPaths: plan.xibPaths,
                 xcDataModelPaths: plan.xcDataModelPaths,
-                xcMappingModelPaths: plan.xcMappingModelPaths
+                xcMappingModelPaths: plan.xcMappingModelPaths,
+                clangCoverage: plan.clangCoverage
             )
         }
 
