@@ -114,6 +114,7 @@ A managed scan runs `swift build --build-tests --enable-index-store` and reads t
 - Each verified build ends with a stamp that records the Swift version and the build arguments.
 - Before the next build, every module with an object compiled after the stamp (for example by a plain `swift build`), a source edited after it, or a source without an index unit is recompiled, together with every module that imports it.
 - After the build, every package source must have a unit for its module, and nothing may remain indexed for a file the package no longer builds.
+- A target that `swift build --build-tests` never compiles, such as an executable used only by a command plugin, has neither units nor objects. Lethen records it in the stamp, reuses the tree while it still has no objects, and warns that it is not scanned; pass `--retain-public-targets` for the modules it depends on to keep their public declarations. A target with objects but no units, or a recorded one that gains objects or units, cleans.
 - Anything that cannot be verified, including a missing stamp, different build arguments, or a different Swift version, cleans and rebuilds.
 
 A rescan with nothing changed rebuilds nothing; an edit costs the edited module and its importers, never the package's dependencies. `--clean-build` always cleans first. `--verbose` logs which modules were recompiled, or why the build was cleaned.

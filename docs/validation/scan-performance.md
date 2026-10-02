@@ -50,6 +50,33 @@ The two test fixture packages, rescanned with nothing changed:
 | `Tests/Fixtures` | 15 s | 4 s | 435, identical |
 | `Tests/SPMTests/SPMProject` (macro target) | 15 s | 5 s | 4, identical |
 
+## Packages with targets the build never compiles
+
+albovsky/lethen#89: a target that `swift build --build-tests` does not compile, such as an
+executable used only by a command plugin, has no index units, so the index could never be
+verified and every scan cleaned. Lethen now records such targets in the build stamp and reuses
+the tree while they still have no objects.
+
+Measured on swift-argument-parser at 1021ac8, whose `generate-docc-reference` and
+`generate-manual` executables are used only by command plugins. Environment for this table:
+Linux x86_64, Swift 6.4 (swift-6.4-RELEASE), the default Swift Build system, debug configuration,
+and `lethen` built with `swift build -c release` from this change on top of d7dec6c. These are
+not the Apple silicon numbers above. The command is `lethen scan --retain-public --format json
+--verbose`, each time from the same checkout.
+
+| Situation | Time | Log |
+|---|---|---|
+| First scan, no `.build` | 38.2 s | no matching build stamp, cleaning |
+| Rescan, nothing changed | 4.6 s | reused; recompiled 0 modules |
+| Rescan with `--clean-build` | 39.1 s | cleaned |
+| After `swift build --product generate-manual` | 38.9 s | `generate-manual` was recorded as not built but now has objects, cleaning |
+| Rescan after that | 4.5 s | reused; recompiled 0 modules |
+
+The findings of the first, reused, and post-build scans are byte-identical; the `--clean-build`
+scan differs only by the `clean_build: true` line the output echoes. Without `--retain-public`,
+the scan warns that the two tools are not scanned and names the modules to pass to
+`--retain-public-targets` (`ArgumentParser`, `ArgumentParserToolInfo`).
+
 ## Where a scan's time goes
 
 `--stats` (albovsky/lethen#40) on an app of 650 Swift files and 101,525 lines of code (blank and
