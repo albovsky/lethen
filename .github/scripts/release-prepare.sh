@@ -41,7 +41,7 @@ if (( major >= 2000 )); then
     if (( major < 2026 || minor < 1 || minor > 12 || patch < 1 )); then
         fail "Tag '$tag' is not a calendar version: expected YYYY.M.N with a year of 2026 or later, a month from 1 to 12, and a release number of 1 or more."
     fi
-elif (( major > 3 || (major == 3 && minor > 10) )); then
+elif (( major > 3 || (major == 3 && (minor > 10 || (minor == 10 && patch > 0))) )); then
     fail "Tag '$tag' is neither a calendar version (YYYY.M.N, such as 2026.10.1) nor a release through 3.10.0."
 fi
 
