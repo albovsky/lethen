@@ -86,7 +86,6 @@
 ["Tests/TestHelpers.swift", 178, 17, "function.method.static", "digestAuth(forUser:password:)", ["unused"], ["s:14AlamofireTests8EndpointV10digestAuth7forUser8passwordACSS_SStFZ"]],
 ["Tests/TestHelpers.swift", 30, 16, "var.static", "nonexistentDomain", ["unused"], ["s:SS14AlamofireTestsE17nonexistentDomainSSvpZ"]],
 ["Tests/TestHelpers.swift", 34, 16, "var.static", "nonexistentDomain", ["unused"], ["s:10Foundation3URLV14AlamofireTestsE17nonexistentDomainACvpZ"]],
-["Tests/TestHelpers.swift", 496, 9, "var.instance", "origin", ["assignOnlyProperty"], ["s:14AlamofireTests12TestResponseV6originSSvp"]],
 ["Tests/UploadTests.swift", 668, 10, "function.method.instance", "disabled_testThatUploadingMultipartFormDataOnBackgroundSessionWritesDataToFileToAvoidCrash()", ["unused"], ["c:@M@AlamofireTests@objc(cs)UploadMultipartFormDataTestCase(im)disabled_testThatUploadingMultipartFormDataOnBackgroundSessionWritesDataToFileToAvoidCrash"]],
 ["Tests/WebSocketTests.swift", 716, 9, "var.instance", "string", ["unused"], ["s:So25NSURLSessionWebSocketTaskC10FoundationE7MessageO14AlamofireTestsE6stringSSSgvp"]]
 ]

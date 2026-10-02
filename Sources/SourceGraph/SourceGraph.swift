@@ -308,6 +308,12 @@ public final class SourceGraph {
         allReferencesByUsr[reference.usr, default: []].insert(reference)
     }
 
+    /// Adds a reference from top-level code, which has no declaration to hold it, after `indexingComplete`.
+    public func addRoot(_ reference: Reference) {
+        add(reference)
+        _ = rootReferences.insert(reference)
+    }
+
     public func add(_ references: Set<Reference>) {
         allReferences.formUnion(references)
         references.forEach { allReferencesByUsr[$0.usr, default: []].insert($0) }
@@ -520,6 +526,14 @@ public final class SourceGraph {
 
         return inheritedTypeReferences(of: decl).contains {
             [.protocol, .typealias].contains($0.declarationKind) && encodableTypes.contains($0.name)
+        }
+    }
+
+    func isDecodable(_ decl: Declaration) -> Bool {
+        let decodableTypes = ["Decodable"] + configuration.externalCodableProtocols
+
+        return inheritedTypeReferences(of: decl).contains {
+            [.protocol, .typealias].contains($0.declarationKind) && decodableTypes.contains($0.name)
         }
     }
 

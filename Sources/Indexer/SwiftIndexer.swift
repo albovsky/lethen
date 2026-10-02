@@ -352,6 +352,38 @@ final class SwiftIndexer: Indexer {
                     reference.valueArgumentReferences = values
                 }
             }
+            for (call, list) in valueUses.argumentLists {
+                let arguments = list.map { argument in
+                    ValueArgument(label: argument.label, references: Set(argument.origins.flatMap { referencesByLocation[$0, default: []] }))
+                }
+                for reference in referencesByLocation[call, default: []] {
+                    reference.valueArguments = arguments
+                }
+            }
+            for location in valueUses.specializationArgumentLocations {
+                for reference in referencesByLocation[location, default: []] {
+                    reference.isGenericSpecializationArgument = true
+                }
+            }
+            for (location, arguments) in valueUses.specializationArguments {
+                let resolved = arguments.map { Set($0.flatMap { referencesByLocation[$0, default: []] }) }
+                for reference in referencesByLocation[location, default: []] {
+                    reference.genericArguments = resolved
+                }
+            }
+            graph.withLock { _ in
+                for decl in declarations {
+                    if let names = valueUses.parameterTypeNames[decl.location] {
+                        decl.parameterTypeNames = names
+                    }
+                    if valueUses.accessorBodyLocations.contains(decl.location) {
+                        decl.hasAccessorBody = true
+                    }
+                    if valueUses.initializedConstantLocations.contains(decl.location) {
+                        decl.isInitializedConstant = true
+                    }
+                }
+            }
             identifyUnusedParameters(using: multiplexingSyntaxVisitor)
             applyCommentCommands(using: multiplexingSyntaxVisitor)
         }
