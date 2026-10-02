@@ -12,8 +12,15 @@ final class BuildBoundaryWarningTest: XCTestCase {
     ]}
     """
 
+    /// Decodes as `SPM.Package.load` does, with `convertFromSnakeCase`.
+    private func decode(_ json: String) throws -> PackageDescription {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(PackageDescription.self, from: Data(json.utf8))
+    }
+
     private func decoded() throws -> PackageDescription {
-        try JSONDecoder().decode(PackageDescription.self, from: Data(packageJSON.utf8))
+        try decode(packageJSON)
     }
 
     func testWarnsWhenExcludedTestsDependOnScannedTargets() throws {
@@ -46,5 +53,43 @@ final class BuildBoundaryWarningTest: XCTestCase {
 
     func testNoWarningWhenNothingIsExcluded() throws {
         XCTAssertNil(try SPMProjectDriver.buildBoundaryWarning(description: decoded(), configuration: Configuration()))
+    }
+
+    private let pluginToolJSON = """
+    {"targets": [
+      {"name": "Values", "type": "library", "path": "Sources/Values", "c99name": "Values", "target_dependencies": [], "product_memberships": ["Tool"]},
+      {"name": "Tool", "type": "executable", "path": "Sources/Tool", "c99name": "Tool", "target_dependencies": ["Values"], "product_memberships": ["Tool"]},
+      {"name": "ToolPlugin", "type": "plugin", "path": "Plugins/ToolPlugin", "c99name": "ToolPlugin", "target_dependencies": ["Tool"]}
+    ]}
+    """
+
+    func testWarnsWhenAnUnbuiltTargetDependsOnScannedTargets() throws {
+        let description = try decode(pluginToolJSON)
+
+        let warning = try XCTUnwrap(SPMProjectDriver.buildBoundaryWarning(description: description, configuration: Configuration(), unbuiltTargets: ["Tool"]))
+
+        XCTAssertTrue(warning.contains("Tool"), warning)
+        XCTAssertTrue(warning.contains("not compiled"), warning)
+        XCTAssertTrue(warning.contains("--retain-public-targets Values"), warning)
+    }
+
+    func testNoUnbuiltWarningWhenTargetIsRetainedOrPublicIsRetained() throws {
+        let description = try decode(pluginToolJSON)
+        let retainedTarget = Configuration()
+        retainedTarget.retainPublicTargets = ["Values"]
+        XCTAssertNil(SPMProjectDriver.buildBoundaryWarning(description: description, configuration: retainedTarget, unbuiltTargets: ["Tool"]))
+
+        let retainAll = Configuration()
+        retainAll.retainPublic = true
+        XCTAssertNil(SPMProjectDriver.buildBoundaryWarning(description: description, configuration: retainAll, unbuiltTargets: ["Tool"]))
+        XCTAssertNil(SPMProjectDriver.buildBoundaryWarning(description: description, configuration: Configuration(), unbuiltTargets: []))
+    }
+
+    func testProductMembershipsDecodeWhenPresentAndAbsent() throws {
+        let description = try decode(pluginToolJSON)
+        XCTAssertEqual(description.targets.first { $0.name == "Tool" }?.productMemberships, ["Tool"])
+        XCTAssertNil(description.targets.first { $0.name == "ToolPlugin" }?.productMemberships)
+        XCTAssertNil(try decoded().targets.first?.productMemberships)
+        XCTAssertEqual(description.targets.first { $0.name == "Tool" }?.targetDependencies, ["Values"], "snake-case keys must survive SPM.load's decoder")
     }
 }

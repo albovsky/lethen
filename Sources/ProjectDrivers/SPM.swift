@@ -50,7 +50,11 @@ public enum SPM {
         }
 
         /// Builds the package with indexing enabled, passing each line of build output to `onOutputLine`.
-        public func build(additionalArguments: [String], onOutputLine: @escaping @Sendable (String) -> Void = { _ in }) throws {
+        ///
+        /// - Returns: the modules of targets this build does not compile, such as executables used only by command
+        ///   plugins. They have no index units and are not scanned. Empty when an explicit index store is used.
+        @discardableResult
+        public func build(additionalArguments: [String], onOutputLine: @escaping @Sendable (String) -> Void = { _ in }) throws -> Set<String> {
             guard !additionalArguments.contains("--disable-index-store") else {
                 throw LethenError.usageError("--disable-index-store conflicts with scanning a managed build. Remove it, or use --skip-build with --index-store-path for an externally built index.")
             }
@@ -58,7 +62,7 @@ public enum SPM {
             var arguments = ["swift", "build", "--build-tests"] + additionalArguments + ["--enable-index-store"]
             guard configuration.indexStorePath.isEmpty else {
                 try shell.exec(arguments, onOutputLine: onOutputLine)
-                return
+                return []
             }
 
             let binary = try binaryDirectory(additionalArguments: additionalArguments)
@@ -70,18 +74,19 @@ public enum SPM {
             // Indexing flags do not invalidate compiled tasks, so an existing tree can hold objects that
             // were never indexed or were recompiled without indexing. The build is reused only when
             // SPMIndexFreshness verifies it, and cleaned otherwise.
-            try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store, onOutputLine: onOutputLine)
+            return try buildReusingIndex(arguments: arguments, additionalArguments: additionalArguments, binary: binary, store: store, onOutputLine: onOutputLine)
         }
 
         /// Builds incrementally when SPMIndexFreshness can prove the store matches the build, and cleans
-        /// otherwise. The stamp is removed before any build it does not describe.
+        /// otherwise. The stamp is removed before any build it does not describe. Returns the modules of targets
+        /// the build did not compile; they are known only when verification succeeded, and are otherwise empty.
         private func buildReusingIndex(
             arguments: [String],
             additionalArguments: [String],
             binary: FilePath,
             store: FilePath,
             onOutputLine: @escaping @Sendable (String) -> Void
-        ) throws {
+        ) throws -> Set<String> {
             let logger = logger.contextualized(with: "spm:index-reuse")
             // swiftbuild keeps objects beside Products (.build/out), the native build system beside the triple.
             let freshness = SPMIndexFreshness(storePath: store, buildRoot: binary.removingLastComponent().removingLastComponent(), packageRoot: path)
@@ -91,11 +96,11 @@ public enum SPM {
             )
             let sources = try packageSources()
 
-            if binary.exists, store.exists, let previous = freshness.readStamp(), previous.stamp == stamp {
+            if binary.exists, store.exists, let previous = freshness.readStamp(), previous.stamp.describesSameBuild(as: stamp) {
                 // Only failures to read or verify the store fall back to cleaning; a failing build still throws.
                 let preparation: SPMIndexFreshness.Preparation
                 do {
-                    preparation = try freshness.prepare(sources: sources, stampDate: previous.date)
+                    preparation = try freshness.prepare(sources: sources, stampDate: previous.date, unbuiltTargets: Set(previous.stamp.unbuiltTargets))
                 } catch {
                     preparation = .clean(reason: "the store could not be read: \(error)")
                 }
@@ -111,14 +116,13 @@ public enum SPM {
 
                     let start = Date()
                     try shell.exec(arguments, onOutputLine: onOutputLine)
-                    let issues = verify(freshness, sources: sources, buildStart: start)
-                    if issues.isEmpty {
+                    let verification = verify(freshness, sources: sources, buildStart: start)
+                    if verification.issues.isEmpty {
                         logger.debug("Reused the index store; recompiled \(modules.count) modules (\(objects.count) objects): \(modules.sorted().joined(separator: ", "))")
-                        try freshness.writeStamp(stamp)
-                        return
+                        return try writeStamp(stamp, unbuiltTargets: verification.unbuiltTargets, freshness: freshness, logger: logger)
                     }
 
-                    logger.debug("Index store not reusable (\(issues.count) issues), cleaning: \(issues.prefix(3).joined(separator: "; "))")
+                    logger.debug("Index store not reusable (\(verification.issues.count) issues), cleaning: \(verification.issues.prefix(3).joined(separator: "; "))")
                 }
             } else {
                 logger.debug("No matching build stamp, cleaning.")
@@ -130,22 +134,38 @@ public enum SPM {
             }
             let start = Date()
             try shell.exec(arguments, onOutputLine: onOutputLine)
-            let issues = verify(freshness, sources: sources, buildStart: start)
-            guard issues.isEmpty else {
+            let verification = verify(freshness, sources: sources, buildStart: start)
+            guard verification.issues.isEmpty else {
                 // Leave no stamp, so the next scan cleans again; the scan itself proceeds as it does today.
-                logger.debug("Clean build did not index every source (\(issues.count) issues): \(issues.prefix(3).joined(separator: "; "))")
-                return
+                logger.debug("Clean build did not index every source (\(verification.issues.count) issues): \(verification.issues.prefix(3).joined(separator: "; "))")
+                return []
             }
 
+            return try writeStamp(stamp, unbuiltTargets: verification.unbuiltTargets, freshness: freshness, logger: logger)
+        }
+
+        private func writeStamp(
+            _ stamp: SPMIndexFreshness.Stamp,
+            unbuiltTargets: Set<String>,
+            freshness: SPMIndexFreshness,
+            logger: ContextualLogger
+        ) throws -> Set<String> {
+            var stamp = stamp
+            stamp.unbuiltTargets = unbuiltTargets.sorted()
             try freshness.writeStamp(stamp)
+            if !unbuiltTargets.isEmpty {
+                logger.debug("Targets the build does not compile, so not scanned: \(stamp.unbuiltTargets.joined(separator: ", "))")
+            }
+            return unbuiltTargets
         }
 
         /// Verification issues, with a store that cannot be read reported as one.
-        private func verify(_ freshness: SPMIndexFreshness, sources: Set<SPMIndexFreshness.Source>, buildStart: Date) -> [String] {
+        private func verify(_ freshness: SPMIndexFreshness, sources: Set<SPMIndexFreshness.Source>, buildStart: Date) -> (issues: [String], unbuiltTargets: Set<String>) {
             do {
-                return try freshness.verify(sources: sources, buildStart: buildStart).map(\.description)
+                let verification = try freshness.verify(sources: sources, buildStart: buildStart)
+                return (verification.issues.map(\.description), verification.unbuiltTargets)
             } catch {
-                return ["the store could not be read: \(error)"]
+                return (["the store could not be read: \(error)"], [])
             }
         }
 
@@ -156,7 +176,13 @@ public enum SPM {
                 let module = target.c99name ?? target.name
                 return (target.sources ?? [])
                     .filter { $0.hasSuffix(".swift") }
-                    .map { SPMIndexFreshness.Source(path: path.appending(target.path).appending($0), module: module) }
+                    .map {
+                        SPMIndexFreshness.Source(
+                            path: path.appending(target.path).appending($0),
+                            module: module,
+                            directoryNames: Set([target.name, module] + (target.productMemberships ?? []))
+                        )
+                    }
             })
         }
 
@@ -260,11 +286,8 @@ public struct Target: Decodable {
     public let resources: [Resource]?
     /// Names of the package targets this target depends on.
     public let targetDependencies: [String]?
-
-    enum CodingKeys: String, CodingKey {
-        case name, type, path, c99name, sources, resources
-        case targetDependencies = "target_dependencies"
-    }
+    /// Names of the products that contain this target; absent from hand-written manifest JSON.
+    public let productMemberships: [String]?
 
     public var isTestTarget: Bool {
         type == "test"

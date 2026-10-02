@@ -36,6 +36,7 @@ bazel-*
 /.validation
 
 /Tests/IndexStoreDiscoveryProject/.build
+/Tests/PluginToolProject/.build
 /Tests/ActionSmokeProject/.build
 
 # Local agent planning artifacts
