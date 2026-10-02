@@ -8,6 +8,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     private let graph: SourceGraph
     private let configuration: Configuration
+    private lazy var typealiasNames: Set<String> = Set(graph.declarations(ofKind: .typealias).map(\.name))
 
     required init(graph: SourceGraph, configuration: Configuration, swiftVersion _: SwiftVersion) {
         self.graph = graph
@@ -212,7 +213,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         for prefix in ["any ", "Swift."] where type.hasPrefix(prefix) {
             type.removeFirst(prefix.count)
         }
-        return type == parameterType
+        // A typealias of the coder is still the coder; a spelled type that names any typealias in the graph counts.
+        return type == parameterType || typealiasNames.contains(type)
     }
 
     private func mayDecode(indexed callee: Declaration) -> Bool {
@@ -241,11 +243,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     /// `decode(_:from:)` of `JSONDecoder` and `PropertyListDecoder`, and `decode`/`decodeIfPresent` of the keyed,
-    /// unkeyed and single-value decoding containers, in the standard library's and Foundation's mangling.
+    /// unkeyed and single-value decoding containers, matched on the exact module and type in the USR: the standard
+    /// library (`s:s`) or Foundation (`s:10Foundation`, and `s:20FoundationEssentials` on Linux) followed by the
+    /// length-prefixed type name and its kind. A same-named type from another module does not match.
     private static func isStandardDecodingCall(usr: String) -> Bool {
-        let isDecoder = usr.contains("JSONDecoderC") || usr.contains("PropertyListDecoderC")
-        let isContainer = usr.contains("DecodingContainer")
-        return (isDecoder || isContainer) && usr.range(of: "(6decode|15decodeIfPresent)_", options: .regularExpression) != nil
+        let types = ["11JSONDecoderC", "19PropertyListDecoderC", "22KeyedDecodingContainerV", "29KeyedDecodingContainerProtocolP",
+                     "23UnkeyedDecodingContainerP", "26SingleValueDecodingContainerP"]
+        let exact = "^s:(s|10Foundation|20FoundationEssentials)(\(types.joined(separator: "|")))(sE)?(6decode|15decodeIfPresent)_"
+        return usr.range(of: exact, options: .regularExpression) != nil
     }
 
     /// A specialized metatype such as `Page<Model>.self` decodes `Model` only when `Page` stores a value of that
@@ -278,6 +283,21 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         return result
     }
 
+    /// The enum that supplies the keys: the declaration itself, or the target of a typealias. A type whose keys
+    /// cannot be resolved is not modeled at all.
+    private func codingKeyEnum(for declaration: Declaration) -> Declaration? {
+        var keys = declaration
+        if declaration.kind == .typealias {
+            guard let target = declaration.references.compactMap({ graph.declaration(withUsr: $0.usr) }).first(where: { $0.kind == .enum }) else {
+                return nil
+            }
+
+            keys = target
+        }
+        let isCodingKey = graph.inheritedTypeReferences(of: keys).contains { $0.declarationKind == .protocol && $0.name == "CodingKey" }
+        return isCodingKey ? keys : nil
+    }
+
     /// How the synthesized `init(from:)` treats a stored property.
     private func decodeUse(of property: Declaration, in type: Declaration) -> PropertyUse {
         // Computed properties, lazy properties and a `let` with an initial value are never decoded: the
@@ -285,15 +305,15 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         guard !property.isImplicit, !property.isComplexProperty, !property.isInitializedConstant,
               !property.modifiers.contains("lazy") else { return .skip }
 
-        // An explicit CodingKeys enum limits the properties the synthesized initializer decodes.
+        // An explicit CodingKeys enum, or a typealias of one, limits the properties the synthesized initializer decodes.
         let extensions = graph.extensions[type] ?? []
         let nested = type.declarations.union(extensions.flatMap(\.declarations))
-        let codingKeys = nested.first {
-            $0.kind == .enum && $0.name == "CodingKeys" && !$0.isImplicit
-                && graph.inheritedTypeReferences(of: $0).contains { $0.declarationKind == .protocol && $0.name == "CodingKey" }
-        }
-        if let codingKeys, !codingKeys.declarations.contains(where: { $0.kind == .enumelement && $0.name == property.name }) {
-            return .skip
+        if let codingKeys = nested.first(where: { $0.name == "CodingKeys" && !$0.isImplicit && [.enum, .typealias].contains($0.kind) }) {
+            guard let keys = codingKeyEnum(for: codingKeys) else { return .skip }
+
+            if !keys.declarations.contains(where: { $0.kind == .enumelement && $0.name == property.name }) {
+                return .skip
+            }
         }
 
         // `declaredType` is sanitized of `?` and `!`, so read optionality from the property's mangled

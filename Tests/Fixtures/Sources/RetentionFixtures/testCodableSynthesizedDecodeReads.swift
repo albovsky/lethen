@@ -1,3 +1,4 @@
+import ExternalModuleFixtures
 import Foundation
 
 struct FixtureStruct312: Decodable {
@@ -212,6 +213,35 @@ struct FixtureStruct312Overload: Decodable {
     }
 }
 
+typealias FixtureAlias312Decoder = Decoder
+
+struct FixtureStruct312AliasInit: Decodable {
+    // Control: init(from:) taking a typealias of Decoder is still a custom initializer.
+    let aliasInitNotDecoded: Int
+
+    init(from _: FixtureAlias312Decoder) throws {
+        aliasInitNotDecoded = 0
+    }
+}
+
+struct FixtureStruct312Fake: Decodable {
+    // Control: decoded only through an external type that merely shares the container's name.
+    let fakeNotDecoded: Int
+}
+
+enum FixtureSharedKeys312: String, CodingKey {
+    case sharedKept
+}
+
+struct FixtureStruct312SharedKeys: Decodable {
+    typealias CodingKeys = FixtureSharedKeys312
+
+    // Named by the aliased keys, so it is decoded.
+    let sharedKept: Int
+    // Absent from the aliased keys, so it is not.
+    var sharedSkipped: Int = 0
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -257,6 +287,11 @@ public class FixtureClass312Retainer {
         _ = FixtureStruct312Nested2(nested2NotDecoded: 1)
         _ = try JSONDecoder().decode(FixtureStruct312Dictionary<FixtureStruct312Entry>.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312Overload.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312AliasInit.self, from: data)
+        _ = FixtureStruct312Fake(fakeNotDecoded: 1)
+        _ = FakeDecodingContainer().decode(FixtureStruct312Fake.self, forKey: "fake")
+        _ = try JSONDecoder().decode(FixtureStruct312SharedKeys.self, from: data)
+        _ = FixtureStruct312SharedKeys(sharedKept: 1)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 
