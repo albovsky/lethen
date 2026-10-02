@@ -43,7 +43,10 @@ enum ClangImportScanner {
             case ClangLiteralScanner.slash where bytes[safe: index + 1] == ClangLiteralScanner.slash:
                 index = ClangLiteralScanner.endOfLine(from: index, in: bytes)
             case ClangLiteralScanner.slash where bytes[safe: index + 1] == ClangLiteralScanner.star:
+                // The preprocessor replaces a comment with one space before it looks for directives, so
+                // `/* note */ #if FLAG` is a directive and a comment spanning lines does not end one.
                 index = ClangLiteralScanner.endOfBlockComment(from: index + 2, in: bytes)
+                atLineStart = wasAtLineStart
             case ClangLiteralScanner.quote:
                 index = ClangLiteralScanner.anyStringLiteral(openingQuoteAt: index, in: bytes).next
             case ClangLiteralScanner.apostrophe:
@@ -142,8 +145,9 @@ enum ClangImportScanner {
         return Location(file: file, line: line, column: index - lineStart + 1)
     }
 
-    /// The commands in comments that trail the statement on its line, and in a comment-only line
-    /// directly above it, as Swift's leading and trailing trivia are read.
+    /// The commands in comments that trail the statement on its line, and in the comment directly above
+    /// it, as Swift's leading and trailing trivia are read: a `//` line, or a block comment, which may
+    /// span lines, that only whitespace separates from the statement's line.
     private static func commentCommands(forStatementAt index: Int, endingBefore end: Int, in bytes: [UInt8]) -> [CommentCommand] {
         var comments: [String] = []
 
@@ -166,16 +170,39 @@ enum ClangImportScanner {
         }
 
         let lineStart = (bytes[..<index].lastIndex(of: ClangLiteralScanner.newline) ?? -1) + 1
-        if lineStart > 0 {
-            let previousEnd = lineStart - 1
-            let previousStart = (bytes[..<previousEnd].lastIndex(of: ClangLiteralScanner.newline) ?? -1) + 1
-            let previous = text(bytes[previousStart ..< previousEnd])
-                .trimmingCharacters(in: .whitespaces)
-            if previous.hasPrefix("//") || previous.hasPrefix("/*") {
-                comments.append(previous)
-            }
+        if let leading = leadingComment(endingBefore: lineStart, in: bytes) {
+            comments.append(leading)
         }
 
         return comments.compactMap { CommentCommand.parseCommand(inComment: $0) }
+    }
+
+    /// The comment that ends, up to whitespace, right before `lineStart`: a `//` comment on the line
+    /// above, or a block comment, which may span several lines.
+    private static func leadingComment(endingBefore lineStart: Int, in bytes: [UInt8]) -> String? {
+        var end = lineStart
+        while end > 0, ClangLiteralScanner.isBlank(bytes[end - 1]) || bytes[end - 1] == ClangLiteralScanner.newline {
+            end -= 1
+        }
+        guard end > 0 else { return nil }
+
+        if end >= 2, bytes[end - 2] == ClangLiteralScanner.star, bytes[end - 1] == ClangLiteralScanner.slash {
+            var start = end - 2
+            while start > 0 {
+                start -= 1
+                if bytes[start] == ClangLiteralScanner.slash, bytes[start + 1] == ClangLiteralScanner.star {
+                    // A comment that trails other code belongs to that code.
+                    let commentLineStart = (bytes[..<start].lastIndex(of: ClangLiteralScanner.newline) ?? -1) + 1
+                    guard bytes[commentLineStart ..< start].allSatisfy(ClangLiteralScanner.isBlank) else { return nil }
+
+                    return text(bytes[start ..< end])
+                }
+            }
+            return nil
+        }
+
+        let previousStart = (bytes[..<end].lastIndex(of: ClangLiteralScanner.newline) ?? -1) + 1
+        let previous = text(bytes[previousStart ..< end]).trimmingCharacters(in: .whitespaces)
+        return previous.hasPrefix("//") ? previous : nil
     }
 }

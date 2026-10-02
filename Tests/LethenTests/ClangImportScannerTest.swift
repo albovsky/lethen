@@ -106,6 +106,27 @@ final class ClangImportScannerTest: XCTestCase {
         ])
     }
 
+    /// A comment is one space to the preprocessor, so a directive after one on the same line still counts.
+    func testConditionalDirectiveAfterABlockComment() {
+        let source = "/* note */ #if FLAG\n@import A;\n#endif\n/* spans\nlines */ #if OTHER\n@import B;\n#endif\n@import C;\n"
+        let conditional = Dictionary(uniqueKeysWithValues: imports(source).map { ($0.module, $0.isConditional) })
+
+        XCTAssertEqual(conditional, ["A": true, "B": true, "C": false])
+    }
+
+    func testIgnoreCommandInABlockCommentSpanningLinesAbove() throws {
+        let found = imports("/* periphery:ignore\n */\n@import WMF;\n/* periphery:ignore */\n\n@import Other;\n")
+
+        XCTAssertEqual(found.map(\.commentCommands), [[.ignore], [.ignore]])
+    }
+
+    /// A block comment that trails other code belongs to that code.
+    func testBlockCommentTrailingOtherCodeIsNotACommandForTheNextImport() throws {
+        let statement = try XCTUnwrap(imports("int x; /* periphery:ignore */\n@import WMF;\n").first)
+
+        XCTAssertEqual(statement.commentCommands, [])
+    }
+
     func testIgnoreCommandOnTheSameLine() throws {
         let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
 
