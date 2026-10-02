@@ -328,6 +328,24 @@ final class SwiftIndexer: Indexer {
                     reference.valueArgumentReferences = values
                 }
             }
+            for (call, list) in valueUses.argumentLists {
+                let arguments = list.map { argument in
+                    ValueArgument(label: argument.label, references: Set(argument.origins.flatMap { referencesByLocation[$0, default: []] }))
+                }
+                for reference in referencesByLocation[call, default: []] {
+                    reference.valueArguments = arguments
+                }
+            }
+            graph.withLock { _ in
+                for decl in declarations {
+                    if let names = valueUses.parameterTypeNames[decl.location] {
+                        decl.parameterTypeNames = names
+                    }
+                    if valueUses.initializedConstantLocations.contains(decl.location) {
+                        decl.isInitializedConstant = true
+                    }
+                }
+            }
             identifyUnusedParameters(using: multiplexingSyntaxVisitor)
             applyCommentCommands(using: multiplexingSyntaxVisitor)
         }

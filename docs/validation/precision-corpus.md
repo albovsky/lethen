@@ -633,15 +633,19 @@ A struct that conforms to `Decodable` and has no non-implicit `init(from:)` now 
 stored properties read wherever the type or its metatype reaches a call whose parameter is
 constrained to `Decodable` or is `any Decodable`, with the callee read from the index or, for an
 unindexed one, from its mangled USR, as for encoding. The metatype operand `Type.self` resolves to
-the type reference, which the value-flow visitor previously dropped. Optionality is read from the
+the type reference, which the value-flow visitor previously dropped. For an indexed callee only the arguments passed for a `Decodable`-constrained or `any Decodable`
+parameter count (call labels are matched to the callee's parameters, constraints read from the generic
+clause and `where` clause), so `load(Int.self, metadata: Model.self)` does not read `Model`; an
+unindexed callee is matched by its USR and takes every explicit argument. A `let` with an initial value
+is never decoded and is not modeled. Optionality is read from the
 property's mangled USR, because `declaredType` is stored without its `?` and `!`. Optional
 properties are not modeled, since the synthesized initializer decodes them with `decodeIfPresent`
 and removing one changes nothing, and a nested `CodingKeys` enum limits the set to its cases.
 `--retain-codable-properties` remains the opt-in that retains every property. The fixture
 `testCodableSynthesizedDecodeReads` keeps the required, nested, `Codable`, extension, `.self`,
-default-valued and keyed properties retained, and reports a type never decoded, optional
+default-valued, where-clause-constrained and keyed properties retained, and reports a type never decoded, optional
 properties (`?`, `!`, `Optional<>`), a property absent from `CodingKeys`, a type with its own
-`init(from:)`, and types whose metatype only reaches an unconstrained generic function and `print`.
+`init(from:)`, an initialized `let`, and types whose metatype only reaches an unconstrained generic function, an unconstrained parameter beside a `Decodable` one, and `print`.
 
 Expected on the nightly macOS job, not yet observed: Wikipedia rows for non-optional properties of
 decoded models, such as `WMFImageRecommendationAPIResponse.GrowthImageSuggestionData.datasetId`,

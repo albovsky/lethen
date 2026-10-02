@@ -7,6 +7,8 @@ struct FixtureStruct312: Decodable {
     let nested: FixtureStruct312Nested
     // A default value does not make a decoded property optional.
     var withDefault: Int = 0
+    // An initialized constant is never decoded, so nothing reads it and it is unused.
+    let fixed = 7
 }
 
 struct FixtureStruct312Nested: Decodable {
@@ -62,6 +64,20 @@ struct FixtureStruct312Printed: Decodable {
     let printedButNotDecoded: Int
 }
 
+struct FixtureStruct312Metadata: Decodable {
+    // Control: its metatype goes to an unconstrained parameter of a call whose other parameter is Decodable.
+    let metadataNotDecoded: Int
+}
+
+struct FixtureStruct312Placeholder: Decodable {
+    let placeholderDecoded: Int
+}
+
+struct FixtureStruct312Where: Decodable {
+    // Constrained by a where clause, passed by label past a defaulted parameter.
+    let whereDecoded: Int
+}
+
 struct FixtureStruct312Custom: Decodable {
     // Control: an explicit init(from:) replaces the synthesized one, so its writes count normally.
     let notDecodedByCustom: Int
@@ -80,7 +96,13 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312Optional.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312Custom.self, from: data)
         load(FixtureStruct312Generic.self)
+        mixed(FixtureStruct312Placeholder.self, metadata: FixtureStruct312Metadata.self)
+        constrained(extra: 1, FixtureStruct312Where.self)
     }
+
+    func mixed<D: Decodable, U>(_: D.Type, metadata _: U.Type) {}
+
+    func constrained<D>(extra _: Int = 0, _: D.Type) where D: Decodable {}
 
     func load<T: Decodable>(_: T.Type) {}
 

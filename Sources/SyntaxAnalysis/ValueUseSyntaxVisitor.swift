@@ -5,6 +5,9 @@ import SwiftSyntax
 /// Local variables are absent from the index, so resolve their lexical bindings here.
 public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var arguments: [Location: Set<Location>] = [:]
+    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>)]] = [:]
+    public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
+    public private(set) var initializedConstantLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
@@ -46,6 +49,7 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             let name = parameter.secondName ?? parameter.firstName
             scopes[scopes.count - 1][name.text] = tokens(in: parameter.type)
         }
+        recordParameterTypeNames(of: node)
         return .visitChildren
     }
 
@@ -57,6 +61,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     override public func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         for binding in node.bindings {
             guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else { continue }
+
+            if node.bindingSpecifier.tokenKind == .keyword(.let), binding.initializer != nil {
+                initializedConstantLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
+            }
 
             let annotation = binding.typeAnnotation.map { tokens(in: $0.type) } ?? []
             let initial = binding.initializer.map { origins(of: $0.value) } ?? []
@@ -70,7 +78,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let member = node.calledExpression.as(MemberAccessExprSyntax.self), let base = member.base {
             values.formUnion(origins(of: base))
         }
-        arguments[calleeLocation(node.calledExpression), default: []].formUnion(values)
+        let callee = calleeLocation(node.calledExpression)
+        arguments[callee, default: []].formUnion(values)
+        argumentLists[callee] = node.arguments.map { (label: $0.label?.text, origins: origins(of: $0.expression)) }
         return .visitChildren
     }
 
@@ -134,6 +144,38 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         return []
     }
 
+    private func recordParameterTypeNames(of node: FunctionDeclSyntax) {
+        var constraints: [String: Set<String>] = [:]
+        for parameter in node.genericParameterClause?.parameters ?? [] {
+            if let inherited = parameter.inheritedType {
+                constraints[parameter.name.text, default: []].formUnion(Self.typeNames(in: inherited))
+            }
+        }
+        for requirement in node.genericWhereClause?.requirements ?? [] {
+            guard case let .conformanceRequirement(conformance) = requirement.requirement else { continue }
+
+            for name in Self.typeNames(in: conformance.leftType) {
+                constraints[name, default: []].formUnion(Self.typeNames(in: conformance.rightType))
+            }
+        }
+
+        parameterTypeNames[locations.location(at: node.name.positionAfterSkippingLeadingTrivia)] =
+            node.signature.parameterClause.parameters.map { parameter in
+                let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
+                let names = Self.typeNames(in: parameter.type).reduce(into: Set<String>()) { result, name in
+                    result.insert(name)
+                    result.formUnion(constraints[name] ?? [])
+                }
+                return ParameterTypeNames(label: label, names: names)
+            }
+    }
+
+    private static func typeNames(in syntax: some SyntaxProtocol) -> Set<String> {
+        let collector = TypeNameCollector(viewMode: .sourceAccurate)
+        collector.walk(syntax)
+        return collector.names
+    }
+
     private func calleeLocation(_ expression: ExprSyntax) -> Location {
         if let member = expression.as(MemberAccessExprSyntax.self) {
             return locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)
@@ -150,5 +192,14 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             genericTypeLocations.insert(locations.location(at: token.positionAfterSkippingLeadingTrivia))
         }
         return Set(tokens.map { locations.location(at: $0.positionAfterSkippingLeadingTrivia) })
+    }
+}
+
+private final class TypeNameCollector: SyntaxVisitor {
+    var names: Set<String> = []
+
+    override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
+        names.insert(node.name.text)
+        return .visitChildren
     }
 }

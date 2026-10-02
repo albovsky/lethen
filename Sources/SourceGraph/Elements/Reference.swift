@@ -43,6 +43,8 @@ public final class Reference {
     public var role: Role = .unknown
     public var hasGenericValueArguments = false
     public var valueArgumentReferences: Set<Reference> = []
+    /// The explicit arguments of the call in source order, each with its label and the references that supplied its value.
+    public var valueArguments: [ValueArgument] = []
     /// False only when the index shows a function referenced without being called, such as one passed or assigned as
     /// a value, whose signature is then fixed by the function type it converts to. References built from anything
     /// other than index evidence keep the default.
@@ -100,5 +102,15 @@ extension Reference: CustomStringConvertible {
 extension Reference: Comparable {
     public static func < (lhs: Reference, rhs: Reference) -> Bool {
         (lhs.location, lhs.usr) < (rhs.location, rhs.usr)
+    }
+}
+
+public struct ValueArgument {
+    public let label: String?
+    public let references: Set<Reference>
+
+    public init(label: String?, references: Set<Reference>) {
+        self.label = label
+        self.references = references
     }
 }

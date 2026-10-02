@@ -101,7 +101,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
-        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes) { _, property in
+        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences) { _, property in
             !property.isImplicit && !property.isComplexProperty
         }
     }
@@ -126,20 +126,60 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
         guard !synthesizedTypes.isEmpty else { return }
 
+        let decodableNames = decodableProtocolNames
+
         for use in graph.allReferences where use.kind == .normal && !use.valueArgumentReferences.isEmpty {
             guard let caller = use.parent, !caller.isImplicit else { continue }
 
-            let mayDecode = if let callee = graph.declaration(withUsr: use.usr) {
-                mayDecode(indexed: callee)
-            } else {
-                Self.mayDecode(unindexedUsr: use.usr)
-            }
-            guard mayDecode else { continue }
+            let decoded: Set<Reference>
+            if let callee = graph.declaration(withUsr: use.usr) {
+                guard mayDecode(indexed: callee) else { continue }
 
-            markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes) { type, property in
+                decoded = decodedArguments(of: use, callee: callee, decodableNames: decodableNames)
+            } else {
+                guard Self.mayDecode(unindexedUsr: use.usr) else { continue }
+
+                decoded = use.valueArguments.reduce(into: []) { $0.formUnion($1.references) }
+            }
+            guard !decoded.isEmpty else { continue }
+
+            markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: decoded) { type, property in
                 isDecoded(property, of: type)
             }
         }
+    }
+
+    /// The names that make a parameter decode its argument: `Decodable`, the protocols that inherit it,
+    /// and the configured external ones.
+    private var decodableProtocolNames: Set<String> {
+        var names: Set<String> = ["Decodable", "Codable"]
+        names.formUnion(configuration.externalCodableProtocols)
+        for decl in graph.declarations(ofKind: .protocol) where graph.isDecodable(decl) {
+            names.insert(decl.name)
+        }
+        return names
+    }
+
+    /// Only the arguments passed for a parameter constrained to `Decodable` or typed as a `Decodable` existential are
+    /// decoded. An argument for another parameter, such as the metatype of an unconstrained generic parameter in the
+    /// same call, is not evidence. The call's labels are matched to the callee's parameters in order, skipping
+    /// parameters left to their defaults; a call that cannot be matched yields nothing.
+    private func decodedArguments(of use: Reference, callee: Declaration, decodableNames: Set<String>) -> Set<Reference> {
+        let parameters = callee.parameterTypeNames
+        var decoded: Set<Reference> = []
+        var index = 0
+        for argument in use.valueArguments {
+            while index < parameters.count, parameters[index].label != argument.label {
+                index += 1
+            }
+            guard index < parameters.count else { return [] }
+
+            if !parameters[index].names.isDisjoint(with: decodableNames) {
+                decoded.formUnion(argument.references)
+            }
+            index += 1
+        }
+        return decoded
     }
 
     private func mayDecode(indexed callee: Declaration) -> Bool {
@@ -166,7 +206,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     private func isDecoded(_ property: Declaration, of type: Declaration) -> Bool {
-        guard !property.isImplicit, !property.isComplexProperty else { return false }
+        // A `let` with an initial value cannot be assigned, so the synthesized initializer skips it.
+        guard !property.isImplicit, !property.isComplexProperty, !property.isInitializedConstant else { return false }
 
         // `declaredType` is sanitized of `?` and `!`, so read optionality from the property's mangled
         // type: `Int?`, `Int!` and `Optional<Int>` all end in the `Sg` sugar before the `vp` suffix.
@@ -192,10 +233,11 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         from use: Reference,
         caller: Declaration,
         synthesizedTypes: Set<Declaration>,
+        referencedBy references: Set<Reference>,
         includes: (Declaration, Declaration) -> Bool
     ) {
         var visited: Set<Declaration> = []
-        var types = ValueTypeResolver.valueTypes(referencedBy: use.valueArgumentReferences, in: graph, visited: &visited)
+        var types = ValueTypeResolver.valueTypes(referencedBy: references, in: graph, visited: &visited)
         var seen: Set<Declaration> = []
         while let type = types.popFirst() {
             guard synthesizedTypes.contains(type), seen.insert(type).inserted else { continue }

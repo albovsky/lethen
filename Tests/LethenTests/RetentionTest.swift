@@ -2183,6 +2183,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotAssignOnlyProperty(.varInstance("decoded"))
                 self.assertNotAssignOnlyProperty(.varInstance("nested"))
                 self.assertNotAssignOnlyProperty(.varInstance("withDefault"))
+                self.assertNotReferenced(.varInstance("fixed"))
             }
             assertReferenced(.struct("FixtureStruct312Nested")) {
                 self.assertNotAssignOnlyProperty(.varInstance("nestedValue"))
@@ -2213,6 +2214,15 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct312Printed")) {
                 self.assertAssignOnlyProperty(.varInstance("printedButNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Metadata")) {
+                self.assertAssignOnlyProperty(.varInstance("metadataNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Placeholder")) {
+                self.assertNotAssignOnlyProperty(.varInstance("placeholderDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Where")) {
+                self.assertNotAssignOnlyProperty(.varInstance("whereDecoded"))
             }
             assertReferenced(.struct("FixtureStruct312Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notDecodedByCustom"))

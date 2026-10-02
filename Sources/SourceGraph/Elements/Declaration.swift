@@ -227,6 +227,11 @@ public final class Declaration {
     public var references: Set<Reference> = []
     public var declaredType: String?
     public var hasGenericFunctionReturnedMetatypeParameters: Bool = false
+    /// For a function, each parameter's label (nil for `_`) and the names its type is constrained to or spelled as:
+    /// the constraints of a generic parameter it mentions, or the type names themselves.
+    public var parameterTypeNames: [ParameterTypeNames] = []
+    /// True for a `let` property with an initial value, which an initializer, synthesized or not, cannot assign.
+    public var isInitializedConstant: Bool = false
     public var parent: Declaration?
     public var related: Set<Reference> = []
     public var isImplicit: Bool = false
@@ -384,5 +389,15 @@ public struct DeclarationAccessibility {
 
     var isAccessibleCrossModule: Bool {
         value == .public || value == .open
+    }
+}
+
+public struct ParameterTypeNames {
+    public let label: String?
+    public let names: Set<String>
+
+    public init(label: String?, names: Set<String>) {
+        self.label = label
+        self.names = names
     }
 }
