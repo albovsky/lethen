@@ -1,4 +1,5 @@
 @testable import Indexer
+import SystemPackage
 import XCTest
 
 final class ClangLiteralScannerTest: XCTestCase {
@@ -24,6 +25,37 @@ final class ClangLiteralScannerTest: XCTestCase {
 
     func testProseStringsAreSkipped() {
         XCTAssertEqual(tokens(#"NSLog(@"Tapped the button %@", x); NSLog(@"");"#), [])
+    }
+
+    /// Clang evaluates escapes, so the runtime sees `foo` however the source spells it.
+    func testEscapesAreDecodedBeforeMatching() {
+        XCTAssertEqual(tokens(#"NSSelectorFromString(@"f\x6fo");"#), ["foo"])
+        XCTAssertEqual(tokens(#"NSSelectorFromString(@"\146oo:");"#), ["foo"])
+        XCTAssertEqual(tokens(#"NSClassFromString(@"Caf\u00e9");"#), ["Café"])
+        XCTAssertEqual(tokens(#"NSClassFromString(@"Caf\U000000e9");"#), ["Café"])
+        // A tab is not part of a name, and an escape the compiler rejects stands for itself.
+        XCTAssertEqual(tokens(#"a = @"f\too"; b = @"f\qoo"; c = @"\x"; d = @"after";"#), ["after"])
+    }
+
+    /// The compiler joins adjacent literals into one string.
+    func testAdjacentLiteralsAreOneString() {
+        XCTAssertEqual(tokens(#"NSClassFromString(@"Renamed" @"Class");"#), ["RenamedClass"])
+        XCTAssertEqual(tokens("x = \"split\"\n    \"Name:\";"), ["splitName"])
+        // The control: a comma separates two strings.
+        XCTAssertEqual(tokens(#"f(@"first", @"second");"#), ["first", "second"])
+    }
+
+    func testFilesThatCannotBeReadAreReported() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let readable = directory.appendingPathComponent("Readable.m")
+        try #"SEL s = @selector(readableSelector);"#.write(to: readable, atomically: true, encoding: .utf8)
+        let missing = directory.appendingPathComponent("Missing.m")
+
+        let result = ClangLiteralScanner.scan(files: [FilePath(readable.path), FilePath(missing.path)])
+        XCTAssertEqual(result.tokens, ["readableSelector"])
+        XCTAssertEqual(result.unreadFiles, [FilePath(missing.path)])
     }
 
     func testEscapedQuotesStayInsideTheStringAndMakeItProse() {
