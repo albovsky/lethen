@@ -27,6 +27,13 @@ final class SkippedBranchConfidenceTest: XCTestCase {
         XCTAssertEqual(assess(graph, module: "A", kind: .varInstance).confidence, .likely)
     }
 
+    func testEnumCasesNeedAMemberUseAndTypealiasesAreCovered() {
+        let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
+        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: [:], modules: ["A"])
+        XCTAssertEqual(assess(graph, module: "A", kind: .enumelement).confidence, .certain)
+        XCTAssertEqual(assess(graph, module: "A", kind: .typealias).confidence, .likely)
+    }
+
     private func assess(_ graph: SourceGraph, module: String, kind: Declaration.Kind = .class) -> ConfidenceAssessment {
         let file = SourceFile(path: FilePath("/tmp/\(module).swift"), modules: [module])
         let location = Location(file: file, line: 1, column: 1)

@@ -2129,12 +2129,21 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotUnconstructedEnumCase(.enumelement("comparedInTakenBranch"))
                 self.assertUnconstructedEnumCase(.enumelement("matchedOnly"))
                 self.assertConfidence(.enumelement("matchedOnly"), .certain)
+                // A bare local named like the case is not a use, nor is a `for case` pattern.
+                self.assertUnconstructedEnumCase(.enumelement("idle"))
+                self.assertConfidence(.enumelement("idle"), .certain)
+                self.assertUnconstructedEnumCase(.enumelement("windowsLoopOnly"))
+                self.assertConfidence(.enumelement("windowsLoopOnly"), .certain)
             }
             assertReferenced(.enum("FixtureEnum312Other")) {
                 // A name collision with a skipped branch is accepted as likely.
                 self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
                 self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
             }
+            assertNotReferenced(.typealias("FixtureTypealias312"))
+            assertConfidence(.typealias("FixtureTypealias312"), .likely)
+            assertNotReferenced(.typealias("FixtureTypealiasUnnamed312"))
+            assertConfidence(.typealias("FixtureTypealiasUnnamed312"), .certain)
             assertReferenced(.class("FixtureClass312")) {
                 self.assertNotReferenced(.functionMethodInstance("calledOnlyOnWindows()"))
                 self.assertConfidence(.functionMethodInstance("calledOnlyOnWindows()"), .likely)

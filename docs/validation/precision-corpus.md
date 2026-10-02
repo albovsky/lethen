@@ -645,11 +645,11 @@ Alamofire and swift-nio re-scanned on Linux (Swift 6.4.0, `swift-6.4-RELEASE`, x
 `corpus/diff.sh` shows the same Linux-versus-macOS differences before and after. The comparison uses
 the raw JSON. Wikipedia iOS was not re-scanned, because it builds only on macOS.
 
-A declaration is now `likely` when its name is used (called, referenced, or written as a type) in a
+A type, method, property, enum case, or type alias is now `likely` when its name is used (called, referenced, or written as a type) in a
 `#if` clause the build did not compile, in a file of the same module. A clause counts as compiled
 when the index has a declaration or reference inside it, so the rule reads the build, not the
 condition. Declaring a name in a skipped clause, labels, parameters, imports and enum case patterns
-are not uses, and a member (method or property) needs a use spelled as a member access or a call.
+are not uses, and a member (method, property, or enum case) needs a use spelled as a member access or a call.
 Each of those narrowings came from measuring (flipped findings, all kinds, raw JSON):
 
 | Variant | Alamofire (71) | swift-nio (315) |
@@ -657,11 +657,11 @@ Each of those narrowings came from measuring (flipped findings, all kinds, raw J
 | Any identifier in a skipped clause, any module | 14 | 40 (12.7%) |
 | Uses only, any module | 12 | 32 (10.2%) |
 | Uses only, same module | 11 | 23 (7.3%) |
-| Uses only, same module, members by member access or call (shipped) | 9 | 22 (7.0%) |
+| Uses only, same module, members and enum cases by member access or call (shipped after review) | 9 | 23 (7.3%) |
 
-Shipped: `likely` findings 9 to 18 on Alamofire and 21 to 43 on swift-nio. The swift-nio flips are 16
-uses of the reported declaration in code another platform compiles (1.9% of findings are not:
-the six collisions below), so the result is a lower confidence on findings that are
+Shipped: `likely` findings 9 to 18 on Alamofire and 21 to 44 on swift-nio. The swift-nio flips are 16
+uses of the reported declaration in code another platform compiles (2.2% of findings are not:
+the seven collisions below), so the result is a lower confidence on findings that are
 mostly false positives of the "compiled out" class, not a change to what is reported.
 
 | Project | Row | Verdict |
@@ -674,7 +674,7 @@ mostly false positives of the "compiled out" class, not a change to what is repo
 | swift-nio | `IO.swift:42` `map(_:)` (swift-nio sample: FP) | Compiled out: `result.map { ssize_t($0) }` under `#if os(Windows)` (NonBlockingFileIO.swift:578) |
 | swift-nio | `SocketOptionProviderError`, both `constr(_:)`, `packUInt16UInt16`, `_none`, `withUnsafeOptionalPointer`, `_SelectorBackendProtocol` (2), `ThreadOps` (2), `vsockUnimplemented`, `DeinitFlipper`, `readIPv4HeaderFromBSDRawSocket`, `writeIPv4HeaderToBSDRawSocket`, `XCTAssertNoThrow` | Compiled out: each is used in a skipped WASI, Darwin, Windows, arm or Linux clause (not sampled, read from the source) |
 | swift-nio | `PendingWritesManager.swift:621` `isEmpty` (sample: TP) | Collision: `pollFDs.isEmpty` in SelectorWSAPoll.swift; stays a TP, now `likely` |
-| swift-nio | `Linux.swift:141` `EPOLLET`, `:189` `SOCK_CLOEXEC`; `NIOFileHandleTest.swift:162` `errnoCode`; `PipeChannelTest.swift:273`, `:283` `writeBytes(_:)` | Collisions (not sampled): `CNIOLinux.EPOLLET` and `Musl.SOCK_CLOEXEC` are the C symbols, `errnoCode` and `writeBytes` are other types' members |
+| swift-nio | `Linux.swift:141` `EPOLLET`, `:189` `SOCK_CLOEXEC`; `NIOFileHandleTest.swift:162` `errnoCode`; `PipeChannelTest.swift:273`, `:283` `writeBytes(_:)`; `ServerSocket.swift:21` `typealias SocketType` | Collisions (not sampled): `CNIOLinux.EPOLLET` and `Musl.SOCK_CLOEXEC` are the C symbols, `errnoCode` and `writeBytes` are other types' members, and `SocketType` is another type's name at BSDSocketAPICommon.swift:78 |
 
 Rows that stopped flipping with the narrowing and are not collisions of the shipped rule: swift-nio-25's
 `withNIOUnsafeThrowingContinuation(isolation:_:)` (an FP) is declared, not used, in the skipped

@@ -62,8 +62,8 @@ public final class SourceGraph {
         }
     }
 
-    /// The skipped clause, in a module the declaration belongs to, that uses its name. A member
-    /// is matched only by a use spelled as a member access or a call, so a bare identifier such as
+    /// The skipped clause, in a module the declaration belongs to, that uses its name. A member or
+    /// enum case is matched only by a use spelled as a member access or a call, so a bare identifier such as
     /// a local named `count` does not count.
     private func skippedBranchSite(of declaration: Declaration) -> String? {
         let names = Self.memberKinds.contains(declaration.kind) ? skippedBranchMemberNames : skippedBranchNames
@@ -72,7 +72,7 @@ public final class SourceGraph {
     }
 
     private static let memberKinds: Set<Declaration.Kind> = [
-        .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .varClass, .varInstance, .varStatic,
+        .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .varClass, .varInstance, .varStatic, .enumelement,
     ]
 
     public func assessConfidence(of declaration: Declaration) -> ConfidenceAssessment {
@@ -89,7 +89,7 @@ public final class SourceGraph {
             return .init(confidence: .likely, reason: "its name appears in a string literal")
         }
 
-        if Self.dynamicallyNamedKinds.contains(declaration.kind),
+        if Self.skippedBranchKinds.contains(declaration.kind),
            let site = skippedBranchSite(of: declaration)
         {
             return .init(confidence: .likely, reason: "its name appears in \(site), a branch this build did not compile")
@@ -105,6 +105,9 @@ public final class SourceGraph {
         .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic,
         .varClass, .varGlobal, .varInstance, .varStatic,
     ]
+
+    /// Kinds a use in a skipped branch can be the only use of: the runtime-named kinds and type aliases.
+    private static let skippedBranchKinds = dynamicallyNamedKinds.union([.typealias])
 
     /// The name without argument labels: `load(from:)` becomes `load`.
     public static func baseName(of name: String) -> String {

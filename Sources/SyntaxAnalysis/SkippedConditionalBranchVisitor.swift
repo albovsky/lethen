@@ -71,7 +71,9 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
             {
                 hasIndexableSyntax = true
             }
-            // Matching an enum case is not constructing it, so a pattern is no use of the name.
+            // Matching an enum case is not constructing it, so a pattern is no use of the name, whether
+            // it is a switch case, an `if case`, or a `for case`.
+            if node.is(ExpressionPatternSyntax.self) { return }
             if let item = node.as(SwitchCaseItemSyntax.self) {
                 if let clause = item.whereClause { collect(Syntax(clause)) }
                 return

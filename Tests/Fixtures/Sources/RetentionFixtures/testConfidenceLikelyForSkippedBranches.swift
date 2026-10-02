@@ -8,7 +8,12 @@ enum FixtureEnum312 {
     case constructedOnlyOnWindows
     case comparedInTakenBranch
     case matchedOnly
+    case idle
+    case windowsLoopOnly
 }
+
+typealias FixtureTypealias312 = Int
+typealias FixtureTypealiasUnnamed312 = Int
 
 enum FixtureEnum312Other {
     // Shares a name with a case constructed only on Windows: accepted as likely.
@@ -37,7 +42,7 @@ public class FixtureClass312 {
 
     func run(_ value: FixtureEnum312) {
         switch value {
-        case .constructed, .constructedOnlyOnWindows, .matchedOnly: break
+        case .constructed, .constructedOnlyOnWindows, .matchedOnly, .idle, .windowsLoopOnly: break
         case .comparedInTakenBranch: break
         }
         matchOther(nil)
@@ -51,6 +56,12 @@ public class FixtureClass312 {
         #if os(Windows)
             let shadowedByLocal = 1
             _ = shadowedByLocal
+            // A bare local is not a use of an enum case, and a `for case` pattern only matches it.
+            let idle = value
+            _ = idle
+            for case .windowsLoopOnly in [value] {}
+            let aliased: FixtureTypealias312 = 1
+            _ = aliased
             _ = FixtureEnum312.constructedOnlyOnWindows
             calledOnlyOnWindows()
         #endif
