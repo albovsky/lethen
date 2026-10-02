@@ -60,6 +60,21 @@ final class XcodeTargetTest: XCTestCase {
         XCTAssertFalse(swiftNames.contains("ObjCCaller.m"))
     }
 
+    /// A synchronized folder compiles its sources only into the targets that own it.
+    func testSynchronizedFolderSourcesBelongToTheirOwningTarget() throws {
+        let owner = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        let other = try XCTUnwrap(project.targets.first { $0.name == "UIKitProjectTests" })
+        try owner.identifyFiles()
+        try other.identifyFiles()
+
+        let folder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/FileSystemFolder")
+        let synchronized = folder.appending("SynchronizedFolderSource.swift")
+        XCTAssertTrue(owner.files(kind: .swiftSource).contains(synchronized), "\(owner.files(kind: .swiftSource).sorted())")
+        XCTAssertFalse(other.files(kind: .swiftSource).contains(synchronized))
+        // Resources keep the project-wide behavior.
+        XCTAssertTrue(owner.files(kind: .interfaceBuilder).contains(folder.appending("XibViewController3.xib")))
+    }
+
     func testIsTestTarget() throws {
         let projectTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
         let testTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProjectTests" })

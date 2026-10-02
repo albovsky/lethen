@@ -23,7 +23,8 @@ public final class XcodeTarget {
     }
 
     public func identifyFiles() throws {
-        try identifyFiles(in: project.fileSystemSynchronizedFiles())
+        try identifyFiles(in: project.fileSystemSynchronizedFiles(), kinds: ProjectFileKind.allCases.filter { !$0.isCompiledSource })
+        try identifyFiles(in: synchronizedSourceFiles(), kinds: ProjectFileKind.allCases.filter(\.isCompiledSource))
 
         let sourcesBuildPhases = project.xcodeProject.pbxproj.sourcesBuildPhases
         let resourcesBuildPhases = project.xcodeProject.pbxproj.resourcesBuildPhases
@@ -61,14 +62,36 @@ public final class XcodeTarget {
         files[kind, default: []].formUnion(foundFiles)
     }
 
-    private func identifyFiles(in paths: Set<FilePath>) throws {
+    private func identifyFiles(in paths: Set<FilePath>, kinds: [ProjectFileKind]) throws {
         for path in paths {
-            for kind in ProjectFileKind.allCases {
+            for kind in kinds {
                 if let ext = path.extension, kind.extensions.contains(ext.lowercased()) {
                     files[kind, default: []].insert(path)
                 }
             }
         }
+    }
+
+    /// The files of the synchronized folders this target owns, less the files its membership exceptions
+    /// leave out. A folder another target owns compiles nothing into this one.
+    private func synchronizedSourceFiles() throws -> Set<FilePath> {
+        let root = project.sourceRoot.lexicallyNormalized()
+        var result: Set<FilePath> = []
+
+        for group in target.fileSystemSynchronizedGroups ?? [] {
+            guard let groupPath = try group.fullPath(sourceRoot: root.string) else { continue }
+
+            let groupRoot = FilePath(groupPath)
+            let excluded = (group.exceptions ?? [])
+                .compactMap { $0 as? PBXFileSystemSynchronizedBuildFileExceptionSet }
+                .filter { $0.target === target }
+                .flatMap { $0.membershipExceptions ?? [] }
+                .mapSet { groupRoot.appending($0).lexicallyNormalized() }
+            let files = FilePath.glob(groupRoot.appending("**/*").string)
+            result.formUnion(files.filter { !excluded.contains($0.lexicallyNormalized()) })
+        }
+
+        return result
     }
 
     private func identifyInfoPlistFiles() throws {
