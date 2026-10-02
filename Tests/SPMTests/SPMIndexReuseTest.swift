@@ -65,7 +65,7 @@ final class SPMIndexReuseTest: XCTestCase {
     }
 
     func testUnbuiltPluginToolIsStampedAndReused() throws {
-        try copyFixture("PluginToolProject")
+        try copyPluginToolFixture()
         try root.chdir {
             try shell.exec(["swift", "build", "--build-tests", "--disable-index-store"])
 
@@ -89,7 +89,7 @@ final class SPMIndexReuseTest: XCTestCase {
     /// A unit another build wrote for a target lethen recorded as unbuilt describes an old source once the
     /// source changes. It must never be read.
     func testStaleUnitOfAnUnbuiltTargetIsNeverRead() throws {
-        try copyFixture("PluginToolProject")
+        try copyPluginToolFixture()
         try root.chdir {
             try build()
             let store = try freshness().storePath
@@ -110,7 +110,7 @@ final class SPMIndexReuseTest: XCTestCase {
     }
 
     func testPluginToolBuiltAfterTheStampCleans() throws {
-        try copyFixture("PluginToolProject")
+        try copyPluginToolFixture()
         try root.chdir {
             try build()
             try shell.exec(["swift", "build", "--product", "UnbuiltTool", "--disable-index-store"])
@@ -125,7 +125,7 @@ final class SPMIndexReuseTest: XCTestCase {
     }
 
     func testPreparationCleansForAnObjectOfARecordedUnbuiltTarget() throws {
-        try copyFixture("PluginToolProject")
+        try copyPluginToolFixture()
         try root.chdir {
             try build()
             let freshness = try freshness()
@@ -173,7 +173,7 @@ final class SPMIndexReuseTest: XCTestCase {
     }
 
     func testCleanBuildStillCleansWithUnbuiltTargets() throws {
-        try copyFixture("PluginToolProject")
+        try copyPluginToolFixture()
         try root.chdir {
             let configuration = Configuration()
             let driver = SPMProjectDriver(pkg: SPM.Package(configuration: configuration, shell: shell, logger: logger), configuration: configuration, logger: logger)
@@ -194,7 +194,7 @@ final class SPMIndexReuseTest: XCTestCase {
     }
 
     func testDriverWarnsOnceAboutUnbuiltTargetsAcrossConfigurations() throws {
-        try copyFixture("PluginToolProject")
+        try copyPluginToolFixture()
         try root.chdir {
             let configuration = Configuration()
             configuration.configurations = ["debug", "release"]
@@ -417,6 +417,22 @@ final class SPMIndexReuseTest: XCTestCase {
     // MARK: - Private
 
     /// Replaces the package under test with a copy of a fixture.
+    /// Copies the fixture whose `UnbuiltTool` executable only a command plugin uses, and skips the test on a
+    /// toolchain whose `swift build --build-tests` compiles every executable target anyway, because then the
+    /// package has no target the build leaves out.
+    private func copyPluginToolFixture() throws {
+        try copyFixture("PluginToolProject")
+        try root.chdir {
+            try shell.exec(["swift", "build", "--build-tests", "--disable-index-store"])
+            shell.reset()
+            let enumerator = FileManager.default.enumerator(atPath: root.appending(".build").string)
+            let compiled = enumerator?.contains { ($0 as? String).map { $0.hasSuffix(".o") && $0.contains("UnbuiltTool") } ?? false } ?? false
+            try XCTSkipIf(compiled, "This toolchain's `swift build --build-tests` compiles executable targets that only a plugin uses")
+            try shell.exec(["swift", "package", "clean"])
+            shell.reset()
+        }
+    }
+
     private func copyFixture(_ name: String) throws {
         let fixture = ProjectRootPath.appending("Tests/\(name)")
         for input in ["Package.swift", "Sources", "Plugins"] where fixture.appending(input).exists {
