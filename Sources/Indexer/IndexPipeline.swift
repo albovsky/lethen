@@ -40,6 +40,10 @@ public struct IndexPipeline {
             ).perform()
             if !unreadFiles.isEmpty {
                 clangCoverage = clangCoverage?.addingUnreadFiles(unreadFiles)
+                // The drivers warned about unindexed files when planning; unread ones are only known now.
+                if let warning = ClangCoverage(unindexedFiles: [], unreadFiles: unreadFiles).warning {
+                    logger.warn(warning)
+                }
             }
         }
 
