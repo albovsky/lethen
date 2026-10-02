@@ -218,14 +218,27 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         if type == parameterType {
             return true
         }
-        for alias in typealiasesByName[type] ?? [] {
-            guard let target = resolveTypealias(alias) else { return true }
+        let candidates = typealiasesByName[type] ?? []
+        guard !candidates.isEmpty else { return false }
 
-            if target.name == parameterType {
+        // Resolve the spelled name by scope: the enclosing type and its extensions, then the scopes outward, then the
+        // module. Two aliases at the same level, or none in scope, cannot be told apart and count as the coder.
+        var scope = member.parent
+        while true {
+            let holders = scope.map { [$0] + (graph.extensions[$0] ?? []) } ?? []
+            let found = candidates.filter { alias in scope == nil ? alias.parent == nil : alias.parent.map(holders.contains) == true }
+            if found.count > 1 {
                 return true
             }
+            if let alias = found.first {
+                guard let target = resolveTypealias(alias) else { return true }
+
+                return target.name == parameterType
+            }
+            guard let outer = scope else { return true }
+
+            scope = outer.parent
         }
-        return false
     }
 
     /// Follows a typealias through any chain of typealiases to the type it finally names, with cycles and
@@ -279,9 +292,9 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// library (`s:s`) or Foundation (`s:10Foundation`, and `s:20FoundationEssentials` on Linux) followed by the
     /// length-prefixed type name and its kind. A same-named type from another module does not match.
     private static func isStandardDecodingCall(usr: String) -> Bool {
-        let types = ["11JSONDecoderC", "19PropertyListDecoderC", "22KeyedDecodingContainerV", "29KeyedDecodingContainerProtocolP",
-                     "23UnkeyedDecodingContainerP", "26SingleValueDecodingContainerP"]
-        let exact = "^s:(s|10Foundation|20FoundationEssentials)(\(types.joined(separator: "|")))(sE)?(6decode|15decodeIfPresent)_"
+        let types = ["11JSONDecoderC", "19PropertyListDecoderC", "22KeyedDecodingContainerV", "30KeyedDecodingContainerProtocolP",
+                     "24UnkeyedDecodingContainerP", "28SingleValueDecodingContainerP"]
+        let exact = "^s:(s|10Foundation|20FoundationEssentials)(\(types.joined(separator: "|")))(sE)?(6decode|15decodeIfPresent)"
         return usr.range(of: exact, options: .regularExpression) != nil
     }
 

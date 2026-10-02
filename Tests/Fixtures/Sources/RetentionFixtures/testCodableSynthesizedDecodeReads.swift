@@ -271,6 +271,31 @@ struct FixtureStruct312ChainKeys: Decodable {
     var sharedSkipped: Int = 0
 }
 
+struct FixtureStruct312Unkeyed: Decodable {
+    let unkeyedDecoded: Int
+}
+
+struct FixtureStruct312Single: Decodable {
+    let singleDecoded: Int
+}
+
+struct FixtureStruct312Protocol: Decodable {
+    let protocolDecoded: Int
+}
+
+typealias FixtureAlias312Shadowed = Decoder
+
+struct FixtureStruct312Shadowing: Decodable {
+    // The nested alias shadows the global one: this overload takes an Int, so decoding stays synthesized.
+    typealias FixtureAlias312Shadowed = Int
+
+    let shadowingDecoded: Int
+
+    init(from number: FixtureAlias312Shadowed) {
+        shadowingDecoded = number
+    }
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -325,10 +350,23 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312NumberOverload.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312ChainKeys.self, from: data)
         _ = FixtureStruct312ChainKeys(sharedKept: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Shadowing.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 
     func variadic<T: Decodable>(_: T.Type...) {}
+
+    public func readUnkeyed(_ container: inout UnkeyedDecodingContainer) throws {
+        _ = try container.decode(FixtureStruct312Unkeyed.self)
+    }
+
+    public func readSingle(_ container: SingleValueDecodingContainer) throws {
+        _ = try container.decode(FixtureStruct312Single.self)
+    }
+
+    public func readProtocol<C: KeyedDecodingContainerProtocol>(_ container: C, key: C.Key) throws {
+        _ = try container.decode(FixtureStruct312Protocol.self, forKey: key)
+    }
 
     func labeled(types _: any Decodable.Type...) {}
 
