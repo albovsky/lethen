@@ -51,13 +51,19 @@ final class SkippedConditionalBranchVisitorTest: XCTestCase {
         func f(values: [E]) {
             #if os(Windows)
             for case .windowsOnly in values {}
+            switch limit { case Limits.windowsValue: break; default: break }
             let idle = values
             consume(idle)
             #endif
         }
         """
         let visitor = run(source, evidenceLines: [])
-        XCTAssertNil(visitor.names["windowsOnly"])
+        // A pattern matches an enum case without constructing it, but it reads a static property.
+        XCTAssertNotNil(visitor.memberNames["windowsOnly"])
+        XCTAssertNil(visitor.constructionNames["windowsOnly"])
+        XCTAssertNotNil(visitor.memberNames["windowsValue"])
+        XCTAssertNil(visitor.constructionNames["windowsValue"])
+        XCTAssertNotNil(visitor.constructionNames["consume"])
         XCTAssertNotNil(visitor.names["idle"])
         XCTAssertNil(visitor.memberNames["idle"])
     }
@@ -94,9 +100,12 @@ final class SkippedConditionalBranchVisitorTest: XCTestCase {
         }
         """
         let visitor = run(source, evidenceLines: [])
-        XCTAssertEqual(Set(visitor.names.keys), ["declared", "Int", "Module", "qualified", "obj", "member", "bare", "bareReference", "value"])
-        // `declared(label:)` and `bare()` are calls, `obj.member` and `Module.qualified` member accesses.
-        XCTAssertEqual(Set(visitor.memberNames.keys), ["declared", "qualified", "member", "bare"])
+        XCTAssertEqual(Set(visitor.names.keys), ["declared", "Int", "Module", "qualified", "obj", "member", "bare", "bareReference", "value", "matchedOnly", "alsoMatched"])
+        // `declared(label:)` and `bare()` are calls, `obj.member` and `Module.qualified` member accesses, and
+        // the matched cases are member accesses inside patterns.
+        XCTAssertEqual(Set(visitor.memberNames.keys), ["declared", "qualified", "member", "bare", "matchedOnly", "alsoMatched"])
+        // Patterns match enum cases without constructing them.
+        XCTAssertEqual(Set(visitor.constructionNames.keys), ["declared", "qualified", "member", "bare"])
     }
 
     private func collect(_ source: String, evidenceLines: [Int]) -> [String: String] {

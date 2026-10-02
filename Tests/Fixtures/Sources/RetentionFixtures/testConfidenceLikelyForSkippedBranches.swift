@@ -84,3 +84,18 @@ public class FixtureClass312Taken {
         #endif
     }
 }
+
+public class FixtureClass312Pattern {
+    // A static property read only by a pattern in a skipped branch: a real use another platform compiles.
+    static let patternWindowsValue = 1
+    static let neverMatched = 2
+
+    public func run(_ value: Int) {
+        #if os(Windows)
+            switch value {
+            case FixtureClass312Pattern.patternWindowsValue: break
+            default: break
+            }
+        #endif
+    }
+}

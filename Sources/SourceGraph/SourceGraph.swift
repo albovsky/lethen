@@ -36,6 +36,9 @@ public final class SourceGraph {
     public private(set) var skippedBranchNames: [String: [String: String]] = [:]
     /// The subset of `skippedBranchNames` used as a member access or a call.
     public private(set) var skippedBranchMemberNames: [String: [String: String]] = [:]
+    /// The subset of `skippedBranchMemberNames` used outside a pattern, which is all that can construct
+    /// an enum case.
+    public private(set) var skippedBranchConstructionNames: [String: [String: String]] = [:]
 
     private var indexedModules: Set<String> = []
     private var unindexedExportedModules: Set<String> = []
@@ -55,10 +58,11 @@ public final class SourceGraph {
         literalTokens.formUnion(tokens)
     }
 
-    public func addSkippedBranchNames(_ names: [String: String], members: [String: String], modules: Set<String>) {
+    public func addSkippedBranchNames(_ names: [String: String], members: [String: String], construction: [String: String], modules: Set<String>) {
         for module in modules {
             skippedBranchNames[module, default: [:]].merge(names) { min($0, $1) }
             skippedBranchMemberNames[module, default: [:]].merge(members) { min($0, $1) }
+            skippedBranchConstructionNames[module, default: [:]].merge(construction) { min($0, $1) }
         }
     }
 
@@ -66,7 +70,13 @@ public final class SourceGraph {
     /// enum case is matched only by a use spelled as a member access or a call, so a bare identifier such as
     /// a local named `count` does not count.
     private func skippedBranchSite(of declaration: Declaration) -> String? {
-        let names = Self.memberKinds.contains(declaration.kind) ? skippedBranchMemberNames : skippedBranchNames
+        let names = if declaration.kind == .enumelement {
+            skippedBranchConstructionNames
+        } else if Self.memberKinds.contains(declaration.kind) {
+            skippedBranchMemberNames
+        } else {
+            skippedBranchNames
+        }
         let baseName = Self.baseName(of: declaration.name)
         return declaration.location.file.modules.compactMap { names[$0]?[baseName] }.min()
     }

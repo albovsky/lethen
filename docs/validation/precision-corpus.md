@@ -648,8 +648,8 @@ the raw JSON. Wikipedia iOS was not re-scanned, because it builds only on macOS.
 A type, method, property, enum case, type alias, or operator is now `likely` when its name is used (called, referenced, or written as a type) in a
 `#if` clause the build did not compile, in a file of the same module. A clause counts as compiled
 when the index has a declaration or reference inside it, so the rule reads the build, not the
-condition. Declaring a name in a skipped clause, labels, parameters, imports and enum case patterns
-are not uses, and a member (method, property, or enum case) needs a use spelled as a member access or a call.
+condition. Declaring a name in a skipped clause, labels, parameters and imports
+are not uses, an enum case matched in a pattern is not constructed (any other name read in a pattern, such as `case Limits.max:`, counts), and a member (method, property, or enum case) needs a use spelled as a member access or a call.
 Each of those narrowings came from measuring (flipped findings, all kinds, raw JSON):
 
 | Variant | Alamofire (71) | swift-nio (315) |

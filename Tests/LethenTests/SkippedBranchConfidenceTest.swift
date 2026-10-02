@@ -7,7 +7,7 @@ import XCTest
 final class SkippedBranchConfidenceTest: XCTestCase {
     func testSkippedBranchOnlyDowngradesDeclarationsOfTheSameModule() {
         let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
-        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: [:], modules: ["A"])
+        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: [:], construction: [:], modules: ["A"])
 
         XCTAssertEqual(assess(graph, module: "A").confidence, .likely)
         XCTAssertEqual(
@@ -20,18 +20,26 @@ final class SkippedBranchConfidenceTest: XCTestCase {
 
     func testMembersNeedAMemberAccessOrCallInTheSkippedBranch() {
         let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
-        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: [:], modules: ["A"])
+        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: [:], construction: [:], modules: ["A"])
         XCTAssertEqual(assess(graph, module: "A", kind: .varInstance).confidence, .certain)
 
-        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: ["Shared": "#if os(Windows) at A.swift:1"], modules: ["A"])
+        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: ["Shared": "#if os(Windows) at A.swift:1"], construction: [:], modules: ["A"])
         XCTAssertEqual(assess(graph, module: "A", kind: .varInstance).confidence, .likely)
     }
 
     func testEnumCasesNeedAMemberUseAndTypealiasesAreCovered() {
         let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
-        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: [:], modules: ["A"])
+        graph.addSkippedBranchNames(["Shared": "#if os(Windows) at A.swift:1"], members: [:], construction: [:], modules: ["A"])
         XCTAssertEqual(assess(graph, module: "A", kind: .enumelement).confidence, .certain)
         XCTAssertEqual(assess(graph, module: "A", kind: .typealias).confidence, .likely)
+
+        // A use inside a pattern reads a property but does not construct an enum case.
+        let site = "#if os(Windows) at A.swift:1"
+        graph.addSkippedBranchNames(["Shared": site], members: ["Shared": site], construction: [:], modules: ["A"])
+        XCTAssertEqual(assess(graph, module: "A", kind: .enumelement).confidence, .certain)
+        XCTAssertEqual(assess(graph, module: "A", kind: .varStatic).confidence, .likely)
+        graph.addSkippedBranchNames(["Shared": site], members: ["Shared": site], construction: ["Shared": site], modules: ["A"])
+        XCTAssertEqual(assess(graph, module: "A", kind: .enumelement).confidence, .likely)
     }
 
     private func assess(_ graph: SourceGraph, module: String, kind: Declaration.Kind = .class) -> ConfidenceAssessment {

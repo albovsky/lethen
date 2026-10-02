@@ -169,13 +169,13 @@ final class SwiftIndexer: Indexer {
 
                     record.forEach(occurrence: { occurrence in
                         let usr = occurrence.symbol.usr
-                        guard Self.shouldProcessOccurrence(occurrence),
-                              let location = self.transformLocation(occurrence.location)
-                        else { return }
+                        guard let location = self.transformLocation(occurrence.location) else { return }
 
                         // Every occurrence is evidence that its line was compiled, including the parameters and
-                        // locals that analysis drops.
+                        // locals that analysis drops and symbols of any language.
                         occurrenceLocations.insert(location)
+
+                        guard Self.shouldProcessOccurrence(occurrence) else { return }
 
                         var relations: [RawRelation] = []
                         occurrence.forEach(relation: { relSymbol, relRoles in
@@ -328,7 +328,7 @@ final class SwiftIndexer: Indexer {
             let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: evidence)
             skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
             let modules = sourceFile.modules
-            graph.withLock { $0.addSkippedBranchNames(skippedBranches.names, members: skippedBranches.memberNames, modules: modules) }
+            graph.withLock { $0.addSkippedBranchNames(skippedBranches.names, members: skippedBranches.memberNames, construction: skippedBranches.constructionNames, modules: modules) }
             let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
             for (call, arguments) in valueUses.arguments {
                 let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })

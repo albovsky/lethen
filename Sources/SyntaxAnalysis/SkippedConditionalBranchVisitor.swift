@@ -9,8 +9,8 @@ import SwiftSyntax
 /// locations of the file's indexed declarations and references, has an entry inside it, and skipped
 /// when it has none although it contains syntax the index would have recorded. A clause with
 /// nothing but imports or comments leaves no evidence either way and is ignored. Only uses count: the
-/// names of declarations written in the clause, labels, parameters, import paths, and enum case
-/// patterns do not.
+/// names of declarations written in the clause, labels, parameters, and import paths do not. A use in
+/// a pattern counts for everything but an enum case.
 public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
     /// Each used name mapped to the lexicographically smallest description of a skipped clause
     /// that uses it, such as `#if os(Windows) at File.swift:12`.
@@ -18,6 +18,10 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
 
     /// The subset of `names` with a use spelled as a member access or a call.
     public private(set) var memberNames: [String: String] = [:]
+
+    /// The subset of `memberNames` with a use outside a pattern. Matching an enum case in a pattern
+    /// is not constructing it, so an enum case is downgraded only by these.
+    public private(set) var constructionNames: [String: String] = [:]
 
     private let locationBuilder: SourceLocationBuilder
     private let evidence: Set<Location>
@@ -49,6 +53,9 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
                 if names[identifier].map({ $0 > site }) ?? true { names[identifier] = site }
                 if isMember, memberNames[identifier].map({ $0 > site }) ?? true { memberNames[identifier] = site }
             }
+            for identifier in content.constructionUses where constructionNames[identifier].map({ $0 > site }) ?? true {
+                constructionNames[identifier] = site
+            }
         }
         return .visitChildren
     }
@@ -56,13 +63,15 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
     private struct ClauseContent {
         /// Names used in the clause, each flagged when some use is a member access or a call.
         var uses: [String: Bool] = [:]
+        /// Names with a member access or call use outside every pattern.
+        var constructionUses: Set<String> = []
         var hasIndexableSyntax = false
 
         init(_ node: Syntax) {
-            collect(node)
+            collect(node, inPattern: false)
         }
 
-        private mutating func collect(_ node: Syntax) {
+        private mutating func collect(_ node: Syntax, inPattern: Bool) {
             if node.is(ImportDeclSyntax.self) { return }
 
             // Any other declaration, call, or reference is recorded by the index.
@@ -73,17 +82,9 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
             {
                 hasIndexableSyntax = true
             }
-            // Matching an enum case is not constructing it, so a pattern is no use of the name, whether
-            // it is a switch case, an `if case`, or a `for case`.
-            if node.is(ExpressionPatternSyntax.self) { return }
-            if let item = node.as(SwitchCaseItemSyntax.self) {
-                if let clause = item.whereClause { collect(Syntax(clause)) }
-                return
-            }
-            if let condition = node.as(MatchingPatternConditionSyntax.self) {
-                collect(Syntax(condition.initializer))
-                return
-            }
+            // Matching an enum case is not constructing it, but a pattern can read any other declaration,
+            // as `case Limits.windowsValue:` does, so pattern uses are kept and flagged.
+            let inPattern = inPattern || node.is(ExpressionPatternSyntax.self)
             // An operator is used by its spelling alone, so it is never a member use.
             if let binary = node.as(BinaryOperatorExprSyntax.self) {
                 uses[binary.operator.text] = uses[binary.operator.text] ?? false
@@ -96,14 +97,17 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
                 let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
                     || reference.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == reference.id
                 uses[name] = (uses[name] ?? false) || isMember
+                if isMember, !inPattern { constructionUses.insert(name) }
             } else if let type = node.as(IdentifierTypeSyntax.self) {
                 let name = type.name.identifier?.name ?? type.name.text
                 uses[name] = uses[name] ?? false
             } else if let type = node.as(MemberTypeSyntax.self) {
-                uses[type.name.identifier?.name ?? type.name.text] = true
+                let name = type.name.identifier?.name ?? type.name.text
+                uses[name] = true
+                if !inPattern { constructionUses.insert(name) }
             }
             for child in node.children(viewMode: .sourceAccurate) {
-                collect(child)
+                collect(child, inPattern: inPattern)
             }
         }
     }
