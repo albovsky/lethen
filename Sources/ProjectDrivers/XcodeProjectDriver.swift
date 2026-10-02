@@ -32,10 +32,6 @@
 
             let xcodebuild = Xcodebuild(shell: shell, logger: logger)
 
-            guard !configuration.schemes.isEmpty else {
-                throw LethenError.usageError("The '--schemes' option is required.")
-            }
-
             try xcodebuild.ensureConfigured()
 
             let project: XcodeProjectlike
@@ -60,18 +56,33 @@
 
             try Self.validateConfigurations(configuration, project: project)
 
+            let requestedSchemes: [String]
+            if configuration.schemes.isEmpty {
+                let scheme = try Self.defaultScheme(
+                    for: project,
+                    listedSchemes: { try project.schemes(additionalArguments: configuration.xcodeListArguments) }
+                )
+                if configuration.outputFormat.supportsAuxiliaryOutput {
+                    let projectName = project.path.lastComponent?.string ?? project.path.string
+                    logger.info("Scanning scheme \(Self.shellWord(scheme)), the only shared scheme of \(projectName) (pass '--schemes' to choose others).")
+                }
+                requestedSchemes = [scheme]
+            } else {
+                requestedSchemes = configuration.schemes
+            }
+
             let schemes: Set<String>
 
             if configuration.skipSchemesValidation {
-                schemes = Set(configuration.schemes)
+                schemes = Set(requestedSchemes)
             } else {
                 // Ensure schemes exist within the project
                 schemes = try project.schemes(
                     additionalArguments: configuration.xcodeListArguments
-                ).filter { configuration.schemes.contains($0) }
+                ).filter { requestedSchemes.contains($0) }
                 let validSchemeNames = schemes.mapSet { $0 }
 
-                if let scheme = Set(configuration.schemes).subtracting(validSchemeNames).first {
+                if let scheme = Set(requestedSchemes).subtracting(validSchemeNames).first {
                     throw LethenError.invalidScheme(name: scheme, project: project.path.lastComponent?.string ?? "")
                 }
             }
@@ -325,6 +336,29 @@
     }
 
     extension XcodeProjectDriver {
+        /// The scheme a scan without `--schemes` builds: the project's only shared scheme. With several, or none,
+        /// the error lists what to pass; `listedSchemes` runs `xcodebuild -list` and is called only when no
+        /// scheme is shared, since Xcode then usually still lists the user's own schemes.
+        static func defaultScheme(for project: XcodeProjectlike, listedSchemes: () throws -> Set<String>) throws -> String {
+            let name = project.path.lastComponent?.string ?? project.path.string
+            let prefix = "The '--schemes' option is required: \(name)"
+            let shared = project.sharedSchemes
+            if shared.count == 1, let scheme = shared.first {
+                return scheme
+            }
+
+            if shared.count > 1 {
+                throw LethenError.usageError("\(prefix) shares several schemes. Pass one or more of: \(shared.map(shellWord).joined(separator: ", ")).")
+            }
+
+            let listed = try listedSchemes().sorted()
+            if listed.isEmpty {
+                throw LethenError.usageError("\(prefix) shares no scheme and xcodebuild lists none. Share a scheme in Xcode (Product > Scheme > Manage Schemes) or pass '--schemes'.")
+            }
+
+            throw LethenError.usageError("\(prefix) shares no scheme. Pass one or more of the schemes xcodebuild lists: \(listed.map(shellWord).joined(separator: ", ")).")
+        }
+
         /// What a build of `scheme` compiles, such as "Building Wikipedia with configuration Test". The configuration is
         /// the listed one, then a `-configuration` in the build arguments, then the scheme's Test action configuration;
         /// a scheme without a file names none.

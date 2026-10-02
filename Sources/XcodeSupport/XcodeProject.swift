@@ -118,6 +118,11 @@ public final class XcodeProject: XcodeProjectlike {
         XcodeSchemeConfigurations.read(scheme: scheme, in: schemeContainerPaths)
     }
 
+    /// Only this project's, as `xcodebuild -list -project` lists.
+    public var sharedSchemes: [String] {
+        XcodeSharedSchemes.names(in: [path])
+    }
+
     /// This project followed by every project it references, depth first.
     var schemeContainerPaths: [FilePath] {
         [path] + subProjects.flatMap(\.schemeContainerPaths)
