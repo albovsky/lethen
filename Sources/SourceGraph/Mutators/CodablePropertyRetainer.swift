@@ -104,7 +104,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
         // Synthesized encoding writes every stored property, including a constant with an initial value.
         let classify: (Declaration, Declaration) -> PropertyUse = { _, property in
-            !property.isImplicit && !property.isComplexProperty ? .read : .skip
+            !property.isImplicit && !property.isComplexProperty && !property.hasAccessorBody ? .read : .skip
         }
         markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classify)
     }
@@ -408,7 +408,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     private func decodeUse(of property: Declaration, in type: Declaration) -> PropertyUse {
         // Computed properties, lazy properties and a `let` with an initial value are never decoded: the
         // synthesized initializer does not assign them.
-        guard !property.isImplicit, !property.isComplexProperty, !property.isInitializedConstant,
+        guard !property.isImplicit, !property.isComplexProperty, !property.hasAccessorBody, !property.isInitializedConstant,
               !property.modifiers.contains("lazy") else { return .skip }
 
         // An explicit CodingKeys enum, or a typealias of one, limits the properties the synthesized initializer decodes.

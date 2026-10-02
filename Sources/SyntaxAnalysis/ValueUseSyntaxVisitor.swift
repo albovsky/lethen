@@ -11,6 +11,7 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var specializationArguments: [Location: [Set<Location>]] = [:]
     /// Every type named inside the generic arguments of a stored property's declared type.
     public private(set) var specializationArgumentLocations: Set<Location> = []
+    public private(set) var accessorBodyLocations: Set<Location> = []
     public private(set) var initializedConstantLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
@@ -92,6 +93,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
                 recordSpecializations(in: type)
             }
 
+            if let block = binding.accessorBlock, Self.isComputed(block) {
+                accessorBodyLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
+            }
+
             let annotation = binding.typeAnnotation.map { tokens(in: $0.type) } ?? []
             let initial = binding.initializer.map { origins(of: $0.value) } ?? []
             scopes[scopes.count - 1][identifier.identifier.text] = annotation.union(initial)
@@ -160,6 +165,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let array = expression.as(ArrayExprSyntax.self) {
             return array.elements.reduce(into: []) { $0.formUnion(origins(of: $1.expression)) }
         }
+        if let dictionary = expression.as(DictionaryExprSyntax.self), case let .elements(elements) = dictionary.content {
+            return elements.reduce(into: []) { $0.formUnion(origins(of: $1.key).union(origins(of: $1.value))) }
+        }
         if let tuple = expression.as(TupleExprSyntax.self) {
             return tuple.elements.reduce(into: []) { $0.formUnion(origins(of: $1.expression)) }
         }
@@ -176,6 +184,17 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return origins(of: tried.expression)
         }
         return []
+    }
+
+    /// A shorthand getter, or an accessor list with a getter, setter, `_read` or `_modify`; `willSet` and `didSet`
+    /// observe a stored property.
+    private static func isComputed(_ block: AccessorBlockSyntax) -> Bool {
+        switch block.accessors {
+        case .getter:
+            true
+        case let .accessors(list):
+            list.contains { ["get", "set", "_read", "_modify", "unsafeAddress", "unsafeMutableAddress"].contains($0.accessorSpecifier.text) }
+        }
     }
 
     /// Records the generic specializations in a stored property's declared type, apart from the standard containers,
@@ -227,6 +246,13 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         }
         if let array = type.as(ArrayTypeSyntax.self) {
             return simpleTypeTokens(in: array.element)
+        }
+        if let member = type.as(MemberTypeSyntax.self), member.genericArgumentClause == nil {
+            // `Namespace.Model` is indexed at its last component.
+            return [member.name]
+        }
+        if let dictionary = type.as(DictionaryTypeSyntax.self) {
+            return simpleTypeTokens(in: dictionary.key) + simpleTypeTokens(in: dictionary.value)
         }
         if let optional = type.as(OptionalTypeSyntax.self) {
             return simpleTypeTokens(in: optional.wrappedType)

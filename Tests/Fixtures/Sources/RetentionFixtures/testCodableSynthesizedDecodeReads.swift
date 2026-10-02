@@ -366,6 +366,27 @@ struct FixtureStruct312TableItem: Decodable {
     let tableItemDecoded: Int
 }
 
+struct FixtureStruct312DictModel: Decodable {
+    // Decoded as the value type of [String: ...].self.
+    let dictModelDecoded: Int
+}
+
+struct FixtureStruct312Computed: Decodable {
+    let computedAnchor: Int
+
+    // Computed, so the synthesized initializer never decodes it, even though its body references nothing.
+    var computedConstant: Int {
+        42
+    }
+}
+
+enum FixtureQualifiedHolder312 {
+    struct Model: Decodable {
+        // Decoded as a qualified generic argument.
+        let qualifiedModelDecoded: Int
+    }
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -430,6 +451,9 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(Array<FixtureStruct312ArrayModel>.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312NestedOptional<FixtureStruct312OptionalItem>.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312NestedTable<FixtureStruct312TableItem>.self, from: data)
+        _ = try JSONDecoder().decode([String: FixtureStruct312DictModel].self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Computed.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Page<FixtureQualifiedHolder312.Model>.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 

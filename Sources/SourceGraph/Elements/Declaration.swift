@@ -232,6 +232,9 @@ public final class Declaration {
     public var parameterTypeNames: [ParameterTypeNames] = []
     /// True for a `let` property with an initial value, which an initializer, synthesized or not, cannot assign.
     public var isInitializedConstant: Bool = false
+    /// True for a property whose accessor block has a getter, setter or read/modify body, so it stores nothing,
+    /// even when that body references no declaration. Observers on a stored property do not count.
+    public var hasAccessorBody: Bool = false
     public var parent: Declaration?
     public var related: Set<Reference> = []
     public var isImplicit: Bool = false

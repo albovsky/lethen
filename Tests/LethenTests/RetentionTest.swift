@@ -2270,6 +2270,10 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct226Held")) {
                 self.assertNotAssignOnlyProperty(.varInstance("heldEncoded"))
             }
+            assertReferenced(.struct("FixtureStruct226Computed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("computedEncoded"))
+                self.assertNotReferenced(.varInstance("computedNotEncoded"))
+            }
             assertReferenced(.struct("FixtureStruct226Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
             }
@@ -2436,6 +2440,18 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct312TableItem")) {
                 self.assertNotAssignOnlyProperty(.varInstance("tableItemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312DictModel")) {
+                self.assertNotAssignOnlyProperty(.varInstance("dictModelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Computed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("computedAnchor"))
+                self.assertNotReferenced(.varInstance("computedConstant"))
+            }
+            assertReferenced(.enum("FixtureQualifiedHolder312")) {
+                self.assertReferenced(.struct("Model")) {
+                    self.assertNotAssignOnlyProperty(.varInstance("qualifiedModelDecoded"))
+                }
             }
             assertReferenced(.struct("FixtureStruct312LabeledA")) {
                 self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))

@@ -117,6 +117,15 @@ struct FixtureStruct226Outer: Encodable {
     let box: FixtureStruct226Box<FixtureStruct226Held>
 }
 
+struct FixtureStruct226Computed: Encodable {
+    let computedEncoded: Int
+
+    // Computed, so the synthesized encoder never reads it.
+    var computedNotEncoded: Int {
+        7
+    }
+}
+
 struct FixtureStruct226Custom: Encodable {
     // Control: an explicit encode(to:) replaces the synthesized one, so nothing reads it.
     let notEncodedByCustom: Int
@@ -136,6 +145,7 @@ public class FixtureClass226Retainer {
         try [
             JSONEncoder().encode(FixtureStruct226(encoded: 1, nested: FixtureStruct226Nested(nestedValue: 2))),
             JSONEncoder().encode(FixtureStruct226Codable(codableEncoded: 3)),
+            JSONEncoder().encode(FixtureStruct226Computed(computedEncoded: 14)),
             JSONEncoder().encode(FixtureStruct226Outer(box: FixtureStruct226Box())),
             JSONEncoder().encode(FixtureStruct226Overload(overloadEncoded: 13)),
             JSONEncoder().encode(FixtureStruct226Custom(notEncodedByCustom: 4)),

@@ -376,6 +376,9 @@ final class SwiftIndexer: Indexer {
                     if let names = valueUses.parameterTypeNames[decl.location] {
                         decl.parameterTypeNames = names
                     }
+                    if valueUses.accessorBodyLocations.contains(decl.location) {
+                        decl.hasAccessorBody = true
+                    }
                     if valueUses.initializedConstantLocations.contains(decl.location) {
                         decl.isInitializedConstant = true
                     }
