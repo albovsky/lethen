@@ -2144,6 +2144,12 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertConfidence(.typealias("FixtureTypealias312"), .likely)
             assertNotReferenced(.typealias("FixtureTypealiasUnnamed312"))
             assertConfidence(.typealias("FixtureTypealiasUnnamed312"), .certain)
+            assertReferenced(.class("FixtureClass312Taken")) {
+                // The taken clause only calls a parameter, which the analysis drops, but the index still
+                // shows the clause was compiled, so `handler()` is not named in a skipped branch.
+                self.assertNotReferenced(.functionMethodInstance("handler()"))
+                self.assertConfidence(.functionMethodInstance("handler()"), .certain)
+            }
             assertReferenced(.class("FixtureClass312")) {
                 self.assertNotReferenced(.functionMethodInstance("calledOnlyOnWindows()"))
                 self.assertConfidence(.functionMethodInstance("calledOnlyOnWindows()"), .likely)

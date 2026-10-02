@@ -73,3 +73,14 @@ public class FixtureClass312 {
         func redeclaredOnlyOnWindows(label overriddenLabel: Int) {}
     }
 #endif
+
+public class FixtureClass312Taken {
+    // Unrelated to the parameter of the same name, which is called only in a branch this build compiled.
+    func handler() {}
+
+    public func run(handler: () -> Void) {
+        #if os(Linux) || os(macOS)
+            handler()
+        #endif
+    }
+}

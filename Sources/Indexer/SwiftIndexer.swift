@@ -173,6 +173,10 @@ final class SwiftIndexer: Indexer {
                               let location = self.transformLocation(occurrence.location)
                         else { return }
 
+                        // Every occurrence is evidence that its line was compiled, including the parameters and
+                        // locals that analysis drops.
+                        occurrenceLocations.insert(location)
+
                         var relations: [RawRelation] = []
                         occurrence.forEach(relation: { relSymbol, relRoles in
                             relations.append(RawRelation(
@@ -320,7 +324,7 @@ final class SwiftIndexer: Indexer {
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
             graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
-            let evidence = Set(declarations.map(\.location)).union(indexedReferences.map(\.location))
+            let evidence = occurrenceLocations
             let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: evidence)
             skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
             let modules = sourceFile.modules
@@ -341,6 +345,7 @@ final class SwiftIndexer: Indexer {
 
         private var declarations: [Declaration] = []
         private var indexedReferences: Set<Reference> = []
+        private var occurrenceLocations: Set<Location> = []
         private var childDeclsByParentUsr: [String: Set<Declaration>] = [:]
         private var referencesByUsr: [String: Set<Reference>] = [:]
         private var danglingReferences: [Reference] = []
