@@ -77,12 +77,41 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         assertNotReferenced(.class("OnlyForwardDeclared"))
     }
 
-    /// Confidence is unchanged in this slice: an exposed declaration with no reference stays likely.
-    func testUnreferencedExposedDeclarationStaysLikely() {
-        assertConfidence(.class("NotReferencedFromObjC"), .likely)
+    /// Every Objective-C file of the scheme has an index unit, so an exposed declaration that no
+    /// Objective-C code references is certainly unused, as is one not exposed at all.
+    func testUnreferencedExposedDeclarationIsCertainWhenEveryObjectiveCFileWasIndexed() {
+        assertConfidence(.class("NotReferencedFromObjC"), .certain)
         assertReferenced(.class("CalledFromObjC")) {
+            self.assertConfidence(.functionMethodInstance("notCalledFromObjC(_:)"), .certain)
             self.assertConfidence(.functionMethodInstance("notExposed()"), .certain)
         }
+    }
+
+    /// The control: a used declaration has no result, so it has no confidence to be wrong about.
+    func testDeclarationUsedFromObjectiveCIsReferencedNotCompared() {
+        assertReferenced(.class("CalledFromObjC")) {
+            self.assertReferenced(.functionMethodInstance("calledFromObjC()"))
+            self.assertReferenced(.varInstance("readFromObjC"))
+        }
+    }
+
+    /// Names that Objective-C code spells in a selector, a class-name string, or a key-value coding key
+    /// are lookups by name, which the index cannot show as references, so they stay likely.
+    func testNamesSpelledInObjectiveCLiteralsAreLikely() {
+        assertReferenced(.class("CalledFromObjC")) {
+            self.assertNotReferenced(.functionMethodInstance("namedInSelector()"))
+            self.assertConfidence(.functionMethodInstance("namedInSelector()"), .likely)
+            self.assertNotReferenced(.varInstance("kvcRead"))
+            self.assertConfidence(.varInstance("kvcRead"), .likely)
+        }
+        assertNotReferenced(.class("NamedInObjCString"))
+        assertConfidence(.class("NamedInObjCString"), .likely)
+    }
+
+    func testPlanRecordsCompleteClangCoverage() throws {
+        let coverage = try XCTUnwrap(Self.plan?.clangCoverage)
+        XCTAssertEqual(coverage.unindexedFiles, [])
+        XCTAssertFalse(try XCTUnwrap(Self.plan).clangSourceFiles.isEmpty)
     }
 
     func testExplainNamesTheObjectiveCLocation() throws {

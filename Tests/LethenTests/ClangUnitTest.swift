@@ -14,16 +14,32 @@ final class ClangUnitTest: FixtureSourceGraphTestCase {
         FixturesProjectPath.appending("Sources/ClangUnitObjcSupportFixtures/ClangUnitObjcSupport.m")
     }
 
-    func testClangLiteralsAreNotConfidenceEvidence() throws {
+    func testClangLiteralsAreConfidenceEvidence() throws {
+        // SwiftPM in the Swift 6.4 Linux image writes no index units for C targets, so no literal is read.
+        let hasClangUnits = try !XCTUnwrap(Self.plan).clangSourceFiles.isEmpty
+        #if os(macOS)
+            XCTAssertTrue(hasClangUnits)
+        #endif
+
         try analyze(retainPublic: true, additionalFilesToIndex: [clangSourcePath, objcSourcePath]) {
             assertReferenced(.class("FixtureClass240")) {
-                // Named only in C and Objective-C string literals, which Swift does not look up.
+                // Named only in C and Objective-C string literals, which the index cannot show as a
+                // reference to this declaration; they are runtime lookups like Swift literals.
                 self.assertNotReferenced(.functionMethodInstance("namedInClangLiteral()"))
-                self.assertConfidence(.functionMethodInstance("namedInClangLiteral()"), .certain)
+                if hasClangUnits {
+                    self.assertConfidence(.functionMethodInstance("namedInClangLiteral()"), .likely)
+                }
                 self.assertNotReferenced(.functionMethodInstance("namedInSwiftLiteral()"))
                 self.assertConfidence(.functionMethodInstance("namedInSwiftLiteral()"), .likely)
             }
         }
+    }
+
+    func testPlanRecordsCompleteClangCoverage() throws {
+        // Where the fixture package writes no clang units its C targets are unbuilt, so nothing is missing.
+        let coverage = try XCTUnwrap(Self.plan?.clangCoverage)
+        XCTAssertEqual(coverage.unindexedFiles, [])
+        XCTAssertTrue(coverage.isComplete)
     }
 
     func testPlanKeepsClangFilesOutOfSwiftSourceFiles() throws {
@@ -45,8 +61,8 @@ final class ClangUnitTest: FixtureSourceGraphTestCase {
             XCTAssertTrue(clangNames.contains(name), "\(name) not in clang files: \(clangNames.sorted())")
             XCTAssertFalse(swiftNames.contains(name), name)
         }
-        XCTAssertTrue(swiftNames.contains("testClangLiteralsAreNotConfidenceEvidence.swift"))
-        XCTAssertFalse(clangNames.contains("testClangLiteralsAreNotConfidenceEvidence.swift"))
+        XCTAssertTrue(swiftNames.contains("testClangLiteralsAreConfidenceEvidence.swift"))
+        XCTAssertFalse(clangNames.contains("testClangLiteralsAreConfidenceEvidence.swift"))
     }
 
     func testClassifiesUnitsByProviderThenMainFileExtension() {

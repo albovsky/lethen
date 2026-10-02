@@ -63,6 +63,19 @@ final class ObjCReferenceIndexer: Indexer {
             return occurrences
         }
 
+        // The index shows references by symbol, not the names that runtime lookups spell in strings and
+        // selectors, so those count for the string-literal rule as Swift literals do.
+        let literalFiles = Set(records.map(\.file.path)).union(sourceFiles.keys.map(\.path)).sorted()
+        let logger = logger
+        let literalTokens = JobPool(jobs: literalFiles).flatMap { path -> [String] in
+            guard let data = FileManager.default.contents(atPath: path.string) else {
+                logger.debug("Cannot read \(path.string) for string literals")
+                return []
+            }
+
+            return Array(ClangLiteralScanner.tokens(in: String(decoding: data, as: UTF8.self)))
+        }
+
         var unmatched = 0
         graph.withLock { graph in
             let resolver = USRResolver(graph: graph)
@@ -87,6 +100,7 @@ final class ObjCReferenceIndexer: Indexer {
             }
 
             graph.add(references)
+            graph.addLiteralTokens(Set(literalTokens))
             logger.debug("Added \(references.count) references from \(sourceFiles.count) C and Objective-C files; \(unmatched) clang references name no Swift declaration")
         }
 
