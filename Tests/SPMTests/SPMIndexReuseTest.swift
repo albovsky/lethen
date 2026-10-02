@@ -20,16 +20,193 @@ final class SPMIndexReuseTest: XCTestCase {
     override func setUpWithError() throws {
         root = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen index reuse \(UUID().uuidString)").path)
         try FileManager.default.createDirectory(at: root.url, withIntermediateDirectories: true)
-        let fixture = ProjectRootPath.appending("Tests/IndexStoreDiscoveryProject")
-        for input in ["Package.swift", "Sources"] {
-            try FileManager.default.copyItem(at: fixture.appending(input).url, to: root.appending(input).url)
-        }
+        try copyFixture("IndexStoreDiscoveryProject")
         shell = RecordingShell(ShellImpl(logger: logger))
     }
 
     override func tearDownWithError() throws {
         if let root {
             try? FileManager.default.removeItem(at: root.url)
+        }
+    }
+
+    /// A target SwiftPM compiled but never indexed has objects and no units. It must not be mistaken for
+    /// a target the build skipped.
+    func testCompiledTargetWithoutUnitsCleans() throws {
+        try root.chdir {
+            try build()
+            let freshness = try freshness()
+            let store = try IndexStore(path: freshness.storePath.string)
+            let unitsDirectory = try XCTUnwrap(FileManager.default.contentsOfDirectory(atPath: freshness.storePath.string).first { $0.hasPrefix("v") })
+            var removed = 0
+            for unit in store.units where unit.moduleName == "TargetA" {
+                try FileManager.default.removeItem(atPath: freshness.storePath.appending(unitsDirectory).appending("units").appending(unit.name).string)
+                removed += 1
+            }
+            XCTAssertGreaterThan(removed, 0)
+
+            let verification = try freshness.verify(sources: package().packageSources(), buildStart: .distantPast)
+
+            XCTAssertTrue(verification.unbuiltTargets.isEmpty, "\(verification.unbuiltTargets)")
+            XCTAssertTrue(verification.issues.contains {
+                if case let .compiledWithoutIndexing(target, _) = $0 {
+                    target == "TargetA"
+                } else {
+                    false
+                }
+            }, "\(verification.issues)")
+            shell.reset()
+
+            try build()
+
+            XCTAssertTrue(shell.cleaned, "A compiled target without units must clean")
+            XCTAssertTrue(try symbols(in: "Sources/TargetA/PublicEnumWithAssociatedValue.swift").contains("PublicEnumWithAssociatedValue"))
+        }
+    }
+
+    func testUnbuiltPluginToolIsStampedAndReused() throws {
+        try copyPluginToolFixture()
+        try root.chdir {
+            try shell.exec(["swift", "build", "--build-tests", "--disable-index-store"])
+
+            try build()
+
+            XCTAssertTrue(shell.cleaned, "A tree without a stamp cleans")
+            let stamp = try XCTUnwrap(freshness().readStamp(), "A tree whose only unindexed target is never built must be stamped")
+            XCTAssertEqual(stamp.stamp.unbuiltTargets, ["UnbuiltTool"])
+            XCTAssertTrue(try symbols(in: "Sources/UnbuiltTool/main.swift").isEmpty, "An unbuilt target has no units")
+            XCTAssertTrue(try symbols(in: "Sources/MainTarget/main.swift").contains("PublicEnumWithAssociatedValue"))
+            shell.reset()
+
+            try build()
+
+            XCTAssertFalse(shell.cleaned, "A rescan must reuse the tree")
+            XCTAssertTrue(try symbols(in: "Sources/MainTarget/main.swift").contains("PublicEnumWithAssociatedValue"))
+            XCTAssertEqual(try freshness().readStamp()?.stamp.unbuiltTargets, ["UnbuiltTool"])
+        }
+    }
+
+    /// A unit another build wrote for a target lethen recorded as unbuilt describes an old source once the
+    /// source changes. It must never be read.
+    func testStaleUnitOfAnUnbuiltTargetIsNeverRead() throws {
+        try copyPluginToolFixture()
+        try root.chdir {
+            try build()
+            let store = try freshness().storePath
+            try shell.exec(["swift", "build", "--product", "UnbuiltTool", "--enable-index-store", "-Xswiftc", "-index-store-path", "-Xswiftc", store.string])
+            XCTAssertTrue(try symbols(in: "Sources/UnbuiltTool/main.swift").contains("toolProbeBefore()"), "The external build must have indexed the tool")
+            try replace("toolProbeBefore", with: "toolProbeAfter", in: "Sources/UnbuiltTool/main.swift")
+            shell.reset()
+
+            try build()
+
+            XCTAssertTrue(shell.cleaned, "A stale unit of a formerly unbuilt target must clean")
+            let names = try symbols(in: "Sources/UnbuiltTool/main.swift")
+            XCTAssertFalse(names.contains("toolProbeBefore()"), "The stale declaration must not survive: \(names)")
+            XCTAssertFalse(names.contains("toolProbeAfter()"), "An unbuilt target has no units: \(names)")
+            XCTAssertTrue(try symbols(in: "Sources/MainTarget/main.swift").contains("PublicEnumWithAssociatedValue"))
+            XCTAssertEqual(try freshness().readStamp()?.stamp.unbuiltTargets, ["UnbuiltTool"])
+        }
+    }
+
+    func testPluginToolBuiltAfterTheStampCleans() throws {
+        try copyPluginToolFixture()
+        try root.chdir {
+            try build()
+            try shell.exec(["swift", "build", "--product", "UnbuiltTool", "--disable-index-store"])
+            shell.reset()
+
+            try build()
+
+            XCTAssertTrue(shell.cleaned, "A target recorded as unbuilt that now has objects must clean")
+            XCTAssertEqual(try freshness().readStamp()?.stamp.unbuiltTargets, ["UnbuiltTool"])
+            XCTAssertTrue(try symbols(in: "Sources/MainTarget/main.swift").contains("PublicEnumWithAssociatedValue"))
+        }
+    }
+
+    func testPreparationCleansForAnObjectOfARecordedUnbuiltTarget() throws {
+        try copyPluginToolFixture()
+        try root.chdir {
+            try build()
+            let freshness = try freshness()
+            let stamp = try XCTUnwrap(freshness.readStamp())
+            let intermediates = freshness.buildRoot.appending("Intermediates.noindex")
+            let directory = (FileManager.default.fileExists(atPath: intermediates.string) ? intermediates : freshness.buildRoot)
+                .appending("UnbuiltTool-p.build")
+            try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
+            try Data().write(to: directory.appending("main.o").url)
+            let sources = try package().packageSources()
+
+            let preparation = try freshness.prepare(sources: sources, stampDate: .distantFuture, unbuiltTargets: ["UnbuiltTool"])
+            let withoutRecord = try freshness.prepare(sources: sources, stampDate: stamp.date)
+
+            guard case .clean = preparation else {
+                return XCTFail("Expected a clean, got \(preparation)")
+            }
+            guard case .clean = withoutRecord else {
+                return XCTFail("An object no indexed module owns must clean even when unrecorded, got \(withoutRecord)")
+            }
+        }
+    }
+
+    func testOldStampFormatCleans() throws {
+        for dropUnbuiltTargets in [false, true] {
+            try tearDownWithError()
+            try setUpWithError()
+            try root.chdir {
+                try build()
+                let stampPath = try freshness().stampPath
+                var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: stampPath.url)) as? [String: Any])
+                json["format"] = 2
+                if dropUnbuiltTargets {
+                    json["unbuiltTargets"] = nil
+                }
+                try JSONSerialization.data(withJSONObject: json).write(to: stampPath.url)
+                shell.reset()
+
+                try build()
+
+                XCTAssertTrue(shell.cleaned, "A stamp from an older format (dropping unbuiltTargets: \(dropUnbuiltTargets)) must clean")
+                XCTAssertEqual(try freshness().readStamp()?.stamp.format, 3)
+            }
+        }
+    }
+
+    func testCleanBuildStillCleansWithUnbuiltTargets() throws {
+        try copyPluginToolFixture()
+        try root.chdir {
+            let configuration = Configuration()
+            let driver = SPMProjectDriver(pkg: SPM.Package(configuration: configuration, shell: shell, logger: logger), configuration: configuration, logger: logger)
+            try driver.build()
+            XCTAssertEqual(driver.unbuiltTargets, ["UnbuiltTool"])
+            shell.reset()
+            try driver.build()
+            XCTAssertFalse(shell.cleaned, "A warm tree is reused")
+            shell.reset()
+
+            configuration.cleanBuild = true
+            try driver.build()
+
+            XCTAssertTrue(shell.cleaned, "--clean-build must clean a warm tree")
+            XCTAssertEqual(driver.unbuiltTargets, ["UnbuiltTool"])
+            XCTAssertNotNil(try freshness().readStamp())
+        }
+    }
+
+    func testDriverWarnsOnceAboutUnbuiltTargetsAcrossConfigurations() throws {
+        try copyPluginToolFixture()
+        try root.chdir {
+            let configuration = Configuration()
+            configuration.configurations = ["debug", "release"]
+            let pkg = SPM.Package(configuration: configuration, shell: shell, logger: logger)
+            let driver = SPMProjectDriver(pkg: pkg, configuration: configuration, logger: logger)
+
+            try driver.build()
+
+            XCTAssertEqual(driver.unbuiltTargets, ["UnbuiltTool"])
+            let warning = try XCTUnwrap(driver.buildBoundaryWarning(description: pkg.load()))
+            XCTAssertTrue(warning.contains("UnbuiltTool"), warning)
+            XCTAssertTrue(warning.contains("--retain-public-targets TargetA"), warning)
         }
     }
 
@@ -128,8 +305,10 @@ final class SPMIndexReuseTest: XCTestCase {
             try "func reuseProbeNewFile() {}\n".write(to: root.appending("Sources/MainTarget/Added.swift").url, atomically: true, encoding: .utf8)
             try shell.exec(["swift", "build", "--build-tests", "--disable-index-store"])
 
-            let issues = try freshness().verify(sources: package().packageSources(), buildStart: .distantPast)
+            let verification = try freshness().verify(sources: package().packageSources(), buildStart: .distantPast)
+            let issues = verification.issues
 
+            XCTAssertTrue(verification.unbuiltTargets.isEmpty, "A target with units for some sources is partially indexed, not unbuilt: \(verification.unbuiltTargets)")
             XCTAssertTrue(issues.contains {
                 if case let .missingUnit(path) = $0 {
                     path.lastComponent?.string == "Added.swift"
@@ -236,6 +415,32 @@ final class SPMIndexReuseTest: XCTestCase {
     }
 
     // MARK: - Private
+
+    /// Replaces the package under test with a copy of a fixture.
+    /// Copies the fixture whose `UnbuiltTool` executable only a command plugin uses, and skips the test on a
+    /// toolchain whose `swift build --build-tests` compiles every executable target anyway, because then the
+    /// package has no target the build leaves out.
+    private func copyPluginToolFixture() throws {
+        try copyFixture("PluginToolProject")
+        try root.chdir {
+            try shell.exec(["swift", "build", "--build-tests", "--disable-index-store"])
+            shell.reset()
+            let enumerator = FileManager.default.enumerator(atPath: root.appending(".build").string)
+            let compiled = enumerator?.contains { ($0 as? String).map { $0.hasSuffix(".o") && $0.contains("UnbuiltTool") } ?? false } ?? false
+            try XCTSkipIf(compiled, "This toolchain's `swift build --build-tests` compiles executable targets that only a plugin uses")
+            try shell.exec(["swift", "package", "clean"])
+            shell.reset()
+        }
+    }
+
+    private func copyFixture(_ name: String) throws {
+        let fixture = ProjectRootPath.appending("Tests/\(name)")
+        for input in ["Package.swift", "Sources", "Plugins"] where fixture.appending(input).exists {
+            let destination = root.appending(input)
+            try? FileManager.default.removeItem(at: destination.url)
+            try FileManager.default.copyItem(at: fixture.appending(input).url, to: destination.url)
+        }
+    }
 
     private func build(arguments: [String] = []) throws {
         try package().build(additionalArguments: arguments)
