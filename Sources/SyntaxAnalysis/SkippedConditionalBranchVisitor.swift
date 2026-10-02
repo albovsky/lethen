@@ -79,6 +79,10 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
                 || node.is(MemberAccessExprSyntax.self) || node.is(DeclReferenceExprSyntax.self)
                 || node.is(BinaryOperatorExprSyntax.self) || node.is(PrefixOperatorExprSyntax.self)
                 || node.is(PostfixOperatorExprSyntax.self)
+                // Type-only syntax (a cast, a generic argument, a metatype), key paths, subscripts and macros.
+                || node.is(IdentifierTypeSyntax.self) || node.is(MemberTypeSyntax.self)
+                || node.is(KeyPathExprSyntax.self) || node.is(SubscriptCallExprSyntax.self)
+                || node.is(MacroExpansionExprSyntax.self)
             {
                 hasIndexableSyntax = true
             }
@@ -96,6 +100,7 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
                 let name = reference.baseName.identifier?.name ?? reference.baseName.text
                 let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
                     || reference.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == reference.id
+                    || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
                 uses[name] = (uses[name] ?? false) || isMember
                 if isMember, !inPattern { constructionUses.insert(name) }
             } else if let type = node.as(IdentifierTypeSyntax.self) {

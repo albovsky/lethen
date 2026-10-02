@@ -2150,6 +2150,19 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotReferenced(.varStatic("neverMatched"))
                 self.assertConfidence(.varStatic("neverMatched"), .certain)
             }
+            assertNotReferenced(.struct("FixtureWindowsType312"))
+            assertConfidence(.struct("FixtureWindowsType312"), .likely)
+            assertReferenced(.enum("FixtureNamespace312")) {
+                self.assertNotReferenced(.struct("FixtureTakenType312"))
+                self.assertConfidence(.struct("FixtureTakenType312"), .certain)
+            }
+            assertReferenced(.class("FixtureKeyPath312")) {
+                self.assertNotReferenced(.varInstance("windowsKeyPathValue"))
+                self.assertConfidence(.varInstance("windowsKeyPathValue"), .likely)
+                self.assertReferenced(.varInstance("takenKeyPathValue"))
+                self.assertNotReferenced(.varInstance("neverKeyPath"))
+                self.assertConfidence(.varInstance("neverKeyPath"), .certain)
+            }
             assertReferenced(.class("FixtureClass312Taken")) {
                 // The taken clause only calls a parameter, which the analysis drops, but the index still
                 // shows the clause was compiled, so `handler()` is not named in a skipped branch.

@@ -99,3 +99,31 @@ public class FixtureClass312Pattern {
         #endif
     }
 }
+
+// Type-only use: a cast in a skipped branch names the type and nothing else.
+struct FixtureWindowsType312 {}
+
+// Active-branch control: the clause below compiled, so it names nothing. The nested type of the same name
+// is unrelated and unused.
+struct FixtureTakenType312 {}
+
+public enum FixtureNamespace312 {
+    struct FixtureTakenType312 {}
+}
+
+public class FixtureKeyPath312 {
+    var windowsKeyPathValue = 0
+    var takenKeyPathValue = 0
+    var neverKeyPath = 0
+
+    public func run() {
+        #if os(Windows)
+            _ = nil as FixtureWindowsType312?
+            _ = \FixtureKeyPath312.windowsKeyPathValue
+        #endif
+        #if os(Linux) || os(macOS)
+            _ = nil as FixtureTakenType312?
+            _ = \FixtureKeyPath312.takenKeyPathValue
+        #endif
+    }
+}

@@ -68,6 +68,34 @@ final class SkippedConditionalBranchVisitorTest: XCTestCase {
         XCTAssertNil(visitor.memberNames["idle"])
     }
 
+    /// Every form that names a declaration without a plain reference, call or member access.
+    func testCollectsNamesFromTypeKeyPathMacroAndInterpolationForms() {
+        let forms: [(String, String, Bool)] = [
+            ("_ = nil as CastType?", "CastType", false),
+            ("_ = x is IsType", "IsType", false),
+            ("_ = x as! ForcedType", "ForcedType", false),
+            ("_ = Box<GenericArg>()", "GenericArg", false),
+            ("_ = Meta.self", "Meta", false),
+            ("let t: MetaType.Type = z", "MetaType", false),
+            ("_ = \\Model.keyPathProperty", "keyPathProperty", true),
+            ("_ = \\Model.items[0].optionalPart?.deepProperty", "deepProperty", true),
+            ("_ = #selector(Target.action)", "action", true),
+            ("_ = #keyPath(Target.path)", "path", true),
+            ("_ = \"\\(interpolated)\"", "interpolated", false),
+            ("let c = { (p: ClosureParamType) in }", "ClosureParamType", false),
+            ("func g<T>(_ v: T) where T: WhereProtocol {}", "WhereProtocol", false),
+            ("struct S: InheritedProtocol {}", "InheritedProtocol", false),
+            ("@WrapperAttribute var w = 0", "WrapperAttribute", false),
+            ("_ = x[subscriptIndex]", "subscriptIndex", false),
+            ("extension ExtendedType {}", "ExtendedType", false),
+        ]
+        for (code, name, isMember) in forms {
+            let visitor = run("func f() {\n#if os(Windows)\n\(code)\n#endif\n}", evidenceLines: [])
+            XCTAssertNotNil(visitor.names[name], "\(code) should name \(name)")
+            XCTAssertEqual(visitor.memberNames[name] != nil, isMember, "\(code) member use of \(name)")
+        }
+    }
+
     func testCollectsOperatorsAsBareUses() {
         let source = """
         func f(a: Int) {

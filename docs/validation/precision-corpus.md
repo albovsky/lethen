@@ -681,3 +681,10 @@ Rows that stopped flipping with the narrowing and are not collisions of the ship
 `#else` clause, so it is `certain` again, as are the sampled TPs `loop`, `RDWR`, `recvmmsg`,
 `compareThreads` and `Heap.index(after:)`. Transitive cases (a name used only from taken code that a
 skipped branch reaches) stay `certain`.
+
+Review rounds after the first version changed the rule without changing a corpus row (flips stayed at 9
+on Alamofire and 23 on swift-nio, likely findings 18 and 44). The rule now also covers type aliases and
+operators; enum cases need a member access and are not constructed by a pattern, while any other name
+read in a pattern counts; a clause counts as compiled when any index occurrence of the file, of any
+symbol language, lies in it; and type-only syntax (casts, generic arguments, metatypes), key paths
+(components are member uses), subscripts and macro expansions count as content of a skipped clause.
