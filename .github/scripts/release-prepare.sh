@@ -27,6 +27,24 @@ if [[ ! "$tag" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z
     fail "Tag '$tag' is not a release version such as 2026.10.1 or 2026.10.1-dev.1 (year, month without a leading zero, release number)."
 fi
 
+# Numeric prerelease identifiers must not have leading zeros either (2026.10.1-dev.01).
+prerelease_part="${tag#*-}"
+if [[ "$tag" == *-* ]] && printf '%s\n' "$prerelease_part" | tr '.' '\n' | grep -Eq '^0[0-9]+$'; then
+    fail "Tag '$tag' has a numeric prerelease identifier with a leading zero."
+fi
+
+# Releases after 3.10.0 are calendar versions: 2026 or later, month 1 to 12, release number 1 or more.
+# Earlier tags (3.8.1, 3.10.0) stay releasable so a backfill can still run.
+IFS=. read -r major minor patch_and_pre <<< "$tag"
+patch="${patch_and_pre%%-*}"
+if (( major >= 2000 )); then
+    if (( major < 2026 || minor < 1 || minor > 12 || patch < 1 )); then
+        fail "Tag '$tag' is not a calendar version: expected YYYY.M.N with a year of 2026 or later, a month from 1 to 12, and a release number of 1 or more."
+    fi
+elif (( major > 3 || (major == 3 && minor > 10) )); then
+    fail "Tag '$tag' is neither a calendar version (YYYY.M.N, such as 2026.10.1) nor a release through 3.10.0."
+fi
+
 if ! sha="$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}")"; then
     fail "Tag '$tag' does not exist."
 fi
