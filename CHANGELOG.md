@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- Releases use calendar versions, `YYYY.M.N` (year, month without a leading zero, release number within the month), starting with the next release after 3.10.0; see [CONTRIBUTING.md](CONTRIBUTING.md#validation-and-releases). Release tags, the GitHub Action's `version` input, and the update checker reject zero-padded versions such as `2026.09.1`, which are not valid Semantic Versioning.
 
 ##### Bug Fixes
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Decides whether a tag may be released, before anything is built or signed.
 #
-# A tag is releasable when it names a version (`3.9.0`, or `3.9.0-dev.1` for a
-# prerelease), matches `LethenVersion` in the tagged source, points at a commit on
+# A tag is releasable when it names a version (`2026.10.1`, the year, the month without a
+# leading zero, and the release number within that month, or `2026.10.1-dev.1` for a
+# prerelease; tags through 3.10.0 were `3.10.0`), matches `LethenVersion` in the tagged source, points at a commit on
 # master, and that commit passed the `Required checks` gate. The gate usually still runs
 # when a tag is pushed right after a merge, so this waits for it instead of failing; a
 # completed gate with any result other than success fails at once.
@@ -21,8 +22,9 @@ fail() {
     exit 1
 }
 
-if [[ ! "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
-    fail "Tag '$tag' is not a release version such as 3.9.0 or 3.9.0-dev.1."
+# Semantic Versioning forbids leading zeros, so 2026.09.1 is rejected; write 2026.9.1.
+if [[ ! "$tag" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]]; then
+    fail "Tag '$tag' is not a release version such as 2026.10.1 or 2026.10.1-dev.1 (year, month without a leading zero, release number)."
 fi
 
 if ! sha="$(git rev-parse --verify --quiet "refs/tags/$tag^{commit}")"; then
