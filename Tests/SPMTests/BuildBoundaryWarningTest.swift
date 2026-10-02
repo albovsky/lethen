@@ -73,6 +73,14 @@ final class BuildBoundaryWarningTest: XCTestCase {
         XCTAssertTrue(warning.contains("--retain-public-targets Values"), warning)
     }
 
+    func testTargetBothExcludedAndUnbuiltIsOnlyExcluded() throws {
+        let configuration = Configuration()
+        configuration.excludeTargets = ["App"]
+        let warning = try XCTUnwrap(SPMProjectDriver.buildBoundaryWarning(description: decoded(), configuration: configuration, unbuiltTargets: ["App"]))
+        XCTAssertEqual(warning, "Targets App are excluded from the scan but depend on Values. Public declarations used only from them will be reported; pass --retain-public-targets Values to keep them.")
+        XCTAssertFalse(warning.contains("Targets  "), warning)
+    }
+
     func testNoUnbuiltWarningWhenTargetIsRetainedOrPublicIsRetained() throws {
         let description = try decode(pluginToolJSON)
         let retainedTarget = Configuration()

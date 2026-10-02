@@ -127,11 +127,13 @@ extension SPMProjectDriver: ProjectDriver {
         guard !consumed.isEmpty else { return nil }
 
         let advice = "Public declarations used only from them will be reported; pass --retain-public-targets \(consumed.joined(separator: " ")) to keep them."
-        guard !unbuilt.isEmpty else {
+        // A target both excluded and never built is only excluded.
+        let unbuiltOnlyNames = Set(unbuilt.map(\.name)).subtracting(excluded.map(\.name))
+        guard !unbuiltOnlyNames.isEmpty else {
             return "Targets \(outsideNames.sorted().joined(separator: ", ")) are excluded from the scan but depend on \(consumed.joined(separator: ", ")). \(advice)"
         }
 
-        let unbuiltNames = Set(unbuilt.map(\.name)).subtracting(excluded.map(\.name)).sorted().joined(separator: ", ")
+        let unbuiltNames = unbuiltOnlyNames.sorted().joined(separator: ", ")
         let excludedNames = Set(excluded.map(\.name)).sorted().joined(separator: ", ")
         let excludedClause = excluded.isEmpty ? "" : "Targets \(excludedNames) are excluded from the scan. "
         return "\(excludedClause)Targets \(unbuiltNames) are not compiled by `swift build --build-tests` (for example executables used only by command plugins), so they are not scanned, but they depend on \(consumed.joined(separator: ", ")). \(advice)"
