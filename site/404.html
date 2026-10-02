@@ -4,13 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Not found | Lethen</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/style.css">
+<meta name="color-scheme" content="light dark">
+<style>
+  body { margin: 0; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 72px 16px; max-width: 1040px; margin-inline: auto; }
+  h1 { font-size: 2.2rem; margin: 0 0 12px; }
+</style>
 </head>
 <body>
-<div class="wrap hero">
-  <h1>Page not found.</h1>
-  <p class="lead">Nothing lives here. <a href="/">Back to Lethen</a>.</p>
-</div>
+<h1>Page not found.</h1>
+<p>Nothing lives here. <a id="home" href="/">Back to Lethen</a>.</p>
+<script>
+// A project site on github.io lives under /lethen/; on a custom domain it lives at the root.
+if (location.hostname.endsWith("github.io")) document.getElementById("home").href = "/lethen/";
+</script>
 </body>
 </html>

@@ -72,7 +72,7 @@ next scan reports only new ones.</span></pre>
       <div class="card"><h3>Objective-C aware</h3><p>Reads the index clang writes for Objective-C files, so a Swift declaration called from a <code>.m</code> file counts as used.</p></div>
       <div class="card"><h3>SwiftPM, Xcode, Bazel</h3><p>Managed SwiftPM scans, Xcode schemes and configurations, and Bazel mode. Pass an index store with <code>--skip-build</code> to reuse your own build.</p></div>
       <div class="card"><h3>Never reads a stale index</h3><p>A SwiftPM build is reused only when Lethen can verify its index; otherwise it cleans and rebuilds. <code>--clean-build</code> always cleans.</p></div>
-      <div class="card"><h3>GitHub Action and plugin</h3><p><code>uses: albovsky/lethen@&lt;version&gt;</code> annotates unused code on pull requests, and a SwiftPM command plugin runs it from a package or Xcode.</p></div>
+      <div class="card"><h3>GitHub Action and plugin</h3><p>From release 3.10.0, <code>uses: albovsky/lethen@&lt;version&gt;</code> annotates unused code on pull requests, and a SwiftPM command plugin runs it from a package or Xcode.</p></div>
       <div class="card"><h3>Baselines</h3><p>Record today's results once, then fail only on new ones.</p></div>
       <div class="card"><h3>Periphery compatible</h3><p><code>.periphery.yml</code>, <code>// periphery:ignore</code> comments and the <code>PeripheryKit</code> library name keep working.</p></div>
     </div>
@@ -102,16 +102,22 @@ next scan reports only new ones.</span></pre>
     </div>
 
     <h3 style="margin-top:36px">Compared with Periphery</h3>
-    <p class="sub">Lethen is a fork of <a href="https://github.com/peripheryapp/periphery">Periphery</a> and shares most of its analysis. On 2026-10-02 we scanned five projects with Lethen 3.10.0 and Periphery 3.8.0 (the latest upstream release), and checked the differences by reading the source. Results with <code>--retain-public</code>, except Wikipedia iOS.</p>
+    <p class="sub">Lethen is a fork of <a href="https://github.com/peripheryapp/periphery">Periphery</a> and shares most of its analysis. On 2026-10-02 we scanned five projects (listed below) with Lethen 3.10.0 and Periphery 3.8.0 (the latest upstream release), and checked the differences by reading the source. Results with <code>--retain-public</code>, except Wikipedia iOS.</p>
     <div class="table-scroll"><table>
       <thead><tr><th>Project</th><th class="num">Periphery</th><th class="num">Lethen</th><th>What the differences were</th></tr></thead>
       <tbody>
         <tr><td>swift-format</td><td class="num">29</td><td class="num">29</td><td>Identical.</td></tr>
         <tr><td>Alamofire</td><td class="num">96</td><td class="num">71</td><td>All 30 findings only Periphery reports were false positives or unactionable public API parameters.</td></tr>
+        <tr><td>swift-argument-parser</td><td class="num">80</td><td class="num">78</td><td>Of the 10 findings only Periphery reports, 8 were unactionable public API, 1 was debatable and 1 was a true positive that Lethen reports at a different level. All 8 findings only Lethen reports were true positives.</td></tr>
         <tr><td>swift-nio</td><td class="num">451</td><td class="num">315</td><td>Of 15 sampled Periphery-only findings, 12 were false positives, 3 unactionable API and none a true positive.</td></tr>
         <tr><td>Wikipedia iOS</td><td class="num">3,212</td><td class="num">2,783</td><td>10 of 15 sampled Periphery-only groups were Swift code called from Objective-C.</td></tr>
       </tbody>
     </table></div>
+    <details class="note">
+      <summary>How this was measured</summary>
+      <p>Lethen 3.10.0 is <code>master</code> at <code>d7dec6c</code>. Periphery 3.8.0 is upstream tag <code>3.8.0</code> (<code>a2db299</code>), the latest upstream release. Both were built from source with <code>swift build -c release</code>. Alamofire, swift-argument-parser, swift-format and swift-nio ran on Linux x86_64 with Swift 6.4 (swift-6.4-RELEASE), at commits <code>bda9ed5</code>, <code>1021ac8</code>, <code>b15dd59</code> and <code>feaf4ac</code>, with <code>--retain-public --format json --quiet --disable-update-check</code>. Wikipedia iOS ran at <code>599e4a6</code> on an arm64 Mac with Xcode 27.0 (27A266a), Swift 6.4 and macOS 27, with <code>--project Wikipedia.xcodeproj --schemes Wikipedia -- -destination "generic/platform=iOS Simulator"</code>.</p>
+      <p>Findings were matched on file, line, name and hint. For each project, every finding reported by only one tool was listed, and up to 15 per direction were checked by reading the source and, for Lethen, with <code>lethen explain</code>. The raw scan output is not published yet, so treat these numbers as a measurement we made, not a reproducible benchmark.</p>
+    </details>
     <p class="note">Lethen was not faster: cold scans were roughly equal, and its SwiftPM build reuse falls back to a full rebuild on some packages. Periphery 3.8.0 returned stale results after a source edit in our test, while Lethen rebuilt and got it right. Lethen reports fewer findings in total, mostly by policy, and has small recall losses of its own, such as unused imports in Objective-C files. Xcode scans are slow, and 22 % of Wikipedia iOS findings are only <code>likely</code>. Known issues are tracked on <a href="https://github.com/albovsky/lethen/issues">GitHub</a>.</p>
   </div>
 </section>
@@ -149,7 +155,7 @@ swift build -c release --product lethen</pre>
 <pre>- uses: albovsky/lethen@&lt;version&gt;
   with:
     baseline: baseline.json</pre>
-    <p class="note">On Linux, run the job in a Swift 6.3 or later container, such as <code>swift:6.4-noble</code>.</p>
+    <p class="note">The action is available from release 3.10.0, so use a version tag at or after it. On Linux, run the job in a Swift 6.3 or later container, such as <code>swift:6.4-noble</code>.</p>
   </div>
 </section>
 </main>
