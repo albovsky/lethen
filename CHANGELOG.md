@@ -10,7 +10,7 @@
 
 ##### Bug Fixes
 
-- None.
+- `--verbose` writes its log lines to standard error, so `--format json --verbose` is valid JSON ([#95](https://github.com/albovsky/lethen/issues/95)).
 
 ## 3.10.0 (2026-10-01)
 

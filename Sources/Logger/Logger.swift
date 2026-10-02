@@ -80,10 +80,11 @@ public struct Logger: Sendable {
         log(text, output: stdout)
     }
 
+    /// Writes debug output to standard error so that it never mixes with results on standard output.
     public func debug(_ text: String) {
         guard verbose else { return }
 
-        log(text, output: stdout)
+        log(text, output: stderr)
     }
 
     /// Writes progress to standard error so that it never mixes with results on standard output.

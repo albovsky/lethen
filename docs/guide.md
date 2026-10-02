@@ -191,7 +191,7 @@ Every key is required (use an empty list). Relative paths are relative to the cu
 
 ## Configuration file
 
-Every scan option can be persisted in `.periphery.yml` (or `.periphery.yaml`) in the project root, or in the file named by `--config`. Keys are the option names with underscores, and command-line options override the file. Run a scan with `--verbose` to print the effective configuration as YAML you can copy:
+Every scan option can be persisted in `.periphery.yml` (or `.periphery.yaml`) in the project root, or in the file named by `--config`. Keys are the option names with underscores, and command-line options override the file. Run a scan with `--verbose` to print the effective configuration as YAML you can copy; verbose output goes to standard error, so redirect it with `2>`:
 
 ```yaml
 project: MyApp.xcodeproj
