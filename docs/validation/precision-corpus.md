@@ -641,7 +641,8 @@ decoding containers' `decode` and `decodeIfPresent`) and only for the first argu
 `container.decode([Int].self, forKey: key)` does not read `key`'s type. A `let` with an initial value
 or a `lazy` property is never decoded and is not modeled. An optional property is not read itself, but its
 type is still traversed, since `decodeIfPresent` runs that type's synthesized initializer. A generic
-specialization such as `Page<Model>.self` resolves to `Page` and its arguments, a labeled variadic
+specialization such as `Page<Model>.self` resolves to `Page`, and to each plain, array or optional argument only
+when a decoded property of `Page` mentions the matching generic parameter by name (a phantom parameter does not decode its argument; a nested generic argument is not followed), a labeled variadic
 parameter keeps taking the unlabeled arguments that follow its first, and a decoding call in top-level
 code adds its reads as root references (the same gap exists for encoding and is not addressed here). Optionality is read from the
 property's mangled USR, because `declaredType` is stored without its `?` and `!`. Optional

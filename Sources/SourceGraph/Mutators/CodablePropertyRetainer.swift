@@ -149,7 +149,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             }
             guard !decoded.isEmpty else { continue }
 
-            markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: decoded) { type, property in
+            markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: withDecodedGenericArguments(decoded)) { type, property in
                 decodeUse(of: property, in: type)
             }
         }
@@ -232,6 +232,30 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         let isDecoder = usr.contains("JSONDecoderC") || usr.contains("PropertyListDecoderC")
         let isContainer = usr.contains("DecodingContainer")
         return (isDecoder || isContainer) && usr.range(of: "(6decode|15decodeIfPresent)_", options: .regularExpression) != nil
+    }
+
+    /// A specialized metatype such as `Page<Model>.self` decodes `Model` only when `Page` stores a value of that
+    /// generic parameter in a decoded property; a phantom parameter is never decoded. The parameter is matched by
+    /// name against the declared types of the base type's decoded properties.
+    private func withDecodedGenericArguments(_ references: Set<Reference>) -> Set<Reference> {
+        var result = references
+        for reference in references where !reference.genericArguments.isEmpty {
+            guard let base = graph.declaration(withUsr: reference.usr), base.kind == .struct else { continue }
+
+            let parameters = base.declarations.filter { $0.kind == .genericTypeParam }.sorted()
+            let storedTypes = base.declarations
+                .filter { $0.kind == .varInstance && decodeUse(of: $0, in: base) != .skip }
+                .compactMap(\.declaredType)
+            for (parameter, arguments) in zip(parameters, reference.genericArguments) {
+                let mentioned = storedTypes.contains {
+                    $0.range(of: "\\b\(NSRegularExpression.escapedPattern(for: parameter.name))\\b", options: .regularExpression) != nil
+                }
+                if mentioned {
+                    result.formUnion(arguments)
+                }
+            }
+        }
+        return result
     }
 
     /// How the synthesized `init(from:)` treats a stored property.

@@ -175,6 +175,16 @@ struct FixtureStruct312Item: Decodable {
     let itemDecoded: Int
 }
 
+struct FixtureStruct312Phantom<Tag>: Decodable {
+    // Never stores a Tag, so decoding a Phantom decodes no Tag.
+    let count: Int
+}
+
+struct FixtureStruct312Tag: Decodable {
+    // Control: only the phantom parameter of a decoded generic names it.
+    let tagNotDecoded: Int
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -214,6 +224,8 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312Lazy.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312Holder.self, from: data)
         _ = try JSONDecoder().decode(FixtureStruct312Page<FixtureStruct312Item>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Phantom<FixtureStruct312Tag>.self, from: data)
+        _ = FixtureStruct312Tag(tagNotDecoded: 1)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 

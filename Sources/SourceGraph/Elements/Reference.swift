@@ -45,6 +45,8 @@ public final class Reference {
     public var valueArgumentReferences: Set<Reference> = []
     /// The explicit arguments of the call in source order, each with its label and the references that supplied its value.
     public var valueArguments: [ValueArgument] = []
+    /// For a type named in a specialized metatype such as `Page<Model>.self`, the references each generic argument names.
+    public var genericArguments: [Set<Reference>] = []
     /// False only when the index shows a function referenced without being called, such as one passed or assigned as
     /// a value, whose signature is then fixed by the function type it converts to. References built from anything
     /// other than index evidence keep the default.

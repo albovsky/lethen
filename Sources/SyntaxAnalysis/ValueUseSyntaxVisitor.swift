@@ -7,6 +7,8 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var arguments: [Location: Set<Location>] = [:]
     public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>)]] = [:]
     public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
+    /// Keyed by the specialized type's own location: what each of its generic arguments names.
+    public private(set) var specializationArguments: [Location: [Set<Location>]] = [:]
     public private(set) var initializedConstantLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
@@ -140,7 +142,7 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             if member.declName.baseName.tokenKind == .keyword(.self), let base = member.base {
                 guard resolvesMetatypes else { return [] }
 
-                // `Page<Model>.self` decodes `Model` as well: resolve the specialized type and its arguments.
+                // `Page<Model>.self` resolves to `Page`, with its arguments recorded for the decoding rule.
                 if let specialized = base.as(GenericSpecializationExprSyntax.self) {
                     return specializedOrigins(of: specialized)
                 }
@@ -170,16 +172,36 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         return []
     }
 
+    /// The specialized type itself. Its generic arguments are recorded apart, because whether they are decoded
+    /// depends on how the type stores them.
     private func specializedOrigins(of specialized: GenericSpecializationExprSyntax) -> Set<Location> {
-        var result = origins(of: specialized.expression)
-        for argument in specialized.genericArgumentClause.arguments {
-            if case let .type(type) = argument.argument {
-                result.formUnion(TypeSyntaxInspector(sourceLocationBuilder: locations).types(for: type).map {
-                    locations.location(at: $0.positionAfterSkippingLeadingTrivia)
-                })
+        let base = origins(of: specialized.expression)
+        let arguments = specialized.genericArgumentClause.arguments.map { argument -> Set<Location> in
+            guard case let .type(type) = argument.argument else { return [] }
+
+            return Self.simpleTypeTokens(in: type).reduce(into: Set<Location>()) {
+                $0.insert(locations.location(at: $1.positionAfterSkippingLeadingTrivia))
             }
         }
-        return result
+        for location in base {
+            specializationArguments[location] = arguments
+        }
+        return base
+    }
+
+    /// The name token of a plain, array or optional type. A nested generic such as `Box<Model>` names nothing here,
+    /// since the box may not decode its argument.
+    private static func simpleTypeTokens(in type: TypeSyntax) -> [TokenSyntax] {
+        if let identifier = type.as(IdentifierTypeSyntax.self), identifier.genericArgumentClause == nil {
+            return [identifier.name]
+        }
+        if let array = type.as(ArrayTypeSyntax.self) {
+            return simpleTypeTokens(in: array.element)
+        }
+        if let optional = type.as(OptionalTypeSyntax.self) {
+            return simpleTypeTokens(in: optional.wrappedType)
+        }
+        return []
     }
 
     private func recordParameterTypeNames(
