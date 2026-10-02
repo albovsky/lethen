@@ -2118,6 +2118,96 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testConfidenceLikelyForSkippedBranches() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.enum("FixtureEnum312")) {
+                self.assertNotUnconstructedEnumCase(.enumelement("constructed"))
+                self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
+                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
+                // Used-but-not-compared control: named in the branch this build compiled, so it is
+                // used and not reported.
+                self.assertNotUnconstructedEnumCase(.enumelement("comparedInTakenBranch"))
+                self.assertUnconstructedEnumCase(.enumelement("matchedOnly"))
+                self.assertConfidence(.enumelement("matchedOnly"), .certain)
+                // A bare local named like the case is not a use, nor is a `for case` pattern.
+                self.assertUnconstructedEnumCase(.enumelement("idle"))
+                self.assertConfidence(.enumelement("idle"), .certain)
+                self.assertUnconstructedEnumCase(.enumelement("windowsLoopOnly"))
+                self.assertConfidence(.enumelement("windowsLoopOnly"), .certain)
+            }
+            assertReferenced(.enum("FixtureEnum312Other")) {
+                // A name collision with a skipped branch is accepted as likely.
+                self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
+                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
+            }
+            assertNotReferenced(.typealias("FixtureTypealias312"))
+            assertConfidence(.typealias("FixtureTypealias312"), .likely)
+            assertNotReferenced(.typealias("FixtureTypealiasUnnamed312"))
+            assertConfidence(.typealias("FixtureTypealiasUnnamed312"), .certain)
+            assertReferenced(.class("FixtureClass312Pattern")) {
+                self.assertNotReferenced(.varStatic("patternWindowsValue"))
+                self.assertConfidence(.varStatic("patternWindowsValue"), .likely)
+                self.assertNotReferenced(.varStatic("neverMatched"))
+                self.assertConfidence(.varStatic("neverMatched"), .certain)
+            }
+            assertNotReferenced(.struct("FixtureWindowsType312"))
+            assertConfidence(.struct("FixtureWindowsType312"), .likely)
+            assertReferenced(.enum("FixtureNamespace312")) {
+                self.assertNotReferenced(.struct("FixtureTakenType312"))
+                self.assertConfidence(.struct("FixtureTakenType312"), .certain)
+            }
+            assertReferenced(.class("FixtureGeneric312")) {
+                self.assertNotReferenced(.functionMethodInstance("windowsGeneric()"))
+                self.assertConfidence(.functionMethodInstance("windowsGeneric()"), .likely)
+                self.assertReferenced(.functionMethodInstance("takenGeneric()"))
+            }
+            assertReferenced(.class("FixtureKeyPath312")) {
+                self.assertNotReferenced(.varInstance("windowsKeyPathValue"))
+                self.assertConfidence(.varInstance("windowsKeyPathValue"), .likely)
+                self.assertReferenced(.varInstance("takenKeyPathValue"))
+                self.assertNotReferenced(.varInstance("neverKeyPath"))
+                self.assertConfidence(.varInstance("neverKeyPath"), .certain)
+            }
+            assertReferenced(.class("FixtureClass312Taken")) {
+                // The taken clause only calls a parameter, which the analysis drops, but the index still
+                // shows the clause was compiled, so `handler()` is not named in a skipped branch.
+                self.assertNotReferenced(.functionMethodInstance("handler()"))
+                self.assertConfidence(.functionMethodInstance("handler()"), .certain)
+            }
+            assertReferenced(.class("FixtureClass312")) {
+                self.assertNotReferenced(.functionMethodInstance("calledOnlyOnWindows()"))
+                self.assertConfidence(.functionMethodInstance("calledOnlyOnWindows()"), .likely)
+                self.assertReferenced(.functionMethodInstance("calledInTakenBranch()"))
+                self.assertNotReferenced(.functionMethodInstance("neverNamed()"))
+                self.assertConfidence(.functionMethodInstance("neverNamed()"), .certain)
+                self.assertNotReferenced(.functionMethodInstance("WinSDK()"))
+                self.assertConfidence(.functionMethodInstance("WinSDK()"), .certain)
+                // Declaring a name in a skipped branch is not using it.
+                self.assertNotReferenced(.functionMethodInstance("redeclaredOnlyOnWindows()"))
+                self.assertConfidence(.functionMethodInstance("redeclaredOnlyOnWindows()"), .certain)
+                self.assertNotReferenced(.varInstance("overriddenLabel"))
+                self.assertConfidence(.varInstance("overriddenLabel"), .certain)
+                // A bare identifier is not a use of a member.
+                self.assertNotReferenced(.varInstance("shadowedByLocal"))
+                self.assertConfidence(.varInstance("shadowedByLocal"), .certain)
+            }
+        }
+    }
+
+    func testConfidenceLikelyForOperatorsUsedInSkippedBranches() throws {
+        try analyze(retainPublic: true) {
+            assertNotReferenced(.functionOperatorInfix("<~~>(_:_:)"))
+            assertConfidence(.functionOperatorInfix("<~~>(_:_:)"), .likely)
+            assertNotReferenced(.functionOperatorPrefix("^^^(_:)"))
+            assertConfidence(.functionOperatorPrefix("^^^(_:)"), .likely)
+            // Never named: stays certain.
+            assertNotReferenced(.functionOperatorInfix("<!!>(_:_:)"))
+            assertConfidence(.functionOperatorInfix("<!!>(_:_:)"), .certain)
+            // Used in the branch this build compiled: not reported.
+            assertReferenced(.functionOperatorInfix("<??>(_:_:)"))
+        }
+    }
+
     func testRetainsResultBuilderPartialBlockAndArity() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct225")) {

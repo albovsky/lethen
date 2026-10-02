@@ -1,0 +1,122 @@
+import SourceGraph
+import SwiftSyntax
+
+/// Collects the names used inside `#if` clauses that the build did not compile.
+///
+/// The compiler records nothing for a branch it skips, so a declaration used only there is
+/// reported as unused even though another platform or configuration would use it. Which clause was
+/// compiled is read from the index, not from the condition: a clause is taken when `evidence`, the
+/// locations of the file's indexed declarations and references, has an entry inside it, and skipped
+/// when it has none although it contains syntax the index would have recorded. A clause with
+/// nothing but imports or comments leaves no evidence either way and is ignored. Only uses count: the
+/// names of declarations written in the clause, labels, parameters, and import paths do not. A use in
+/// a pattern counts for everything but an enum case.
+public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
+    /// Each used name mapped to the lexicographically smallest description of a skipped clause
+    /// that uses it, such as `#if os(Windows) at File.swift:12`.
+    public private(set) var names: [String: String] = [:]
+
+    /// The subset of `names` with a use spelled as a member access or a call.
+    public private(set) var memberNames: [String: String] = [:]
+
+    /// The subset of `memberNames` with a use outside a pattern. Matching an enum case in a pattern
+    /// is not constructing it, so an enum case is downgraded only by these.
+    public private(set) var constructionNames: [String: String] = [:]
+
+    private let locationBuilder: SourceLocationBuilder
+    private let evidence: Set<Location>
+
+    public init(locationBuilder: SourceLocationBuilder, evidence: Set<Location>) {
+        self.locationBuilder = locationBuilder
+        self.evidence = evidence
+        super.init(viewMode: .sourceAccurate)
+    }
+
+    override public func visit(_ node: IfConfigDeclSyntax) -> SyntaxVisitorContinueKind {
+        for clause in node.clauses {
+            guard let elements = clause.elements else { continue }
+
+            let start = locationBuilder.location(at: elements.positionAfterSkippingLeadingTrivia)
+            let end = locationBuilder.location(at: elements.endPositionBeforeTrailingTrivia)
+            let isTaken = evidence.contains { start <= $0 && $0 <= end }
+            guard !isTaken else { continue }
+
+            let content = ClauseContent(Syntax(elements))
+            guard content.hasIndexableSyntax else { continue }
+
+            let keyword = clause.poundKeyword.text
+            let condition = clause.condition.map { " " + $0.trimmedDescription } ?? ""
+            let line = locationBuilder.location(at: clause.positionAfterSkippingLeadingTrivia).line
+            let file = start.file.path.lastComponent?.string ?? start.file.path.string
+            let site = "\(keyword)\(condition) at \(file):\(line)"
+            for (identifier, isMember) in content.uses {
+                if names[identifier].map({ $0 > site }) ?? true { names[identifier] = site }
+                if isMember, memberNames[identifier].map({ $0 > site }) ?? true { memberNames[identifier] = site }
+            }
+            for identifier in content.constructionUses where constructionNames[identifier].map({ $0 > site }) ?? true {
+                constructionNames[identifier] = site
+            }
+        }
+        return .visitChildren
+    }
+
+    private struct ClauseContent {
+        /// Names used in the clause, each flagged when some use is a member access or a call.
+        var uses: [String: Bool] = [:]
+        /// Names with a member access or call use outside every pattern.
+        var constructionUses: Set<String> = []
+        var hasIndexableSyntax = false
+
+        init(_ node: Syntax) {
+            collect(node, inPattern: false)
+        }
+
+        private mutating func collect(_ node: Syntax, inPattern: Bool) {
+            if node.is(ImportDeclSyntax.self) { return }
+
+            // Any other declaration, call, or reference is recorded by the index.
+            if node.is(DeclSyntax.self) || node.is(FunctionCallExprSyntax.self)
+                || node.is(MemberAccessExprSyntax.self) || node.is(DeclReferenceExprSyntax.self)
+                || node.is(BinaryOperatorExprSyntax.self) || node.is(PrefixOperatorExprSyntax.self)
+                || node.is(PostfixOperatorExprSyntax.self)
+                // Type-only syntax (a cast, a generic argument, a metatype), key paths, subscripts and macros.
+                || node.is(IdentifierTypeSyntax.self) || node.is(MemberTypeSyntax.self)
+                || node.is(KeyPathExprSyntax.self) || node.is(SubscriptCallExprSyntax.self)
+                || node.is(MacroExpansionExprSyntax.self)
+            {
+                hasIndexableSyntax = true
+            }
+            // Matching an enum case is not constructing it, but a pattern can read any other declaration,
+            // as `case Limits.windowsValue:` does, so pattern uses are kept and flagged.
+            let inPattern = inPattern || node.is(ExpressionPatternSyntax.self)
+            // An operator is used by its spelling alone, so it is never a member use.
+            if let binary = node.as(BinaryOperatorExprSyntax.self) {
+                uses[binary.operator.text] = uses[binary.operator.text] ?? false
+            } else if let prefix = node.as(PrefixOperatorExprSyntax.self) {
+                uses[prefix.operator.text] = uses[prefix.operator.text] ?? false
+            } else if let postfix = node.as(PostfixOperatorExprSyntax.self) {
+                uses[postfix.operator.text] = uses[postfix.operator.text] ?? false
+            } else if let reference = node.as(DeclReferenceExprSyntax.self) {
+                let name = reference.baseName.identifier?.name ?? reference.baseName.text
+                // `process<Int>()` wraps the reference in a generic specialization before the call.
+                let specialized = reference.parent?.as(GenericSpecializationExprSyntax.self)
+                let callee = specialized.flatMap { $0.expression.id == reference.id ? Syntax($0) : nil } ?? Syntax(reference)
+                let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
+                    || callee.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == callee.id
+                    || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
+                uses[name] = (uses[name] ?? false) || isMember
+                if isMember, !inPattern { constructionUses.insert(name) }
+            } else if let type = node.as(IdentifierTypeSyntax.self) {
+                let name = type.name.identifier?.name ?? type.name.text
+                uses[name] = uses[name] ?? false
+            } else if let type = node.as(MemberTypeSyntax.self) {
+                let name = type.name.identifier?.name ?? type.name.text
+                uses[name] = true
+                if !inPattern { constructionUses.insert(name) }
+            }
+            for child in node.children(viewMode: .sourceAccurate) {
+                collect(child, inPattern: inPattern)
+            }
+        }
+    }
+}

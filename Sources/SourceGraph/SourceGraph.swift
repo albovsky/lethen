@@ -31,6 +31,14 @@ public final class SourceGraph {
     public private(set) var unconstructedEnumCases: Set<Declaration> = []
     /// Identifier-like words found in string literals across the scanned sources.
     public private(set) var literalTokens: Set<String> = []
+    /// Names used in `#if` clauses this build did not compile, by the module whose file has the
+    /// clause, each with the clause that uses it.
+    public private(set) var skippedBranchNames: [String: [String: String]] = [:]
+    /// The subset of `skippedBranchNames` used as a member access or a call.
+    public private(set) var skippedBranchMemberNames: [String: [String: String]] = [:]
+    /// The subset of `skippedBranchMemberNames` used outside a pattern, which is all that can construct
+    /// an enum case.
+    public private(set) var skippedBranchConstructionNames: [String: [String: String]] = [:]
 
     private var indexedModules: Set<String> = []
     private var unindexedExportedModules: Set<String> = []
@@ -50,6 +58,34 @@ public final class SourceGraph {
         literalTokens.formUnion(tokens)
     }
 
+    public func addSkippedBranchNames(_ names: [String: String], members: [String: String], construction: [String: String], modules: Set<String>) {
+        for module in modules {
+            skippedBranchNames[module, default: [:]].merge(names) { min($0, $1) }
+            skippedBranchMemberNames[module, default: [:]].merge(members) { min($0, $1) }
+            skippedBranchConstructionNames[module, default: [:]].merge(construction) { min($0, $1) }
+        }
+    }
+
+    /// The skipped clause, in a module the declaration belongs to, that uses its name. A member or
+    /// enum case is matched only by a use spelled as a member access or a call, so a bare identifier such as
+    /// a local named `count` does not count.
+    private func skippedBranchSite(of declaration: Declaration) -> String? {
+        let names = if declaration.kind == .enumelement {
+            skippedBranchConstructionNames
+        } else if Self.memberKinds.contains(declaration.kind) {
+            skippedBranchMemberNames
+        } else {
+            skippedBranchNames
+        }
+        let baseName = Self.baseName(of: declaration.name)
+        let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
+        return modules.compactMap { names[$0]?[baseName] }.min()
+    }
+
+    private static let memberKinds: Set<Declaration.Kind> = [
+        .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .varClass, .varInstance, .varStatic, .enumelement,
+    ]
+
     public func assessConfidence(of declaration: Declaration) -> ConfidenceAssessment {
         let objcAttributes: Set<String> = ["objc", "objc.name", "objcMembers"]
         let isObjcExposed = declaration.isObjcAccessible
@@ -64,6 +100,12 @@ public final class SourceGraph {
             return .init(confidence: .likely, reason: "its name appears in a string literal")
         }
 
+        if Self.skippedBranchKinds.contains(declaration.kind),
+           let site = skippedBranchSite(of: declaration)
+        {
+            return .init(confidence: .likely, reason: "its name appears in \(site), a branch this build did not compile")
+        }
+
         return .init(confidence: .certain, reason: nil)
     }
 
@@ -74,6 +116,11 @@ public final class SourceGraph {
         .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic,
         .varClass, .varGlobal, .varInstance, .varStatic,
     ]
+
+    /// Kinds a use in a skipped branch can be the only use of: the runtime-named kinds, type aliases, and operators.
+    private static let skippedBranchKinds = dynamicallyNamedKinds.union([
+        .typealias, .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
+    ])
 
     /// The name without argument labels: `load(from:)` becomes `load`.
     public static func baseName(of name: String) -> String {

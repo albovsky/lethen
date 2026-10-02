@@ -148,6 +148,8 @@ final class SwiftIndexer: Indexer {
             let isImplicit: Bool
             let isObjcAccessible: Bool
             let location: Location
+            /// The module of the index unit that recorded the declaration.
+            var module = ""
 
             var key: Key {
                 Key(kind: kind, name: name, isImplicit: isImplicit, isObjcAccessible: isObjcAccessible, location: location)
@@ -169,9 +171,13 @@ final class SwiftIndexer: Indexer {
 
                     record.forEach(occurrence: { occurrence in
                         let usr = occurrence.symbol.usr
-                        guard Self.shouldProcessOccurrence(occurrence),
-                              let location = self.transformLocation(occurrence.location)
-                        else { return }
+                        guard let location = self.transformLocation(occurrence.location) else { return }
+
+                        // Every occurrence is evidence that its line was compiled, including the parameters and
+                        // locals that analysis drops and symbols of any language.
+                        occurrenceLocations[unit.unit.moduleName, default: []].insert(location)
+
+                        guard Self.shouldProcessOccurrence(occurrence) else { return }
 
                         var relations: [RawRelation] = []
                         occurrence.forEach(relation: { relSymbol, relRoles in
@@ -193,6 +199,8 @@ final class SwiftIndexer: Indexer {
                                 location,
                                 relations
                             ) {
+                                var decl = decl
+                                decl.module = unit.unit.moduleName
                                 rawDeclsByKey[decl.key, default: []].append((decl, relations))
                             }
                         }
@@ -232,6 +240,7 @@ final class SwiftIndexer: Indexer {
                 let decl = Declaration(name: key.name, kind: key.kind, usrs: usrs, location: key.location)
 
                 decl.isImplicit = key.isImplicit
+                decl.indexedModules = values.mapSet { $0.0.module }
                 decl.isObjcAccessible = key.isObjcAccessible
 
                 if decl.isObjcAccessible, configuration.retainObjcAccessible {
@@ -320,6 +329,21 @@ final class SwiftIndexer: Indexer {
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
             graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
+            // A module with no occurrence in the file, such as a file conditionally compiled out entirely,
+            // has no evidence for any clause.
+            for module in sourceFile.modules.sorted() {
+                let evidence = occurrenceLocations[module] ?? []
+                let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: evidence)
+                skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
+                graph.withLock {
+                    $0.addSkippedBranchNames(
+                        skippedBranches.names,
+                        members: skippedBranches.memberNames,
+                        construction: skippedBranches.constructionNames,
+                        modules: [module]
+                    )
+                }
+            }
             let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
             for (call, arguments) in valueUses.arguments {
                 let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })
@@ -336,6 +360,9 @@ final class SwiftIndexer: Indexer {
 
         private var declarations: [Declaration] = []
         private var indexedReferences: Set<Reference> = []
+        /// Locations of every index occurrence, by the module whose unit recorded them. A file built into
+        /// several modules can compile different clauses in each.
+        private var occurrenceLocations: [String: Set<Location>] = [:]
         private var childDeclsByParentUsr: [String: Set<Declaration>] = [:]
         private var referencesByUsr: [String: Set<Reference>] = [:]
         private var danglingReferences: [Reference] = []

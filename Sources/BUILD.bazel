@@ -50,6 +50,7 @@ swift_library(
         "SyntaxAnalysis/EnumCasePatternSyntaxVisitor.swift",
         "SyntaxAnalysis/ImportSyntaxVisitor.swift",
         "SyntaxAnalysis/MultiplexingSyntaxVisitor.swift",
+        "SyntaxAnalysis/SkippedConditionalBranchVisitor.swift",
         "SyntaxAnalysis/SourceLOCCounter.swift",
         "SyntaxAnalysis/SourceLocationBuilder.swift",
         "SyntaxAnalysis/StringLiteralTokenVisitor.swift",

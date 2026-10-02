@@ -62,6 +62,10 @@ struct DeclarationDescription: CustomStringConvertible {
         self.init(kind: .functionOperatorInfix, name: name, line: line)
     }
 
+    static func functionOperatorPrefix(_ name: String, line: Int? = nil) -> Self {
+        self.init(kind: .functionOperatorPrefix, name: name, line: line)
+    }
+
     static func functionConstructor(_ name: String, line: Int? = nil) -> Self {
         self.init(kind: .functionConstructor, name: name, line: line)
     }
