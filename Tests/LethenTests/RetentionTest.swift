@@ -2264,6 +2264,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct226Metatype")) {
                 self.assertAssignOnlyProperty(.varInstance("metatypeNotEncoded"))
             }
+            assertReferenced(.struct("FixtureStruct226Overload")) {
+                self.assertNotAssignOnlyProperty(.varInstance("overloadEncoded"))
+            }
             assertReferenced(.struct("FixtureStruct226Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
             }
@@ -2371,6 +2374,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct312Entry")) {
                 self.assertNotAssignOnlyProperty(.varInstance("entryDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Overload")) {
+                self.assertNotAssignOnlyProperty(.varInstance("overloadDecoded"))
             }
             assertReferenced(.struct("FixtureStruct312LabeledA")) {
                 self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))

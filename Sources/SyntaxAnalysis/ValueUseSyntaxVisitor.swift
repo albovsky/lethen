@@ -228,7 +228,7 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             signature.parameterClause.parameters.map { parameter in
                 let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
                 let names = Self.decodedMetatypeNames(of: parameter.type, constraints: constraints)
-                return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil)
+                return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil, typeName: parameter.type.trimmedDescription)
             }
     }
 

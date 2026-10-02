@@ -399,10 +399,13 @@ public struct ParameterTypeNames {
     public let label: String?
     public let names: Set<String>
     public let isVariadic: Bool
+    /// The parameter type as written.
+    public let typeName: String
 
-    public init(label: String?, names: Set<String>, isVariadic: Bool = false) {
+    public init(label: String?, names: Set<String>, isVariadic: Bool = false, typeName: String = "") {
         self.label = label
         self.names = names
         self.isVariadic = isVariadic
+        self.typeName = typeName
     }
 }

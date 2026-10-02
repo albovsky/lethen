@@ -59,7 +59,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
             let extensions = graph.extensions[type] ?? []
             let members = type.declarations.union(extensions.flatMap(\.declarations))
-            guard !members.contains(where: { $0.name == "encode(to:)" && !$0.isImplicit }) else { continue }
+            guard !members.contains(where: { isCustomCoder($0, named: "encode(to:)", parameterType: "Encoder") }) else { continue }
 
             synthesizedTypes.insert(type)
         }
@@ -119,7 +119,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
             let extensions = graph.extensions[type] ?? []
             let members = type.declarations.union(extensions.flatMap(\.declarations))
-            guard !members.contains(where: { $0.name == "init(from:)" && !$0.isImplicit }) else { continue }
+            guard !members.contains(where: { isCustomCoder($0, named: "init(from:)", parameterType: "Decoder") }) else { continue }
 
             synthesizedTypes.insert(type)
         }
@@ -199,6 +199,20 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             index += 1
         }
         return decoded
+    }
+
+    /// An explicit `encode(to:)` or `init(from:)` replaces the synthesized one only when its parameter is the
+    /// coder: an overload such as `init(from number: Int)` leaves the synthesized initializer in place. A parameter
+    /// whose type is unknown counts as the coder.
+    private func isCustomCoder(_ member: Declaration, named name: String, parameterType: String) -> Bool {
+        guard member.name == name, !member.isImplicit else { return false }
+        guard let declaredType = member.parameterTypeNames.first?.typeName else { return true }
+
+        var type = declaredType.trimmingCharacters(in: .whitespaces)
+        for prefix in ["any ", "Swift."] where type.hasPrefix(prefix) {
+            type.removeFirst(prefix.count)
+        }
+        return type == parameterType
     }
 
     private func mayDecode(indexed callee: Declaration) -> Bool {

@@ -83,6 +83,19 @@ struct FixtureStruct226Metatype: Encodable {
     }
 }
 
+struct FixtureStruct226Overload: Encodable {
+    // An unrelated encode(to:) overload does not replace the synthesized encode(to: Encoder).
+    let overloadEncoded: Int
+
+    init(overloadEncoded: Int) {
+        self.overloadEncoded = overloadEncoded
+    }
+
+    func encode(to path: String) -> String {
+        path
+    }
+}
+
 struct FixtureStruct226Custom: Encodable {
     // Control: an explicit encode(to:) replaces the synthesized one, so nothing reads it.
     let notEncodedByCustom: Int
@@ -102,6 +115,7 @@ public class FixtureClass226Retainer {
         try [
             JSONEncoder().encode(FixtureStruct226(encoded: 1, nested: FixtureStruct226Nested(nestedValue: 2))),
             JSONEncoder().encode(FixtureStruct226Codable(codableEncoded: 3)),
+            JSONEncoder().encode(FixtureStruct226Overload(overloadEncoded: 13)),
             JSONEncoder().encode(FixtureStruct226Custom(notEncodedByCustom: 4)),
             encodeGeneric(FixtureStruct226Generic(genericEncoded: 7)),
             encodeExistential(FixtureStruct226Existential(existentialEncoded: 8)),

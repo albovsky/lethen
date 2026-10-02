@@ -203,6 +203,15 @@ struct FixtureStruct312Entry: Decodable {
     let entryDecoded: Int
 }
 
+struct FixtureStruct312Overload: Decodable {
+    // An unrelated init(from:) overload does not replace the synthesized init(from: Decoder).
+    let overloadDecoded: Int
+
+    init(from number: Int) {
+        overloadDecoded = number
+    }
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -247,6 +256,7 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312Envelope<FixtureStruct312Nested2>.self, from: data)
         _ = FixtureStruct312Nested2(nested2NotDecoded: 1)
         _ = try JSONDecoder().decode(FixtureStruct312Dictionary<FixtureStruct312Entry>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Overload.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 
