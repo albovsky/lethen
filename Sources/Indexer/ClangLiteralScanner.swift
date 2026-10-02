@@ -24,7 +24,12 @@ enum ClangLiteralScanner {
     private static let selectorKeyword = Array("@selector".utf8)
 
     static func tokens(in source: String) -> Set<String> {
-        let bytes = Array(source.utf8)
+        tokens(in: Array(source.utf8))
+    }
+
+    /// Scans the file's bytes, so a byte that is not UTF-8 in a comment or a prose string costs only
+    /// that literal, never the rest of the file.
+    static func tokens(in bytes: [UInt8]) -> Set<String> {
         var tokens: Set<String> = []
         var index = 0
         var atLineStart = true

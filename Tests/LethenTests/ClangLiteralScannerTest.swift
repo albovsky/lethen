@@ -61,4 +61,11 @@ final class ClangLiteralScannerTest: XCTestCase {
         XCTAssertEqual(tokens(#"@""#), [])
         XCTAssertEqual(tokens(""), [])
     }
+
+    /// Clang compiles a file with a stray non-UTF-8 byte, so the scanner must not give up on it.
+    func testBytesThatAreNotUTF8CostOnlyTheirOwnLiteral() {
+        var bytes = Array("// caf".utf8) + [0xE9] + Array("\nSEL s = @selector(afterComment);\n".utf8)
+        bytes += Array("a = @\"caf".utf8) + [0xE9] + Array("\"; b = @\"afterLiteral\";\n".utf8)
+        XCTAssertEqual(ClangLiteralScanner.tokens(in: bytes), ["afterComment", "afterLiteral"])
+    }
 }
