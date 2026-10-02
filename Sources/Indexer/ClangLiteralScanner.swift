@@ -69,16 +69,11 @@ enum ClangLiteralScanner {
                 index = endOfLine(from: index, in: bytes)
             case slash where bytes[safe: index + 1] == star:
                 index = endOfBlockComment(from: index + 2, in: bytes)
-            case quote where rawStringDelimiter(before: index, in: bytes) != nil:
-                // A C++ raw string (`R"(name)"`, `R"x(name)x"`) has no escapes and may span lines.
-                let (literal, next) = rawStringLiteral(from: index + 1, delimiter: rawStringDelimiter(before: index, in: bytes) ?? [], in: bytes)
-                add(literal)
-                index = next
             case quote:
-                // Adjacent literals (`@"Renamed" @"Class"`) are one string to the compiler.
-                var (literal, next) = stringLiteral(from: index + 1, in: bytes)
-                while let continuation = adjacentLiteralStart(from: next, in: bytes) {
-                    let (more, after) = stringLiteral(from: continuation, in: bytes)
+                // Adjacent literals (`@"Renamed" @"Class"`, `R"(renamed)" "ForObjC"`) are one string to the compiler.
+                var (literal, next) = anyStringLiteral(openingQuoteAt: index, in: bytes)
+                while let continuation = adjacentLiteralQuote(from: next, in: bytes) {
+                    let (more, after) = anyStringLiteral(openingQuoteAt: continuation, in: bytes)
                     literal += more
                     next = after
                 }
@@ -144,13 +139,30 @@ enum ClangLiteralScanner {
         return cursor
     }
 
-    /// The index after the opening quote of a string literal that directly follows the one ending before
-    /// `index`, with only whitespace, comments, and an optional `@` between them, or `nil`.
-    private static func adjacentLiteralStart(from index: Int, in bytes: [UInt8]) -> Int? {
+    /// The index of the opening quote of a string literal that directly follows the one ending before
+    /// `index`, with only whitespace, comments, an optional `@`, and an optional raw-string prefix between
+    /// them, or `nil`.
+    private static func adjacentLiteralQuote(from index: Int, in bytes: [UInt8]) -> Int? {
         var cursor = skippingBlanksAndComments(from: index, in: bytes)
         if bytes[safe: cursor] == at { cursor += 1 }
 
-        return bytes[safe: cursor] == quote ? cursor + 1 : nil
+        // A raw string's prefix (`R`, `LR`, `u8R`) stands between the whitespace and the quote.
+        for length in [0, 1, 2, 3] where bytes[safe: cursor + length] == quote {
+            let quoteIndex = cursor + length
+            return length == 0 || rawStringDelimiter(before: quoteIndex, in: bytes) != nil ? quoteIndex : nil
+        }
+
+        return nil
+    }
+
+    /// The text of the string literal whose opening quote is at `index`, raw or ordinary, and the
+    /// index after it. A C++ raw string (`R"(name)"`, `R"x(name)x"`) has no escapes and may span lines.
+    private static func anyStringLiteral(openingQuoteAt index: Int, in bytes: [UInt8]) -> (text: [UInt8], next: Int) {
+        if let delimiter = rawStringDelimiter(before: index, in: bytes) {
+            return rawStringLiteral(from: index + 1, delimiter: delimiter, in: bytes)
+        }
+
+        return stringLiteral(from: index + 1, in: bytes)
     }
 
     private static func isBlank(_ byte: UInt8) -> Bool {
@@ -307,12 +319,13 @@ enum ClangLiteralScanner {
                 cursor = skippingBlanksAndComments(from: cursor, in: bytes)
                 continue
             }
-            if bytes[cursor] == newline, !name.isEmpty, cursor + 1 < bytes.count, bytes[cursor + 1] != newline {
+            if bytes[cursor] == newline {
                 // A selector broken across lines is still one selector; a blank line means it was never closed.
+                if bytes[safe: cursor + 1] == newline { break }
+
                 cursor += 1
                 continue
             }
-            if bytes[cursor] == newline { break }
 
             if !isBlank(bytes[cursor]) { name.append(bytes[cursor]) }
             cursor += 1

@@ -49,6 +49,7 @@ final class ClangLiteralScannerTest: XCTestCase {
         XCTAssertEqual(tokens("SEL s = @selector /* note */ (commented:);"), ["commented"])
         XCTAssertEqual(tokens("SEL s = @selector(inner /* note */ :with:);"), ["inner", "with"])
         XCTAssertEqual(tokens("SEL s = @selector(first:\n    second:);"), ["first", "second"])
+        XCTAssertEqual(tokens("SEL s = @selector(\n    leadingNewline:);"), ["leadingNewline"])
         // A selector left open ends at a blank line and still counts, which errs towards likely.
         XCTAssertEqual(tokens("SEL s = @selector(open\n\nSEL t = @selector(closed);"), ["open", "closed"])
     }
@@ -58,6 +59,9 @@ final class ClangLiteralScannerTest: XCTestCase {
         XCTAssertEqual(tokens(#"sel_registerName(R"(rawName)");"#), ["rawName"])
         XCTAssertEqual(tokens(#"x = R"x(withDelimiter)x"; y = u8R"(prefixed)"; z = LR"(wide)";"#), ["withDelimiter", "prefixed", "wide"])
         XCTAssertEqual(tokens("x = R\"(multi\nline)\"; y = @\"after\";"), ["after"])
+        // Raw and ordinary literals concatenate like any adjacent literals.
+        XCTAssertEqual(tokens(#"sel_registerName(R"(renamed)" "ForObjC");"#), ["renamedForObjC"])
+        XCTAssertEqual(tokens(#"x = @"renamed" u8R"(ForObjC)";"#), ["renamedForObjC"])
         // An identifier ending in R is not a raw string prefix.
         XCTAssertEqual(tokens(#"FOOBAR"(notRaw)"; x = @"ordinary";"#), ["ordinary"])
     }
