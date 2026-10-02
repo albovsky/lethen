@@ -631,7 +631,7 @@ because it builds only on macOS.
 
 A struct that conforms to `Decodable` and has no non-implicit `init(from:)` now has its non-optional
 stored properties read wherever its metatype reaches a decoding parameter, as for encoding but for metatypes only. The metatype operand `Type.self` resolves to
-the type reference, which the value-flow visitor previously dropped. For an indexed callee only the metatype arguments passed for a `T.Type`, `[T].Type` or
+the type reference, which the value-flow visitor previously dropped, but only in the per-argument lists the decoding rule reads; the unioned operands that equality and encoding read still treat a metatype as no value, so `send(payload, metadata: Model.self)` does not encode `Model`. Protocols named by `--external-codable-protocols` count as `Decodable` constraints. For an indexed callee only the metatype arguments passed for a `T.Type`, `[T].Type` or
 `any Decodable.Type` parameter, with `T` constrained to `Decodable` by the generic or `where` clause on
 the parameter itself and not on a dependent member such as `T.Payload`, count (call labels are matched
 to the callee's parameters, variadics take the arguments that follow, functions and initializers are

@@ -12,6 +12,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
     private var scopes: [[String: Set<Location>]] = [[:]]
+    /// Whether `Type.self` resolves to the type's own reference. Only the per-argument lists want that; the unioned
+    /// value uses that equality and encoding rules read treat a metatype as no value.
+    private var resolvesMetatypes = false
 
     public init(locations: SourceLocationBuilder) {
         self.locations = locations
@@ -95,7 +98,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         }
         let callee = calleeLocation(node.calledExpression)
         arguments[callee, default: []].formUnion(values)
+        resolvesMetatypes = true
         argumentLists[callee] = node.arguments.map { (label: $0.label?.text, origins: origins(of: $0.expression)) }
+        resolvesMetatypes = false
         return .visitChildren
     }
 
@@ -133,7 +138,7 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let member = expression.as(MemberAccessExprSyntax.self) {
             // `Type.self` names no declaration of its own; the metatype carries the type reference.
             if member.declName.baseName.tokenKind == .keyword(.self), let base = member.base {
-                return origins(of: base)
+                return resolvesMetatypes ? origins(of: base) : []
             }
             // Passing value.field passes the field, not the containing value.
             return [locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)]

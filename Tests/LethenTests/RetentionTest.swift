@@ -2171,6 +2171,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct226Appended")) {
                 self.assertAssignOnlyProperty(.varInstance("appendedButNotEncoded"))
             }
+            assertReferenced(.struct("FixtureStruct226Metatype")) {
+                self.assertAssignOnlyProperty(.varInstance("metatypeNotEncoded"))
+            }
             assertReferenced(.struct("FixtureStruct226Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
             }
@@ -2253,6 +2256,22 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct312Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notDecodedByCustom"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedDecodeExternalProtocol() throws {
+        // CustomStringConvertible doesn't actually inherit Decodable, we're just using it because we don't have an
+        // external module in which to declare our own type.
+        try analyze(retainPublic: true, externalCodableProtocols: ["CustomStringConvertible"]) {
+            assertReferenced(.struct("FixtureStruct313")) {
+                self.assertNotAssignOnlyProperty(.varInstance("externallyDecoded"))
+            }
+        }
+
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct313")) {
+                self.assertAssignOnlyProperty(.varInstance("externallyDecoded"))
             }
         }
     }

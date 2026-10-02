@@ -74,6 +74,15 @@ struct FixtureStruct226Appended: Encodable {
     }
 }
 
+struct FixtureStruct226Metatype: Encodable {
+    // Control: its metatype rides beside an encoded value; a metatype is not an encoded value.
+    let metatypeNotEncoded: Int
+
+    init(metatypeNotEncoded: Int) {
+        self.metatypeNotEncoded = metatypeNotEncoded
+    }
+}
+
 struct FixtureStruct226Custom: Encodable {
     // Control: an explicit encode(to:) replaces the synthesized one, so nothing reads it.
     let notEncodedByCustom: Int
@@ -105,6 +114,15 @@ public class FixtureClass226Retainer {
 
     func encodeExistential(_ value: any Encodable) throws -> Data {
         try JSONEncoder().encode(value)
+    }
+
+    func send<E: Encodable, U>(_ value: E, metadata _: U.Type) throws -> Data {
+        try JSONEncoder().encode(value)
+    }
+
+    public func sendMetadata() throws {
+        _ = try send(FixtureStruct226Generic(genericEncoded: 11), metadata: FixtureStruct226Metatype.self)
+        _ = FixtureStruct226Metatype(metatypeNotEncoded: 12)
     }
 
     public func hold() {

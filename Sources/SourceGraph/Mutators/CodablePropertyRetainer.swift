@@ -128,7 +128,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
         let decodableNames = decodableProtocolNames
 
-        for use in graph.allReferences where use.kind == .normal && !use.valueArgumentReferences.isEmpty {
+        for use in graph.allReferences where use.kind == .normal && !use.valueArguments.isEmpty {
             guard let caller = use.parent, !caller.isImplicit else { continue }
 
             let decoded: Set<Reference>
@@ -194,10 +194,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             switch reference.role {
             case .genericParameterType, .genericRequirementType:
                 Self.decodableUsrs.contains(reference.usr)
+                    || configuration.externalCodableProtocols.contains(reference.name)
                     || graph.declaration(withUsr: reference.usr).map { graph.isDecodable($0) } == true
             case .parameterType:
                 // Only an existential parameter; a concrete Decodable type is not evidence.
                 Self.decodableUsrs.contains(reference.usr)
+                    || (reference.declarationKind == .protocol && configuration.externalCodableProtocols.contains(reference.name))
                     || graph.declaration(withUsr: reference.usr).map { $0.kind == .protocol && graph.isDecodable($0) } == true
             default:
                 false
