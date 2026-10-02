@@ -47,6 +47,9 @@ public final class Reference {
     public var valueArguments: [ValueArgument] = []
     /// For a type named in a specialized metatype such as `Page<Model>.self`, the references each generic argument names.
     public var genericArguments: [Set<Reference>] = []
+    /// True for a type named as a generic argument of a stored property's declared type, such as `Model` in
+    /// `let value: Phantom<Model>`, which the generic type may or may not decode.
+    public var isGenericSpecializationArgument = false
     /// False only when the index shows a function referenced without being called, such as one passed or assigned as
     /// a value, whose signature is then fixed by the function type it converts to. References built from anything
     /// other than index evidence keep the default.

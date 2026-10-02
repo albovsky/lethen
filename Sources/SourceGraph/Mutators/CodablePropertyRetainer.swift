@@ -218,8 +218,20 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         if type == parameterType {
             return true
         }
-        let candidates = typealiasesByName[type] ?? []
+        // A qualified spelling such as `Namespace.Alias` names the alias by its last component; the qualifier must
+        // be the type that declares it.
+        let components = type.split(separator: ".").map(String.init)
+        let qualifier = components.count > 1 ? components[components.count - 2] : nil
+        let candidates = typealiasesByName[components.last ?? type] ?? []
         guard !candidates.isEmpty else { return false }
+
+        if let qualifier {
+            let declared = candidates.filter { $0.parent?.name == qualifier }
+            guard declared.count == 1, let alias = declared.first else { return true }
+            guard let target = resolveTypealias(alias) else { return true }
+
+            return target.name == parameterType
+        }
 
         // Resolve the spelled name by scope: the enclosing type and its extensions, then the scopes outward, then the
         // module. Two aliases at the same level, or none in scope, cannot be told apart and count as the coder.
@@ -396,7 +408,11 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                 guard propertyUse != .skip else { continue }
 
                 // Synthesized coding handles stored values recursively.
-                types.formUnion(ValueTypeResolver.valueTypes(referencedBy: property.references, in: graph, visited: &visited))
+                // A generic argument is decoded only when its generic type stores it; a plain type is followed whole.
+                let stored = property.references.filter {
+                    !$0.isGenericSpecializationArgument && ![.functionAccessorGetter, .functionAccessorSetter].contains($0.declarationKind)
+                }
+                types.formUnion(ValueTypeResolver.valueTypes(referencedBy: withDecodedGenericArguments(stored), in: graph, visited: &visited))
                 guard propertyUse == .read else { continue }
 
                 for target in [property] + property.declarations.filter({ $0.kind == .functionAccessorGetter }) {

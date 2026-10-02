@@ -9,6 +9,8 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
     /// Keyed by the specialized type's own location: what each of its generic arguments names.
     public private(set) var specializationArguments: [Location: [Set<Location>]] = [:]
+    /// Every type named inside the generic arguments of a stored property's declared type.
+    public private(set) var specializationArgumentLocations: Set<Location> = []
     public private(set) var initializedConstantLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
@@ -84,6 +86,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
 
             if node.bindingSpecifier.tokenKind == .keyword(.let), binding.initializer != nil {
                 initializedConstantLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
+            }
+
+            if let type = binding.typeAnnotation?.type {
+                recordSpecializations(in: type)
             }
 
             let annotation = binding.typeAnnotation.map { tokens(in: $0.type) } ?? []
@@ -170,6 +176,30 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return origins(of: tried.expression)
         }
         return []
+    }
+
+    /// Records the generic specializations in a stored property's declared type, apart from the standard containers,
+    /// which pass their arguments through.
+    private func recordSpecializations(in type: TypeSyntax) {
+        let collector = SpecializationCollector(viewMode: .sourceAccurate)
+        collector.walk(type)
+        for node in collector.specializations {
+            let base = locations.location(at: node.name.positionAfterSkippingLeadingTrivia)
+            var arguments: [Set<Location>] = []
+            for argument in node.genericArgumentClause?.arguments ?? [] {
+                guard case let .type(argumentType) = argument.argument else {
+                    arguments.append([])
+                    continue
+                }
+
+                let named = TypeSyntaxInspector(sourceLocationBuilder: locations).types(for: argumentType)
+                specializationArgumentLocations.formUnion(named.map { locations.location(at: $0.positionAfterSkippingLeadingTrivia) })
+                arguments.append(Self.simpleTypeTokens(in: argumentType).reduce(into: Set<Location>()) {
+                    $0.insert(locations.location(at: $1.positionAfterSkippingLeadingTrivia))
+                })
+            }
+            specializationArguments[base] = arguments
+        }
     }
 
     /// The specialized type itself. Its generic arguments are recorded apart, because whether they are decoded
@@ -309,5 +339,17 @@ private final class TypeNameCollector: SyntaxVisitor {
             names.insert(node.name.text)
         }
         return .skipChildren
+    }
+}
+
+private final class SpecializationCollector: SyntaxVisitor {
+    private static let transparent: Set<String> = ["Array", "Optional", "Set", "Dictionary", "ContiguousArray"]
+    var specializations: [IdentifierTypeSyntax] = []
+
+    override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
+        if node.genericArgumentClause != nil, !Self.transparent.contains(node.name.text) {
+            specializations.append(node)
+        }
+        return .visitChildren
     }
 }

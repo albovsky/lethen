@@ -296,6 +296,50 @@ struct FixtureStruct312Shadowing: Decodable {
     }
 }
 
+enum FixtureQualifier312 {
+    typealias MyDecoder = Decoder
+}
+
+enum FixtureQualifierPlain312 {
+    typealias MyDecoder = Int
+}
+
+struct FixtureStruct312Qualified: Decodable {
+    // Control: a qualified alias of Decoder is still the coder.
+    let qualifiedNotDecoded: Int
+
+    init(from _: FixtureQualifier312.MyDecoder) throws {
+        qualifiedNotDecoded = 0
+    }
+}
+
+struct FixtureStruct312QualifiedPlain: Decodable {
+    // The qualifier's alias names an Int, so this overload is unrelated and decoding stays synthesized.
+    let qualifiedPlainDecoded: Int
+
+    init(from number: FixtureQualifierPlain312.MyDecoder) {
+        qualifiedPlainDecoded = number
+    }
+}
+
+struct FixtureStruct312Concrete: Decodable {
+    // Control: held only as the phantom argument of a stored property.
+    let concreteNotDecoded: Int
+}
+
+struct FixtureStruct312Outer: Decodable {
+    let value: FixtureStruct312Phantom<FixtureStruct312Concrete>
+}
+
+struct FixtureStruct312Wrapped: Decodable {
+    // Held as the argument of a stored property whose generic type does store it.
+    let wrappedDecoded: Int
+}
+
+struct FixtureStruct312OuterPage: Decodable {
+    let page: FixtureStruct312Page<FixtureStruct312Wrapped>
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -351,6 +395,11 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312ChainKeys.self, from: data)
         _ = FixtureStruct312ChainKeys(sharedKept: 1)
         _ = try JSONDecoder().decode(FixtureStruct312Shadowing.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Qualified.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312QualifiedPlain.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Outer.self, from: data)
+        _ = FixtureStruct312Concrete(concreteNotDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312OuterPage.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 

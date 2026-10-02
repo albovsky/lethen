@@ -2410,6 +2410,18 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct312Shadowing")) {
                 self.assertNotAssignOnlyProperty(.varInstance("shadowingDecoded"))
             }
+            assertReferenced(.struct("FixtureStruct312Qualified")) {
+                self.assertAssignOnlyProperty(.varInstance("qualifiedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312QualifiedPlain")) {
+                self.assertNotAssignOnlyProperty(.varInstance("qualifiedPlainDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Concrete")) {
+                self.assertAssignOnlyProperty(.varInstance("concreteNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Wrapped")) {
+                self.assertNotAssignOnlyProperty(.varInstance("wrappedDecoded"))
+            }
             assertReferenced(.struct("FixtureStruct312LabeledA")) {
                 self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))
             }

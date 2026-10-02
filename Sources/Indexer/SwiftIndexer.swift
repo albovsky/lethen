@@ -360,6 +360,11 @@ final class SwiftIndexer: Indexer {
                     reference.valueArguments = arguments
                 }
             }
+            for location in valueUses.specializationArgumentLocations {
+                for reference in referencesByLocation[location, default: []] {
+                    reference.isGenericSpecializationArgument = true
+                }
+            }
             for (location, arguments) in valueUses.specializationArguments {
                 let resolved = arguments.map { Set($0.flatMap { referencesByLocation[$0, default: []] }) }
                 for reference in referencesByLocation[location, default: []] {
