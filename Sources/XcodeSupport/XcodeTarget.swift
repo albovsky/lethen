@@ -23,8 +23,10 @@ public final class XcodeTarget {
     }
 
     public func identifyFiles() throws {
-        try identifyFiles(in: project.fileSystemSynchronizedFiles(), kinds: ProjectFileKind.allCases.filter { !$0.isCompiledSource })
-        try identifyFiles(in: synchronizedSourceFiles(), kinds: ProjectFileKind.allCases.filter(\.isCompiledSource))
+        // A synchronized folder contributes compiled sources only to the targets that own it; resources
+        // keep the project-wide behavior.
+        try identifyFiles(in: project.fileSystemSynchronizedFiles(), kinds: ProjectFileKind.allCases.filter { !Self.compiledSourceKinds.contains($0) })
+        try identifyFiles(in: synchronizedSourceFiles(), kinds: Array(Self.compiledSourceKinds))
 
         let sourcesBuildPhases = project.xcodeProject.pbxproj.sourcesBuildPhases
         let resourcesBuildPhases = project.xcodeProject.pbxproj.resourcesBuildPhases
@@ -42,6 +44,8 @@ public final class XcodeTarget {
     }
 
     // MARK: - Private
+
+    private static let compiledSourceKinds: Set<ProjectFileKind> = [.swiftSource, .clangSource]
 
     private func identifyFiles(kind: ProjectFileKind, in buildPhases: [PBXBuildPhase]) throws {
         let targetPhases = buildPhases.filter { target.buildPhases.contains($0) }

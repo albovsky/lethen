@@ -6,12 +6,6 @@ public enum ProjectFileKind: CaseIterable {
     case swiftSource
     case clangSource
 
-    /// Whether the kind is compiled source, which a synchronized folder contributes only to the
-    /// targets that own the folder.
-    public var isCompiledSource: Bool {
-        self == .swiftSource || self == .clangSource
-    }
-
     public var extensions: [String] {
         switch self {
         case .interfaceBuilder:
