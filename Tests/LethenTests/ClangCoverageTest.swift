@@ -85,6 +85,13 @@ final class ClangCoverageTest: XCTestCase {
         XCTAssertEqual(coverage.unindexedFiles, [path("B.m"), path("D.m")])
     }
 
+    func testUnreadFilesMakeTheCoverageIncomplete() {
+        let coverage = ClangCoverage(unindexedFiles: []).addingUnreadFiles([path("B.m"), path("A.m")])
+        XCTAssertFalse(coverage.isComplete)
+        XCTAssertEqual(coverage.unreadFiles, [path("A.m"), path("B.m")])
+        XCTAssertEqual(coverage.warning, "2 Objective-C files could not be read for string literals (A.m, B.m), so declarations accessible from Objective-C are reported as likely rather than certain.")
+    }
+
     func testWarningNamesTheCountAndAFewFiles() {
         XCTAssertNil(ClangCoverage(unindexedFiles: []).warning)
         XCTAssertEqual(

@@ -30,13 +30,17 @@ public struct IndexPipeline {
             swiftVersion: swiftVersion
         ).perform()
 
+        var clangCoverage = plan.clangCoverage
         if !plan.clangSourceFiles.isEmpty {
-            try ObjCReferenceIndexer(
+            let unreadFiles = try ObjCReferenceIndexer(
                 sourceFiles: plan.clangSourceFiles,
                 graph: graph,
                 logger: logger,
                 configuration: configuration
             ).perform()
+            if !unreadFiles.isEmpty {
+                clangCoverage = clangCoverage?.addingUnreadFiles(unreadFiles)
+            }
         }
 
         if !plan.plistPaths.isEmpty {
@@ -76,7 +80,7 @@ public struct IndexPipeline {
         }
 
         graph.withLock {
-            $0.setClangCoverage(plan.clangCoverage)
+            $0.setClangCoverage(clangCoverage)
             $0.indexingComplete()
         }
         return scannedLOC

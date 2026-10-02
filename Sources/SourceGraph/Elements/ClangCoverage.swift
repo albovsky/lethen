@@ -15,13 +15,22 @@ public struct ClangCoverage: Equatable {
 
     /// C and Objective-C implementation files of built targets that have no index unit, sorted.
     public let unindexedFiles: [FilePath]
+    /// Indexed C and Objective-C files whose text could not be read for string literals, sorted. A
+    /// lookup by name spelled in one of them would be missed.
+    public let unreadFiles: [FilePath]
 
     public var isComplete: Bool {
-        unindexedFiles.isEmpty
+        unindexedFiles.isEmpty && unreadFiles.isEmpty
     }
 
-    public init(unindexedFiles: [FilePath]) {
+    public init(unindexedFiles: [FilePath], unreadFiles: [FilePath] = []) {
         self.unindexedFiles = unindexedFiles
+        self.unreadFiles = unreadFiles
+    }
+
+    /// The same coverage with these files recorded as unread.
+    public func addingUnreadFiles(_ files: [FilePath]) -> ClangCoverage {
+        ClangCoverage(unindexedFiles: unindexedFiles, unreadFiles: (unreadFiles + files).sorted { $0.string < $1.string })
     }
 
     /// A target counts as built when any of its source files has a unit. Within a built target, every
@@ -60,12 +69,36 @@ public struct ClangCoverage: Equatable {
         return ProjectFileKind.clangSource.extensions.contains(ext)
     }
 
+    /// What the scan could not see, such as "2 Objective-C files have no index unit (A.m, B.m)", or
+    /// `nil` when the coverage is complete. Unindexed files are named first; unread ones only when every
+    /// file has a unit.
+    public var shortfall: String? {
+        if !unindexedFiles.isEmpty {
+            let noun = unindexedFiles.count == 1 ? "Objective-C file has" : "Objective-C files have"
+            return "\(unindexedFiles.count) \(noun) no index unit (\(Self.describe(unindexedFiles)))"
+        }
+
+        if !unreadFiles.isEmpty {
+            let noun = unreadFiles.count == 1 ? "Objective-C file" : "Objective-C files"
+            return "\(unreadFiles.count) \(noun) could not be read for string literals (\(Self.describe(unreadFiles)))"
+        }
+
+        return nil
+    }
+
+    /// Why a declaration accessible from Objective-C is `likely`, or `nil` when the coverage is complete.
+    public var confidenceReason: String? {
+        guard let shortfall else { return nil }
+
+        let pronoun = (unindexedFiles.isEmpty ? unreadFiles : unindexedFiles).count == 1 ? "it" : "them"
+        return "it is accessible from Objective-C, and \(shortfall), so a reference made from \(pronoun) would be missed"
+    }
+
     /// The warning for an incomplete coverage, or `nil` when it is complete.
     public var warning: String? {
-        guard !isComplete else { return nil }
+        guard let shortfall else { return nil }
 
-        let noun = unindexedFiles.count == 1 ? "Objective-C file has" : "Objective-C files have"
-        return "\(unindexedFiles.count) \(noun) no index unit (\(Self.describe(unindexedFiles))), so declarations accessible from Objective-C are reported as likely rather than certain."
+        return "\(shortfall), so declarations accessible from Objective-C are reported as likely rather than certain."
     }
 
     /// Up to three file names, then a count of the rest.

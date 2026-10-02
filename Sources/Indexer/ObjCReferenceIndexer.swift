@@ -33,7 +33,8 @@ final class ObjCReferenceIndexer: Indexer {
         super.init(configuration: configuration)
     }
 
-    func perform() throws {
+    /// Indexes the references and returns the files whose text could not be read for string literals.
+    func perform() throws -> [FilePath] {
         let records = recordJobs()
         let interval = logger.beginInterval("index:objc")
 
@@ -66,14 +67,9 @@ final class ObjCReferenceIndexer: Indexer {
         // The index shows references by symbol, not the names that runtime lookups spell in strings and
         // selectors, so those count for the string-literal rule as Swift literals do.
         let literalFiles = Set(records.map(\.file.path)).union(sourceFiles.keys.map(\.path)).sorted()
-        let logger = logger
-        let literalTokens = JobPool(jobs: literalFiles).flatMap { path -> [String] in
-            guard let data = FileManager.default.contents(atPath: path.string) else {
-                logger.debug("Cannot read \(path.string) for string literals")
-                return []
-            }
-
-            return Array(ClangLiteralScanner.tokens(in: Array(data)))
+        let literals = ClangLiteralScanner.scan(files: literalFiles)
+        for file in literals.unreadFiles {
+            logger.debug("Cannot read \(file.string) for string literals")
         }
 
         var unmatched = 0
@@ -100,11 +96,12 @@ final class ObjCReferenceIndexer: Indexer {
             }
 
             graph.add(references)
-            graph.addLiteralTokens(Set(literalTokens))
+            graph.addLiteralTokens(literals.tokens)
             logger.debug("Added \(references.count) references from \(sourceFiles.count) C and Objective-C files; \(unmatched) clang references name no Swift declaration")
         }
 
         logger.endInterval(interval)
+        return literals.unreadFiles
     }
 
     // MARK: - Private

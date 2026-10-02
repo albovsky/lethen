@@ -104,10 +104,7 @@ public final class SourceGraph {
             case nil:
                 return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot tell whether every Objective-C file of this project was indexed")
             case let coverage? where !coverage.isComplete:
-                let count = coverage.unindexedFiles.count
-                let files = count == 1 ? "1 Objective-C file" : "\(count) Objective-C files"
-                let verb = count == 1 ? "has" : "have"
-                return .init(confidence: .likely, reason: "it is accessible from Objective-C, and \(files) (\(ClangCoverage.describe(coverage.unindexedFiles))) \(verb) no index unit, so a reference made from \(count == 1 ? "it" : "them") would be missed")
+                return .init(confidence: .likely, reason: coverage.confidenceReason)
             default:
                 // Every Objective-C file was read, so its references are in the graph. The rules below still apply.
                 break

@@ -34,20 +34,30 @@ final class ObjcConfidenceTest: XCTestCase {
     func testOneUnindexedFileIsNamedInTheSingular() {
         let assessment = assess(coverage: files(["Foo.m"]))
         XCTAssertEqual(assessment.confidence, .likely)
-        XCTAssertEqual(assessment.reason, "it is accessible from Objective-C, and 1 Objective-C file (Foo.m) has no index unit, so a reference made from it would be missed")
+        XCTAssertEqual(assessment.reason, "it is accessible from Objective-C, and 1 Objective-C file has no index unit (Foo.m), so a reference made from it would be missed")
     }
 
     func testSeveralUnindexedFilesListThreeNamesAndCountTheRest() {
         let assessment = assess(coverage: files(["A.m", "B.m", "C.m", "D.m", "E.m"]))
         XCTAssertEqual(assessment.confidence, .likely)
-        XCTAssertEqual(assessment.reason, "it is accessible from Objective-C, and 5 Objective-C files (A.m, B.m, C.m, and 2 more) have no index unit, so a reference made from them would be missed")
+        XCTAssertEqual(assessment.reason, "it is accessible from Objective-C, and 5 Objective-C files have no index unit (A.m, B.m, C.m, and 2 more), so a reference made from them would be missed")
     }
 
     func testThreeUnindexedFilesListAllOfThem() {
         XCTAssertEqual(
             assess(coverage: files(["A.m", "B.m", "C.m"])).reason,
-            "it is accessible from Objective-C, and 3 Objective-C files (A.m, B.m, C.m) have no index unit, so a reference made from them would be missed"
+            "it is accessible from Objective-C, and 3 Objective-C files have no index unit (A.m, B.m, C.m), so a reference made from them would be missed"
         )
+    }
+
+    /// A file compiled into the index but unreadable at scan time may spell a lookup the scan cannot see.
+    func testUnreadFileKeepsTheDeclarationLikelyAndIsNamedAfterUnindexedOnes() {
+        let unread = assess(coverage: ClangCoverage(unindexedFiles: [], unreadFiles: [FilePath("/p/Gone.m")]))
+        XCTAssertEqual(unread.confidence, .likely)
+        XCTAssertEqual(unread.reason, "it is accessible from Objective-C, and 1 Objective-C file could not be read for string literals (Gone.m), so a reference made from it would be missed")
+
+        let both = assess(coverage: ClangCoverage(unindexedFiles: [FilePath("/p/A.m")], unreadFiles: [FilePath("/p/Gone.m")]))
+        XCTAssertEqual(both.reason, "it is accessible from Objective-C, and 1 Objective-C file has no index unit (A.m), so a reference made from it would be missed")
     }
 
     func testCompleteCoverageIsCertain() {
