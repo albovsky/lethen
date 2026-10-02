@@ -678,3 +678,61 @@ private helper that witnesses nothing, because the class conforms to `Sendable`.
 limited to the named requirements, and the fixture `testRetainsExternalWitnessParameters` keeps an
 underscored helper, a plain helper, an internal requirement and a near miss on a type with no
 external conformance reported.
+
+### Names used in `#if` branches the build did not compile
+
+Alamofire and swift-nio re-scanned on Linux (Swift 6.4.0, `swift-6.4-RELEASE`, x86_64) with Lethen
+`b934300` and with this change: the canonical rows are identical, because they omit confidence, so
+`corpus/diff.sh` shows the same Linux-versus-macOS differences before and after. The comparison uses
+the raw JSON. Wikipedia iOS was not re-scanned, because it builds only on macOS.
+
+A type, method, property, enum case, type alias, or operator is now `likely` when its name is used (called, referenced, or written as a type) in a
+`#if` clause the build did not compile, in a file of the same module. A clause counts as compiled
+when the index has a declaration or reference inside it, so the rule reads the build, not the
+condition. Declaring a name in a skipped clause, labels, parameters and imports
+are not uses, an enum case matched in a pattern is not constructed (any other name read in a pattern, such as `case Limits.max:`, counts), and a member (method, property, or enum case) needs a use spelled as a member access or a call.
+Each of those narrowings came from measuring (flipped findings, all kinds, raw JSON):
+
+| Variant | Alamofire (71) | swift-nio (315) |
+| --- | --- | --- |
+| Any identifier in a skipped clause, any module | 14 | 40 (12.7%) |
+| Uses only, any module | 12 | 32 (10.2%) |
+| Uses only, same module | 11 | 23 (7.3%) |
+| Uses only, same module, members and enum cases by member access or call (shipped after review) | 9 | 23 (7.3%) |
+
+Shipped: `likely` findings 9 to 18 on Alamofire and 21 to 44 on swift-nio. The swift-nio flips are 16
+uses of the reported declaration in code another platform compiles (2.2% of findings are not:
+the seven collisions below), so the result is a lower confidence on findings that are
+mostly false positives of the "compiled out" class, not a change to what is reported.
+
+| Project | Row | Verdict |
+| --- | --- | --- |
+| Alamofire | `Tests/TestHelpers.swift:82-85` `websocket`, `websocketCount(_:)`, `websocketEcho`, `websocketPingCount(_:)` (#94) | Compiled out: used in `#if canImport(Darwin) && !canImport(FoundationNetworking)` blocks of ConcurrencyTests.swift and TestHelpers.swift |
+| Alamofire | `Tests/TestHelpers.swift:242` `upload`, `:534` `UploadResponse` | Compiled out: used under `#if !canImport(FoundationNetworking)` (ConcurrencyTests.swift:702) |
+| Alamofire | `Source/Core/SessionDelegate.swift:60` `serverTrustManager` | Compiled out: read at :138 inside `#if canImport(Security)` |
+| Alamofire | `Source/Core/RequestTaskMap.swift:89` `count` (Alamofire sample: TP) | Collision: another type's `count` in DataStreamRequest.swift:161's clause; the finding stays a TP, now `likely` |
+| Alamofire | `Source/Features/URLEncodedFormEncoder.swift:364` `localizedDescription` (sample: TP) | Collision: `reason.localizedDescription` on another type in AFError.swift:695; stays a TP, now `likely` |
+| swift-nio | `IO.swift:42` `map(_:)` (swift-nio sample: FP) | Compiled out: `result.map { ssize_t($0) }` under `#if os(Windows)` (NonBlockingFileIO.swift:578) |
+| swift-nio | `SocketOptionProviderError`, both `constr(_:)`, `packUInt16UInt16`, `_none`, `withUnsafeOptionalPointer`, `_SelectorBackendProtocol` (2), `ThreadOps` (2), `vsockUnimplemented`, `DeinitFlipper`, `readIPv4HeaderFromBSDRawSocket`, `writeIPv4HeaderToBSDRawSocket`, `XCTAssertNoThrow` | Compiled out: each is used in a skipped WASI, Darwin, Windows, arm or Linux clause (not sampled, read from the source) |
+| swift-nio | `PendingWritesManager.swift:621` `isEmpty` (sample: TP) | Collision: `pollFDs.isEmpty` in SelectorWSAPoll.swift; stays a TP, now `likely` |
+| swift-nio | `Linux.swift:141` `EPOLLET`, `:189` `SOCK_CLOEXEC`; `NIOFileHandleTest.swift:162` `errnoCode`; `PipeChannelTest.swift:273`, `:283` `writeBytes(_:)`; `ServerSocket.swift:21` `typealias SocketType` | Collisions (not sampled): `CNIOLinux.EPOLLET` and `Musl.SOCK_CLOEXEC` are the C symbols, `errnoCode` and `writeBytes` are other types' members, and `SocketType` is another type's name at BSDSocketAPICommon.swift:78 |
+
+Rows that stopped flipping with the narrowing and are not collisions of the shipped rule: swift-nio-25's
+`withNIOUnsafeThrowingContinuation(isolation:_:)` (an FP) is declared, not used, in the skipped
+`#else` clause, so it is `certain` again, as are the sampled TPs `loop`, `RDWR`, `recvmmsg`,
+`compareThreads` and `Heap.index(after:)`. Transitive cases (a name used only from taken code that a
+skipped branch reaches) stay `certain`.
+
+Review rounds after the first version changed the rule without changing a corpus row (flips stayed at 9
+on Alamofire and 23 on swift-nio, likely findings 18 and 44). The rule now also covers type aliases and
+operators; enum cases need a member access and are not constructed by a pattern, while any other name
+read in a pattern counts; a clause counts as compiled when any index occurrence of the file, of any
+symbol language, lies in it; and type-only syntax (casts, generic arguments, metatypes), key paths
+(components are member uses), subscripts and macro expansions count as content of a skipped clause.
+
+Which clause compiled is read per module: a file built into two modules with different conditions is
+checked against each module's own index occurrences, and the names of the clauses it skipped are
+recorded for that module only. No corpus row changed.
+
+A declaration's module for this rule is the module of the index unit that recorded it, not the union of the
+modules of its file, and a generic call such as `process<Int>()` is a call of `process`. No corpus row changed.
