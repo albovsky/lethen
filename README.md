@@ -4,7 +4,7 @@ A community-maintained tool to identify unused code in Swift projects.
 
 Lethen is an independent fork of the MIT-licensed [Periphery](https://github.com/peripheryapp/periphery), originally created by Ian Leitch. It is not affiliated with or endorsed by the commercial Periphery product.
 
-Intended website: **lethen.sh**. This repository is the project home while the website is being prepared.
+Website: **[lethen.dev](https://lethen.dev)**, whose source is [albovsky/lethen-web](https://github.com/albovsky/lethen-web). This repository is the project home.
 
 ## Status
 
