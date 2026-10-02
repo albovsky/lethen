@@ -320,6 +320,11 @@ final class SwiftIndexer: Indexer {
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
             graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
+            let evidence = Set(declarations.map(\.location)).union(indexedReferences.map(\.location))
+            let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: evidence)
+            skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
+            let modules = sourceFile.modules
+            graph.withLock { $0.addSkippedBranchNames(skippedBranches.names, members: skippedBranches.memberNames, modules: modules) }
             let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
             for (call, arguments) in valueUses.arguments {
                 let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })

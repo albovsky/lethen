@@ -2118,6 +2118,43 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testConfidenceLikelyForSkippedBranches() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.enum("FixtureEnum312")) {
+                self.assertNotUnconstructedEnumCase(.enumelement("constructed"))
+                self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
+                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
+                // Used-but-not-compared control: named in the branch this build compiled, so it is
+                // used and not reported.
+                self.assertNotUnconstructedEnumCase(.enumelement("comparedInTakenBranch"))
+                self.assertUnconstructedEnumCase(.enumelement("matchedOnly"))
+                self.assertConfidence(.enumelement("matchedOnly"), .certain)
+            }
+            assertReferenced(.enum("FixtureEnum312Other")) {
+                // A name collision with a skipped branch is accepted as likely.
+                self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
+                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
+            }
+            assertReferenced(.class("FixtureClass312")) {
+                self.assertNotReferenced(.functionMethodInstance("calledOnlyOnWindows()"))
+                self.assertConfidence(.functionMethodInstance("calledOnlyOnWindows()"), .likely)
+                self.assertReferenced(.functionMethodInstance("calledInTakenBranch()"))
+                self.assertNotReferenced(.functionMethodInstance("neverNamed()"))
+                self.assertConfidence(.functionMethodInstance("neverNamed()"), .certain)
+                self.assertNotReferenced(.functionMethodInstance("WinSDK()"))
+                self.assertConfidence(.functionMethodInstance("WinSDK()"), .certain)
+                // Declaring a name in a skipped branch is not using it.
+                self.assertNotReferenced(.functionMethodInstance("redeclaredOnlyOnWindows()"))
+                self.assertConfidence(.functionMethodInstance("redeclaredOnlyOnWindows()"), .certain)
+                self.assertNotReferenced(.varInstance("overriddenLabel"))
+                self.assertConfidence(.varInstance("overriddenLabel"), .certain)
+                // A bare identifier is not a use of a member.
+                self.assertNotReferenced(.varInstance("shadowedByLocal"))
+                self.assertConfidence(.varInstance("shadowedByLocal"), .certain)
+            }
+        }
+    }
+
     func testRetainsResultBuilderPartialBlockAndArity() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct225")) {

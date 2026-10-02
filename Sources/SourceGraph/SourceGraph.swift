@@ -31,6 +31,11 @@ public final class SourceGraph {
     public private(set) var unconstructedEnumCases: Set<Declaration> = []
     /// Identifier-like words found in string literals across the scanned sources.
     public private(set) var literalTokens: Set<String> = []
+    /// Names used in `#if` clauses this build did not compile, by the module whose file has the
+    /// clause, each with the clause that uses it.
+    public private(set) var skippedBranchNames: [String: [String: String]] = [:]
+    /// The subset of `skippedBranchNames` used as a member access or a call.
+    public private(set) var skippedBranchMemberNames: [String: [String: String]] = [:]
 
     private var indexedModules: Set<String> = []
     private var unindexedExportedModules: Set<String> = []
@@ -50,6 +55,26 @@ public final class SourceGraph {
         literalTokens.formUnion(tokens)
     }
 
+    public func addSkippedBranchNames(_ names: [String: String], members: [String: String], modules: Set<String>) {
+        for module in modules {
+            skippedBranchNames[module, default: [:]].merge(names) { min($0, $1) }
+            skippedBranchMemberNames[module, default: [:]].merge(members) { min($0, $1) }
+        }
+    }
+
+    /// The skipped clause, in a module the declaration belongs to, that uses its name. A member
+    /// is matched only by a use spelled as a member access or a call, so a bare identifier such as
+    /// a local named `count` does not count.
+    private func skippedBranchSite(of declaration: Declaration) -> String? {
+        let names = Self.memberKinds.contains(declaration.kind) ? skippedBranchMemberNames : skippedBranchNames
+        let baseName = Self.baseName(of: declaration.name)
+        return declaration.location.file.modules.compactMap { names[$0]?[baseName] }.min()
+    }
+
+    private static let memberKinds: Set<Declaration.Kind> = [
+        .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .varClass, .varInstance, .varStatic,
+    ]
+
     public func assessConfidence(of declaration: Declaration) -> ConfidenceAssessment {
         let objcAttributes: Set<String> = ["objc", "objc.name", "objcMembers"]
         let isObjcExposed = declaration.isObjcAccessible
@@ -62,6 +87,12 @@ public final class SourceGraph {
 
         if Self.dynamicallyNamedKinds.contains(declaration.kind), literalTokens.contains(Self.baseName(of: declaration.name)) {
             return .init(confidence: .likely, reason: "its name appears in a string literal")
+        }
+
+        if Self.dynamicallyNamedKinds.contains(declaration.kind),
+           let site = skippedBranchSite(of: declaration)
+        {
+            return .init(confidence: .likely, reason: "its name appears in \(site), a branch this build did not compile")
         }
 
         return .init(confidence: .certain, reason: nil)
