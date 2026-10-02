@@ -241,7 +241,7 @@
                     .filter { !excludedTestTargets.contains($0.name) && !configuration.excludeTargets.contains($0.name) }
                     .map { target in
                         let files = target.files(kind: .swiftSource).union(target.files(kind: .clangSource))
-                        return ClangCoverage.Target(name: target.name, sourceFiles: files.filter(isCollectable))
+                        return ClangCoverage.Target(sourceFiles: files.filter(isCollectable))
                     },
                 indexedFiles: Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path))
             )

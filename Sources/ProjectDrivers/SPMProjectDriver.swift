@@ -169,7 +169,7 @@ extension SPMProjectDriver: ProjectDriver {
                 let files = (target.sources ?? []).map { targetPath.appending($0) }.filter {
                     $0.exists && !configuration.indexExcludeMatchers.anyMatch(filename: $0.string)
                 }
-                return ClangCoverage.Target(name: target.name, sourceFiles: Set(files))
+                return ClangCoverage.Target(sourceFiles: Set(files))
             }
         return ClangCoverage.assess(targets: targets, indexedFiles: indexedFiles)
     }

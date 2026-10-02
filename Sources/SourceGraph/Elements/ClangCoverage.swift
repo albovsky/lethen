@@ -6,11 +6,9 @@ import SystemPackage
 public struct ClangCoverage: Equatable {
     /// A target of the project and every source file it compiles, Swift and clang alike.
     public struct Target: Equatable {
-        public let name: String
         public let sourceFiles: Set<FilePath>
 
-        public init(name: String, sourceFiles: Set<FilePath>) {
-            self.name = name
+        public init(sourceFiles: Set<FilePath>) {
             self.sourceFiles = sourceFiles
         }
     }
