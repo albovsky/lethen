@@ -102,9 +102,11 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
-        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences) { _, property in
+        // Synthesized encoding writes every stored property, including a constant with an initial value.
+        let classify: (Declaration, Declaration) -> PropertyUse = { _, property in
             !property.isImplicit && !property.isComplexProperty ? .read : .skip
         }
+        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classify)
     }
 
     /// Synthesized `init(from:)` requires every non-optional stored property to be present in the
@@ -128,6 +130,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         guard !synthesizedTypes.isEmpty else { return }
 
         let decodableNames = decodableProtocolNames
+        let classifyDecode: (Declaration, Declaration) -> PropertyUse = { [self] type, property in decodeUse(of: property, in: type) }
 
         for use in graph.allReferences where use.kind == .normal && !use.valueArguments.isEmpty {
             // A use with no parent is top-level code, which holds its reads as root references.
@@ -150,9 +153,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             }
             guard !decoded.isEmpty else { continue }
 
-            markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: withDecodedGenericArguments(decoded)) { type, property in
-                decodeUse(of: property, in: type)
-            }
+            markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: withGenericArguments(decoded, classify: classifyDecode), classify: classifyDecode)
         }
     }
 
@@ -310,34 +311,84 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         return usr.range(of: exact, options: .regularExpression) != nil
     }
 
-    /// A specialized metatype such as `Page<Model>.self` decodes `Model` only when `Page` stores a value of that
-    /// generic parameter in a decoded property; a phantom parameter is never decoded. The parameter is matched by
-    /// name against the declared types of the base type's decoded properties, and only when a type is the parameter or a
-    /// standard container of it. A parameter inside another generic wrapper such as `Phantom<T>` is not followed.
-    private func withDecodedGenericArguments(_ references: Set<Reference>) -> Set<Reference> {
+    private static let transparentContainers: Set<String> = ["Optional", "Array", "ContiguousArray", "Set", "Dictionary"]
+
+    /// Adds the generic arguments of specialized types that the coding reaches. The standard containers pass every
+    /// argument through. Another generic type passes an argument only when one of its coded stored properties, as
+    /// `classify` decides for the direction, has a declared type that reaches the matching generic parameter through
+    /// standard containers alone: a phantom parameter, or one inside another generic wrapper such as `Phantom<T>`,
+    /// is not coded.
+    private func withGenericArguments(
+        _ references: Set<Reference>,
+        classify: (Declaration, Declaration) -> PropertyUse
+    ) -> Set<Reference> {
         var result = references
         for reference in references where !reference.genericArguments.isEmpty {
-            guard let base = graph.declaration(withUsr: reference.usr), base.kind == .struct else { continue }
+            guard let base = graph.declaration(withUsr: reference.usr) else {
+                if Self.transparentContainers.contains(reference.name) {
+                    result.formUnion(reference.genericArguments.flatMap(\.self))
+                }
+                continue
+            }
+            guard base.kind == .struct else { continue }
 
             let parameters = base.declarations.filter { $0.kind == .genericTypeParam }.sorted()
             let storedTypes = base.declarations
-                .filter { $0.kind == .varInstance && decodeUse(of: $0, in: base) != .skip }
+                .filter { $0.kind == .varInstance && classify(base, $0) != .skip }
                 .compactMap(\.declaredType)
-            for (parameter, arguments) in zip(parameters, reference.genericArguments) {
-                let name = NSRegularExpression.escapedPattern(for: parameter.name)
-                let other = "[A-Za-z_][A-Za-z0-9_.]*"
-                let shapes = [name, "\\[\(name)\\]", "\\[\(name):\(other)\\]", "\\[\(other):\(name)\\]"]
-                    + ["Set<\(name)>", "Array<\(name)>", "Optional<\(name)>", "Dictionary<\(name),\(other)>", "Dictionary<\(other),\(name)>"]
-                let pattern = "^(Swift\\.)?(\(shapes.joined(separator: "|")))$"
-                let mentioned = storedTypes.contains {
-                    $0.filter { !$0.isWhitespace }.range(of: pattern, options: .regularExpression) != nil
-                }
-                if mentioned {
-                    result.formUnion(arguments)
-                }
+            for (parameter, arguments) in zip(parameters, reference.genericArguments)
+                where storedTypes.contains(where: { Self.type($0, reaches: parameter.name) })
+            {
+                result.formUnion(arguments)
             }
         }
         return result
+    }
+
+    /// Whether a declared type is the generic parameter or reaches it through only the standard containers
+    /// (`Optional`, `Array`, `ContiguousArray`, `Set` and `Dictionary`, spelled out or as `?`, `!`, `[]` and `[:]`).
+    static func type(_ declared: String, reaches parameter: String) -> Bool {
+        var type = declared.filter { !$0.isWhitespace }
+        while let last = type.last, last == "?" || last == "!" {
+            type.removeLast()
+        }
+        if type.hasPrefix("Swift.") {
+            type.removeFirst("Swift.".count)
+        }
+        if type == parameter {
+            return true
+        }
+        if type.hasPrefix("["), type.hasSuffix("]") {
+            let inner = String(type.dropFirst().dropLast())
+            return topLevelParts(of: inner, separator: ":").contains { Self.type($0, reaches: parameter) }
+        }
+        if let open = type.firstIndex(of: "<"), type.hasSuffix(">"), transparentContainers.contains(String(type[..<open])) {
+            let inner = String(type[type.index(after: open)...].dropLast())
+            return topLevelParts(of: inner, separator: ",").contains { Self.type($0, reaches: parameter) }
+        }
+        return false
+    }
+
+    /// Splits at a separator outside any brackets, `<>`, `[]` or `()`; a type without one is a single part.
+    private static func topLevelParts(of text: String, separator: Character) -> [String] {
+        var parts: [String] = []
+        var depth = 0
+        var current = ""
+        for character in text {
+            switch character {
+            case "<", "[", "(": depth += 1
+            case ">", "]", ")": depth -= 1
+            default: break
+            }
+            if character == separator, depth == 0 {
+                parts.append(current)
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        parts.append(current)
+        return parts
     }
 
     /// The enum that supplies the keys: the declaration itself, or the target of a typealias. A type whose keys
@@ -412,7 +463,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                 let stored = property.references.filter {
                     !$0.isGenericSpecializationArgument && ![.functionAccessorGetter, .functionAccessorSetter].contains($0.declarationKind)
                 }
-                types.formUnion(ValueTypeResolver.valueTypes(referencedBy: withDecodedGenericArguments(stored), in: graph, visited: &visited))
+                types.formUnion(ValueTypeResolver.valueTypes(referencedBy: withGenericArguments(stored, classify: classify), in: graph, visited: &visited))
                 guard propertyUse == .read else { continue }
 
                 for target in [property] + property.declarations.filter({ $0.kind == .functionAccessorGetter }) {

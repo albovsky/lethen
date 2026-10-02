@@ -2267,6 +2267,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct226Overload")) {
                 self.assertNotAssignOnlyProperty(.varInstance("overloadEncoded"))
             }
+            assertReferenced(.struct("FixtureStruct226Held")) {
+                self.assertNotAssignOnlyProperty(.varInstance("heldEncoded"))
+            }
             assertReferenced(.struct("FixtureStruct226Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
             }
@@ -2421,6 +2424,18 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct312Wrapped")) {
                 self.assertNotAssignOnlyProperty(.varInstance("wrappedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312OptionalModel")) {
+                self.assertNotAssignOnlyProperty(.varInstance("optionalModelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ArrayModel")) {
+                self.assertNotAssignOnlyProperty(.varInstance("arrayModelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312OptionalItem")) {
+                self.assertNotAssignOnlyProperty(.varInstance("optionalItemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312TableItem")) {
+                self.assertNotAssignOnlyProperty(.varInstance("tableItemDecoded"))
             }
             assertReferenced(.struct("FixtureStruct312LabeledA")) {
                 self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))

@@ -340,6 +340,32 @@ struct FixtureStruct312OuterPage: Decodable {
     let page: FixtureStruct312Page<FixtureStruct312Wrapped>
 }
 
+struct FixtureStruct312OptionalModel: Decodable {
+    // Decoded as the argument of Optional<...>.self.
+    let optionalModelDecoded: Int
+}
+
+struct FixtureStruct312ArrayModel: Decodable {
+    // Decoded as the argument of Array<...>.self.
+    let arrayModelDecoded: Int
+}
+
+struct FixtureStruct312NestedOptional<V: Decodable>: Decodable {
+    let items: [V?]
+}
+
+struct FixtureStruct312NestedTable<V: Decodable>: Decodable {
+    let table: [String: [V]]
+}
+
+struct FixtureStruct312OptionalItem: Decodable {
+    let optionalItemDecoded: Int
+}
+
+struct FixtureStruct312TableItem: Decodable {
+    let tableItemDecoded: Int
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -400,6 +426,10 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312Outer.self, from: data)
         _ = FixtureStruct312Concrete(concreteNotDecoded: 1)
         _ = try JSONDecoder().decode(FixtureStruct312OuterPage.self, from: data)
+        _ = try JSONDecoder().decode(Optional<FixtureStruct312OptionalModel>.self, from: data)
+        _ = try JSONDecoder().decode(Array<FixtureStruct312ArrayModel>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312NestedOptional<FixtureStruct312OptionalItem>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312NestedTable<FixtureStruct312TableItem>.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 

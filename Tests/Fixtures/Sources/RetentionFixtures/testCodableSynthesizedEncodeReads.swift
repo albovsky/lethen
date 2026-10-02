@@ -96,6 +96,27 @@ struct FixtureStruct226Overload: Encodable {
     }
 }
 
+protocol FixtureProtocol226Default {
+    static var defaultValue: Self { get }
+}
+
+struct FixtureStruct226Held: Encodable, FixtureProtocol226Default {
+    // Encoded as the generic argument of a Box that stores it in an initialized constant.
+    let heldEncoded: Int
+
+    static var defaultValue: FixtureStruct226Held {
+        FixtureStruct226Held(heldEncoded: 1)
+    }
+}
+
+struct FixtureStruct226Box<T: Encodable & FixtureProtocol226Default>: Encodable {
+    let value: T = .defaultValue
+}
+
+struct FixtureStruct226Outer: Encodable {
+    let box: FixtureStruct226Box<FixtureStruct226Held>
+}
+
 struct FixtureStruct226Custom: Encodable {
     // Control: an explicit encode(to:) replaces the synthesized one, so nothing reads it.
     let notEncodedByCustom: Int
@@ -115,6 +136,7 @@ public class FixtureClass226Retainer {
         try [
             JSONEncoder().encode(FixtureStruct226(encoded: 1, nested: FixtureStruct226Nested(nestedValue: 2))),
             JSONEncoder().encode(FixtureStruct226Codable(codableEncoded: 3)),
+            JSONEncoder().encode(FixtureStruct226Outer(box: FixtureStruct226Box())),
             JSONEncoder().encode(FixtureStruct226Overload(overloadEncoded: 13)),
             JSONEncoder().encode(FixtureStruct226Custom(notEncodedByCustom: 4)),
             encodeGeneric(FixtureStruct226Generic(genericEncoded: 7)),
