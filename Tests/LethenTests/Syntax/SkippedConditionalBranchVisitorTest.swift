@@ -62,6 +62,22 @@ final class SkippedConditionalBranchVisitorTest: XCTestCase {
         XCTAssertNil(visitor.memberNames["idle"])
     }
 
+    func testCollectsOperatorsAsBareUses() {
+        let source = """
+        func f(a: Int) {
+            #if os(Windows)
+            _ = a <+> 1
+            _ = ^^^a
+            _ = a+++
+            _ = reduce(<*>)
+            #endif
+        }
+        """
+        let visitor = run(source, evidenceLines: [])
+        XCTAssertEqual(Set(["<+>", "^^^", "+++", "<*>"]).subtracting(visitor.names.keys), [])
+        XCTAssertTrue(visitor.memberNames.keys.allSatisfy { !["<+>", "^^^", "+++"].contains($0) })
+    }
+
     func testCollectsUsesButNotDeclarationsLabelsOrPatterns() {
         let source = """
         func f(value: E) {

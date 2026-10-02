@@ -2164,6 +2164,20 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testConfidenceLikelyForOperatorsUsedInSkippedBranches() throws {
+        try analyze(retainPublic: true) {
+            assertNotReferenced(.functionOperatorInfix("<~~>(_:_:)"))
+            assertConfidence(.functionOperatorInfix("<~~>(_:_:)"), .likely)
+            assertNotReferenced(.functionOperatorPrefix("^^^(_:)"))
+            assertConfidence(.functionOperatorPrefix("^^^(_:)"), .likely)
+            // Never named: stays certain.
+            assertNotReferenced(.functionOperatorInfix("<!!>(_:_:)"))
+            assertConfidence(.functionOperatorInfix("<!!>(_:_:)"), .certain)
+            // Used in the branch this build compiled: not reported.
+            assertReferenced(.functionOperatorInfix("<??>(_:_:)"))
+        }
+    }
+
     func testRetainsResultBuilderPartialBlockAndArity() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct225")) {

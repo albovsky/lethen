@@ -68,6 +68,8 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
             // Any other declaration, call, or reference is recorded by the index.
             if node.is(DeclSyntax.self) || node.is(FunctionCallExprSyntax.self)
                 || node.is(MemberAccessExprSyntax.self) || node.is(DeclReferenceExprSyntax.self)
+                || node.is(BinaryOperatorExprSyntax.self) || node.is(PrefixOperatorExprSyntax.self)
+                || node.is(PostfixOperatorExprSyntax.self)
             {
                 hasIndexableSyntax = true
             }
@@ -82,7 +84,14 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
                 collect(Syntax(condition.initializer))
                 return
             }
-            if let reference = node.as(DeclReferenceExprSyntax.self) {
+            // An operator is used by its spelling alone, so it is never a member use.
+            if let binary = node.as(BinaryOperatorExprSyntax.self) {
+                uses[binary.operator.text] = uses[binary.operator.text] ?? false
+            } else if let prefix = node.as(PrefixOperatorExprSyntax.self) {
+                uses[prefix.operator.text] = uses[prefix.operator.text] ?? false
+            } else if let postfix = node.as(PostfixOperatorExprSyntax.self) {
+                uses[postfix.operator.text] = uses[postfix.operator.text] ?? false
+            } else if let reference = node.as(DeclReferenceExprSyntax.self) {
                 let name = reference.baseName.identifier?.name ?? reference.baseName.text
                 let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
                     || reference.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == reference.id

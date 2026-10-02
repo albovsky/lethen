@@ -106,8 +106,10 @@ public final class SourceGraph {
         .varClass, .varGlobal, .varInstance, .varStatic,
     ]
 
-    /// Kinds a use in a skipped branch can be the only use of: the runtime-named kinds and type aliases.
-    private static let skippedBranchKinds = dynamicallyNamedKinds.union([.typealias])
+    /// Kinds a use in a skipped branch can be the only use of: the runtime-named kinds, type aliases, and operators.
+    private static let skippedBranchKinds = dynamicallyNamedKinds.union([
+        .typealias, .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
+    ])
 
     /// The name without argument labels: `load(from:)` becomes `load`.
     public static func baseName(of name: String) -> String {

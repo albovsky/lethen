@@ -645,7 +645,7 @@ Alamofire and swift-nio re-scanned on Linux (Swift 6.4.0, `swift-6.4-RELEASE`, x
 `corpus/diff.sh` shows the same Linux-versus-macOS differences before and after. The comparison uses
 the raw JSON. Wikipedia iOS was not re-scanned, because it builds only on macOS.
 
-A type, method, property, enum case, or type alias is now `likely` when its name is used (called, referenced, or written as a type) in a
+A type, method, property, enum case, type alias, or operator is now `likely` when its name is used (called, referenced, or written as a type) in a
 `#if` clause the build did not compile, in a file of the same module. A clause counts as compiled
 when the index has a declaration or reference inside it, so the rule reads the build, not the
 condition. Declaring a name in a skipped clause, labels, parameters, imports and enum case patterns
