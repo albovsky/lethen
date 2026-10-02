@@ -106,6 +106,48 @@ struct FixtureStruct312Loader {
     init<T: Decodable>(_: T.Type) {}
 }
 
+struct FixtureStruct312Boxed: Decodable {
+    // Control: only an element of a generic wrapper is constrained, not the wrapper's own parameter.
+    let boxedNotDecoded: Int
+}
+
+struct FixtureStruct312Box<T: Decodable>: Decodable {
+    let value: T
+}
+
+struct FixtureStruct312ValueOnly: Decodable {
+    // Control: a value passed for a Decodable parameter has already been decoded; only a metatype decodes.
+    let valueNotDecoded: Int
+}
+
+struct FixtureStruct312Composed: Decodable {
+    // Passed as the metatype of a protocol composition.
+    let composedDecoded: Int
+}
+
+typealias FixtureAlias312 = Decodable
+
+struct FixtureStruct312Aliased: Decodable {
+    // Control: a typealias to Decodable is not recognized, so it is not evidence.
+    let aliasedNotDecoded: Int
+}
+
+public struct FixtureStruct312Key: CodingKey, Decodable {
+    // Control: an external decoding call decodes only its metatype argument, not the key passed beside it.
+    public let stringValue: String
+    public let intValue: Int? = nil
+    let keyNotDecoded: Int
+
+    public init?(stringValue: String) {
+        self.stringValue = stringValue
+        keyNotDecoded = 0
+    }
+
+    public init?(intValue _: Int) {
+        nil
+    }
+}
+
 struct FixtureStruct312Custom: Decodable {
     // Control: an explicit init(from:) replaces the synthesized one, so its writes count normally.
     let notDecodedByCustom: Int
@@ -130,9 +172,27 @@ public class FixtureClass312Retainer {
         variadic(FixtureStruct312Variadic.self, FixtureStruct312Variadic.self)
         variadicMixed(FixtureStruct312Variadic.self, FixtureStruct312VariadicOther.self)
         inspect(FixtureStruct312Dependent.self)
+        boxed(makeBox())
+        valueOnly(FixtureStruct312ValueOnly(valueNotDecoded: 2))
+        composed(FixtureStruct312Composed.self)
+        aliased(FixtureStruct312Aliased.self)
     }
 
     func variadic<T: Decodable>(_: T.Type...) {}
+
+    func boxed<T: Decodable>(_: FixtureStruct312Box<T>) {}
+
+    func makeBox() -> FixtureStruct312Box<FixtureStruct312Boxed> { fatalError() }
+
+    func valueOnly<T: Decodable>(_: T) {}
+
+    func composed(_: any (Decodable & Sendable).Type) {}
+
+    func aliased(_: any FixtureAlias312.Type) {}
+
+    public func read(_ container: KeyedDecodingContainer<FixtureStruct312Key>, key: FixtureStruct312Key) throws {
+        _ = try container.decode([Int].self, forKey: key)
+    }
 
     func variadicMixed(_: any Decodable.Type...) {}
 

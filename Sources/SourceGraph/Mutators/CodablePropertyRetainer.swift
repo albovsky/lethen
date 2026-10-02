@@ -139,7 +139,11 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             } else {
                 guard Self.mayDecode(unindexedUsr: use.usr) else { continue }
 
-                decoded = use.valueArguments.reduce(into: []) { $0.formUnion($1.references) }
+                // Without the callee's parameter types, only the standard decoding APIs are known to decode
+                // their first argument, the metatype. Any other callee is not evidence.
+                guard Self.isStandardDecodingCall(usr: use.usr), let metatype = use.valueArguments.first, metatype.label == nil else { continue }
+
+                decoded = metatype.references
             }
             guard !decoded.isEmpty else { continue }
 
@@ -206,6 +210,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// `KeyedDecodingContainer.decode(_:forKey:)`.
     private static func mayDecode(unindexedUsr usr: String) -> Bool {
         usr.range(of: "Se(R[zd]|_)", options: .regularExpression) != nil
+    }
+
+    /// `decode(_:from:)` of `JSONDecoder` and `PropertyListDecoder`, and `decode`/`decodeIfPresent` of the keyed,
+    /// unkeyed and single-value decoding containers, in the standard library's and Foundation's mangling.
+    private static func isStandardDecodingCall(usr: String) -> Bool {
+        let isDecoder = usr.contains("JSONDecoderC") || usr.contains("PropertyListDecoderC")
+        let isContainer = usr.contains("DecodingContainer")
+        return (isDecoder || isContainer) && usr.range(of: "(6decode|15decodeIfPresent)_", options: .regularExpression) != nil
     }
 
     private func isDecoded(_ property: Declaration, of type: Declaration) -> Bool {

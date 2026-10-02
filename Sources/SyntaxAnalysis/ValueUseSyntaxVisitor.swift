@@ -182,12 +182,45 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         parameterTypeNames[locations.location(at: position)] =
             signature.parameterClause.parameters.map { parameter in
                 let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
-                let names = Self.typeNames(in: parameter.type).reduce(into: Set<String>()) { result, name in
-                    result.insert(name)
-                    result.formUnion(constraints[name] ?? [])
-                }
+                let names = Self.decodedMetatypeNames(of: parameter.type, constraints: constraints)
                 return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil)
             }
+    }
+
+    /// The names a parameter's type may decode through: only a parameter that takes the metatype of a type, or of an
+    /// array of it, can decode it. A generic parameter's constraints apply when the metatype's element is exactly that
+    /// parameter, so `Box<T>`, `T?`, an `inout` or function-typed parameter, a plain value and the like contribute
+    /// nothing a decoding rule could match.
+    private static func decodedMetatypeNames(of type: TypeSyntax, constraints: [String: Set<String>]) -> Set<String> {
+        var current = type
+        if let attributed = current.as(AttributedTypeSyntax.self) {
+            guard !attributed.specifiers.trimmedDescription.contains("inout") else { return [] }
+
+            current = attributed.baseType
+        }
+
+        var element: TypeSyntax
+        if let metatype = current.as(MetatypeTypeSyntax.self), metatype.metatypeSpecifier.text == "Type" {
+            element = metatype.baseType
+        } else if let existential = current.as(SomeOrAnyTypeSyntax.self), existential.someOrAnySpecifier.text == "any",
+                  let metatype = existential.constraint.as(MetatypeTypeSyntax.self), metatype.metatypeSpecifier.text == "Type"
+        {
+            // `any Decodable.Type` is the metatype of an existential.
+            return typeNames(in: metatype.baseType)
+        } else {
+            return []
+        }
+
+        if let array = element.as(ArrayTypeSyntax.self) {
+            element = array.element
+        }
+        if let identifier = element.as(IdentifierTypeSyntax.self), identifier.genericArgumentClause == nil {
+            return Set([identifier.name.text]).union(constraints[identifier.name.text] ?? [])
+        }
+        if element.is(SomeOrAnyTypeSyntax.self) || element.is(CompositionTypeSyntax.self) {
+            return typeNames(in: element)
+        }
+        return []
     }
 
     private static func typeNames(in syntax: some SyntaxProtocol) -> Set<String> {
