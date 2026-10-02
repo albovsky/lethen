@@ -3,7 +3,7 @@ import XCTest
 
 final class ClangLiteralScannerTest: XCTestCase {
     private func tokens(_ source: String) -> Set<String> {
-        ClangLiteralScanner.tokens(in: source)
+        ClangLiteralScanner.tokens(in: Array(source.utf8))
     }
 
     func testSelectorStringsAreSplitAtColons() {
