@@ -395,9 +395,11 @@ public struct DeclarationAccessibility {
 public struct ParameterTypeNames {
     public let label: String?
     public let names: Set<String>
+    public let isVariadic: Bool
 
-    public init(label: String?, names: Set<String>) {
+    public init(label: String?, names: Set<String>, isVariadic: Bool = false) {
         self.label = label
         self.names = names
+        self.isVariadic = isVariadic
     }
 }

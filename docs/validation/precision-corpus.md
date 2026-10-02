@@ -635,7 +635,7 @@ constrained to `Decodable` or is `any Decodable`, with the callee read from the 
 unindexed one, from its mangled USR, as for encoding. The metatype operand `Type.self` resolves to
 the type reference, which the value-flow visitor previously dropped. For an indexed callee only the arguments passed for a `Decodable`-constrained or `any Decodable`
 parameter count (call labels are matched to the callee's parameters, constraints read from the generic
-clause and `where` clause), so `load(Int.self, metadata: Model.self)` does not read `Model`; an
+clause and `where` clause, on the parameter itself and not on a dependent member such as `T.Payload`; functions, initializers and variadic parameters are handled), so `load(Int.self, metadata: Model.self)` does not read `Model`; an
 unindexed callee is matched by its USR and takes every explicit argument. A `let` with an initial value
 is never decoded and is not modeled. Optionality is read from the
 property's mangled USR, because `declaredType` is stored without its `?` and `!`. Optional

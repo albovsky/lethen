@@ -78,6 +78,34 @@ struct FixtureStruct312Where: Decodable {
     let whereDecoded: Int
 }
 
+struct FixtureStruct312Initializer: Decodable {
+    // Passed to a constrained generic initializer.
+    let initializerDecoded: Int
+}
+
+struct FixtureStruct312Variadic: Decodable {
+    let variadicDecoded: Int
+}
+
+struct FixtureStruct312VariadicOther: Decodable {
+    let variadicOtherDecoded: Int
+}
+
+protocol FixtureProtocol312HasPayload {
+    associatedtype Payload
+}
+
+struct FixtureStruct312Dependent: Decodable, FixtureProtocol312HasPayload {
+    // Control: only its associated Payload is constrained to Decodable by the helper it reaches, not the type itself.
+    typealias Payload = Int
+
+    let dependentNotDecoded: Int
+}
+
+struct FixtureStruct312Loader {
+    init<T: Decodable>(_: T.Type) {}
+}
+
 struct FixtureStruct312Custom: Decodable {
     // Control: an explicit init(from:) replaces the synthesized one, so its writes count normally.
     let notDecodedByCustom: Int
@@ -98,7 +126,17 @@ public class FixtureClass312Retainer {
         load(FixtureStruct312Generic.self)
         mixed(FixtureStruct312Placeholder.self, metadata: FixtureStruct312Metadata.self)
         constrained(extra: 1, FixtureStruct312Where.self)
+        _ = FixtureStruct312Loader(FixtureStruct312Initializer.self)
+        variadic(FixtureStruct312Variadic.self, FixtureStruct312Variadic.self)
+        variadicMixed(FixtureStruct312Variadic.self, FixtureStruct312VariadicOther.self)
+        inspect(FixtureStruct312Dependent.self)
     }
+
+    func variadic<T: Decodable>(_: T.Type...) {}
+
+    func variadicMixed(_: any Decodable.Type...) {}
+
+    func inspect<T: FixtureProtocol312HasPayload>(_: T.Type) where T.Payload: Decodable {}
 
     func mixed<D: Decodable, U>(_: D.Type, metadata _: U.Type) {}
 

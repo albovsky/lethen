@@ -49,13 +49,28 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             let name = parameter.secondName ?? parameter.firstName
             scopes[scopes.count - 1][name.text] = tokens(in: parameter.type)
         }
-        recordParameterTypeNames(of: node)
+        recordParameterTypeNames(
+            of: node.signature,
+            genericParameterClause: node.genericParameterClause,
+            genericWhereClause: node.genericWhereClause,
+            at: node.name.positionAfterSkippingLeadingTrivia
+        )
         return .visitChildren
     }
 
     override public func visitPost(_: FunctionDeclSyntax) {
         scopes.removeLast()
         genericNames.removeLast()
+    }
+
+    override public func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        recordParameterTypeNames(
+            of: node.signature,
+            genericParameterClause: node.genericParameterClause,
+            genericWhereClause: node.genericWhereClause,
+            at: node.initKeyword.positionAfterSkippingLeadingTrivia
+        )
+        return .visitChildren
     }
 
     override public func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
@@ -144,29 +159,34 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         return []
     }
 
-    private func recordParameterTypeNames(of node: FunctionDeclSyntax) {
+    private func recordParameterTypeNames(
+        of signature: FunctionSignatureSyntax,
+        genericParameterClause: GenericParameterClauseSyntax?,
+        genericWhereClause: GenericWhereClauseSyntax?,
+        at position: AbsolutePosition
+    ) {
         var constraints: [String: Set<String>] = [:]
-        for parameter in node.genericParameterClause?.parameters ?? [] {
+        for parameter in genericParameterClause?.parameters ?? [] {
             if let inherited = parameter.inheritedType {
                 constraints[parameter.name.text, default: []].formUnion(Self.typeNames(in: inherited))
             }
         }
-        for requirement in node.genericWhereClause?.requirements ?? [] {
-            guard case let .conformanceRequirement(conformance) = requirement.requirement else { continue }
+        for requirement in genericWhereClause?.requirements ?? [] {
+            // Only a requirement on the generic parameter itself constrains it; `T.Payload: Decodable` does not.
+            guard case let .conformanceRequirement(conformance) = requirement.requirement,
+                  let parameter = conformance.leftType.as(IdentifierTypeSyntax.self) else { continue }
 
-            for name in Self.typeNames(in: conformance.leftType) {
-                constraints[name, default: []].formUnion(Self.typeNames(in: conformance.rightType))
-            }
+            constraints[parameter.name.text, default: []].formUnion(Self.typeNames(in: conformance.rightType))
         }
 
-        parameterTypeNames[locations.location(at: node.name.positionAfterSkippingLeadingTrivia)] =
-            node.signature.parameterClause.parameters.map { parameter in
+        parameterTypeNames[locations.location(at: position)] =
+            signature.parameterClause.parameters.map { parameter in
                 let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
                 let names = Self.typeNames(in: parameter.type).reduce(into: Set<String>()) { result, name in
                     result.insert(name)
                     result.formUnion(constraints[name] ?? [])
                 }
-                return ParameterTypeNames(label: label, names: names)
+                return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil)
             }
     }
 
@@ -201,5 +221,15 @@ private final class TypeNameCollector: SyntaxVisitor {
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
         names.insert(node.name.text)
         return .visitChildren
+    }
+
+    /// A qualified name such as `T.Payload` is a different type from `T`: keep it whole and do not
+    /// collect its base. `Swift.Decodable` also counts as `Decodable`.
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+        names.insert(node.trimmedDescription)
+        if node.baseType.trimmedDescription == "Swift" {
+            names.insert(node.name.text)
+        }
+        return .skipChildren
     }
 }

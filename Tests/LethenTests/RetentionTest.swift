@@ -2224,6 +2224,18 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct312Where")) {
                 self.assertNotAssignOnlyProperty(.varInstance("whereDecoded"))
             }
+            assertReferenced(.struct("FixtureStruct312Initializer")) {
+                self.assertNotAssignOnlyProperty(.varInstance("initializerDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Variadic")) {
+                self.assertNotAssignOnlyProperty(.varInstance("variadicDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312VariadicOther")) {
+                self.assertNotAssignOnlyProperty(.varInstance("variadicOtherDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Dependent")) {
+                self.assertAssignOnlyProperty(.varInstance("dependentNotDecoded"))
+            }
             assertReferenced(.struct("FixtureStruct312Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notDecodedByCustom"))
             }

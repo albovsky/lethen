@@ -177,7 +177,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             if !parameters[index].names.isDisjoint(with: decodableNames) {
                 decoded.formUnion(argument.references)
             }
-            index += 1
+            // A variadic parameter takes the arguments that follow it too.
+            if !parameters[index].isVariadic {
+                index += 1
+            }
         }
         return decoded
     }
