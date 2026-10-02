@@ -2,7 +2,25 @@
 
 ##### Breaking
 
+- None.
+
+##### Enhancements
+
+- Releases use calendar versions, `YYYY.M.N` (year, month without a leading zero, release number within the month), starting with the next release after 3.10.0; see [CONTRIBUTING.md](CONTRIBUTING.md#validation-and-releases). Release tags, the GitHub Action's `version` input, and the update checker reject zero-padded versions such as `2026.09.1`, which are not valid Semantic Versioning.
+
+##### Bug Fixes
+
+- None.
+
+## 3.10.0 (2026-10-01)
+
+Lethen reports a confidence and a reason for every result, explains any declaration, reads Objective-C uses of Swift code, scans several build configurations together, and reuses verified SwiftPM builds; build tools now run without a shell.
+
+##### Breaking
+
+- The `periphery` Bazel module needs Bazel 7.1 or later, and the `periphery` module override in `MODULE.bazel` must be the same Lethen version as the `lethen` binary, so update the override together with the binary. `lethen scan --bazel` stops before building when the module is older, because an older module reads the generated package from `/var/tmp/periphery_bazel`, and the generated scan package fails to load with an explanation when an older binary runs it. `bazel fetch --all` and `bazel vendor` still fetch the generated repository.
 - Managed SwiftPM scans no longer clean before every build. Lethen reuses the previous build when it can verify the index: it recompiles every module that another build or an edit touched, together with the modules that import it, checks the index afterwards, and cleans and rebuilds when anything cannot be verified. A rescan of Lethen itself with nothing changed takes 5.3 s instead of 33.8 s. `--clean-build` restores the previous behavior.
+- Lethen runs `xcodebuild`, `swift`, and `bazel` directly instead of through `bash -c`, so build arguments reach the build tool exactly as written. Quotes and `$VARIABLES` in `build_arguments`, `--build-arguments`, and `xcode_list_arguments` are no longer interpreted by a shell: write `--scratch-path` and `/tmp/Build Space` as two arguments rather than `'/tmp/Build Space'`. Lethen warns about any build argument that is still wrapped in quotes.
 
 ##### Enhancements
 
@@ -21,6 +39,7 @@
 - The `xcode` format ends with a summary on standard error: the number of results and how many are `likely`, how many `--min-confidence` hid (in place of its separate line), and pointers to `lethen explain` and `--write-baseline`. Standard output is unchanged, `--quiet` suppresses the summary, and other formats never print it. Under `--verbose` each result is followed by an indented line with its reason, and CSV output ends with a `Reason` column after `Confidence`.
 - `--configurations debug release` builds a Swift package in each configuration and scans their index stores together, so code used only behind `#if DEBUG`, or only in release builds, is no longer reported as unused. A configuration that fails to build fails the scan. Xcode projects accept the option too: `--configurations Debug Release` runs `xcodebuild build-for-testing -configuration <name>` for each configuration, each into its own DerivedData directory, and scans their index stores together; the names must be build configurations of the project. Bazel and generic projects reject the option.
 - Xcode scans name the configuration each build compiles, such as `Building Wikipedia with configuration Test`, read from the scheme's Test action. When that differs from the configuration the scheme runs with and neither `--configurations` nor `-configuration` is given, Lethen warns that code compiled only in the run configuration is reported as unused and names the `--configurations` flag that scans both. The default build is unchanged.
+- `--skip-build --configurations Debug Release` scans an Xcode project without building: it reads the index of Lethen's last completed build of each configuration in an earlier `--configurations` scan and fails, naming the configuration, when one has none or its build failed or was interrupted. Xcode's own DerivedData index is never used in its place. Every index a `--skip-build` scan reads is now checked on its own, so a source file edited after one configuration's index was written stops the scan with a stale-index error even when another configuration's index was rebuilt since. Xcode scans now lock the DerivedData directories they build into or read without a build, so concurrent scans wait for each other, and they build on a DerivedData directory only when its last build completed for the same project, schemes, configuration, and build arguments, rebuilding it from clean otherwise, which includes each directory once after upgrading and after any failed or interrupted build.
 - `--retain-public-targets <module>…` retains the public API of the listed modules only, for local packages whose consumers or tests are outside the scan. Swift package scans that exclude tests or targets warn when an excluded target depends on a scanned one and name the modules to retain.
 - Enum cases that are only ever matched in patterns and never constructed are reported with the new hint `unconstructedEnumCase` ("Enum case 'x' is matched but never constructed"). Raw-value, `CaseIterable`, `Codable`, `@objc`, and retained enums are skipped. On the precision corpus it reports 56 cases, all adjudicated as dead. One of them was in Lethen itself, `SetupSelection.all`, which is removed.
 - Unused parameters of subscripts, and of closures stored in a property or global variable, are reported like unused function parameters. A subscript that satisfies another module's protocol requirement keeps its parameters.
@@ -28,8 +47,10 @@
 
 ##### Bug Fixes
 
+- `lethen scan --bazel` no longer writes the generated scan package and configuration to `/var/tmp/periphery_bazel`, a fixed directory that any local user could create first or replace, and that scans of different workspaces overwrote. It writes them to `lethen_generated` in the workspace's Bazel output base, creates that directory readable only by the current user, and stops before writing if the directory is a symbolic link, is owned by another user, or is writable by other users.
+- `lethen scan --bazel` with `--skip-build` or `--index-store-path` stops with an error before running Bazel. Bazel mode ignored both options and built and ran the generated scan target anyway. To scan an existing index store, use `--generic-project-config` with `--index-store-path`.
+- A project path, scheme name, Bazel filter or query, or build argument can no longer run shell commands. Commands were joined into a `bash -c` string with only double quotes escaped, so a repository that named its Xcode project `App$(command).xcodeproj` ran that command when scanned, even with `--skip-build`. The same change fixes scans of projects whose path contains `$`, a backtick, or a backslash, SwiftPM plugin scans of packages whose path contains a space, and `lethen clear-cache` when the cache path contains a space.
 - Xcode builds with different build arguments no longer share one DerivedData directory. Lethen's DerivedData path is also keyed by the build arguments when any are given, so a scan with `-- -configuration Release` no longer overwrites the index units of a scan without it. The first scan with build arguments after upgrading builds from clean.
-
 - C, C++, and Objective-C files in the index store are no longer parsed as Swift. Their index units reached the Swift indexer, which parsed each file with SwiftSyntax, so string literals in Objective-C and C code made Swift declarations with the same name `likely` instead of `certain`, and `--stats` counted their lines. The files are now told apart by the compiler that indexed them and skipped.
 - The Linux release tarballs run on Ubuntu 26.04, including the `swift:6.4` and `swift:6.4-resolute` images. The 3.9.0 executable linked the system's `libxml2.so.2`, which Ubuntu 26.04 replaced with `libxml2.so.16`, so it failed to start there. The executable now links libxml2 statically, built from Ubuntu 22.04's patched source without ICU, zlib, or liblzma, and the tarball includes libxml2's license. The release build fails if the executable needs a shared library outside a fixed list that every supported distribution ships, and the tarballs are smoke-tested on Ubuntu 22.04, 24.04, and 26.04 images with a scan that parses a XIB.
 - Under `--retain-public`, and for modules listed in `--retain-public-targets`, unused parameters of retained public API are no longer reported: parameters of a public or open function, of any function in the same override chain, and of a public protocol's requirements together with every witness and its overrides. The API fixes these signatures, so such a finding could not be acted on without breaking clients. Functions in an `_spi` group listed in `--no-retain-spi` are still analyzed, and `lethen explain` names the rule for a parameter it retains. On the precision corpus this removes 13 findings from Alamofire and 55 from swift-nio; 5 of the Alamofire rows were real but unfixable without an API change, such as a public method that ignores its argument.
@@ -45,6 +66,7 @@
 - XcodeProj is capped at 9.10.x, the version Lethen is tested with. Packages that depend on Lethen resolve XcodeProj themselves, and 9.11 and later add enum cases Lethen does not handle, so they could not build it.
 - Scans of an index store holding units for several versions of one file, such as an Xcode index built for several destinations over time, gave different results from run to run: the versions' declarations conflicted, and which one won depended on hash and thread order. Each file is now indexed from one version (the units written after the file last changed, or else the most recently written version), declarations whose USRs collide are chosen in a fixed order, and removing a declaration no longer unmaps a USR that a conflicting declaration owns. On an app of about 100,000 lines, six identical scans had given six different result sets; they are now identical.
 - Redundant protocol conformance locations are listed in file, line, and column order in every output format. They previously followed per-process hash order, so identical scans of a protocol with several conformances could produce different output, contrary to the byte-identical output claimed in 3.9.0.
+- The `github-actions` format escapes `%`, carriage returns, and newlines in each annotation's message, and also `:` and `,` in its file and title, the way GitHub's toolkit does. A file or declaration name containing a newline could end the annotation and start another workflow command in the job log.
 
 ## 3.9.0 (2026-09-25)
 

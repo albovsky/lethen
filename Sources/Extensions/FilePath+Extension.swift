@@ -27,6 +27,21 @@ public extension FilePath {
         fileManager.fileExists(atPath: lexicallyNormalized().string)
     }
 
+    /// Removes the file, directory tree or symbolic link at this path, as `rm -rf` does: a link is removed itself, even
+    /// when its target is gone, and a path where nothing exists is not an error.
+    func removeIfPresent() throws {
+        do {
+            try fileManager.removeItem(atPath: string)
+        } catch {
+            var status = stat()
+            if lstat(string, &status) != 0, errno == ENOENT {
+                return
+            }
+
+            throw error
+        }
+    }
+
     @inlinable var url: URL {
         URL(fileURLWithPath: lexicallyNormalized().string)
     }

@@ -73,6 +73,12 @@ final class Project {
             }
         }
 
+        // `Scan.perform` turns `--index-store-path` into `skipBuild` before calling this; checking the path too keeps
+        // the rejection independent of that ordering.
+        if case .bazel = kind, configuration.skipBuild || !configuration.indexStorePath.isEmpty {
+            throw LethenError.usageError("--skip-build and --index-store-path are not supported for Bazel projects: a Bazel scan must build the generated scan target, which indexes the project and runs the scan. To scan an existing index store without building, describe the project with '--generic-project-config' and pass '--index-store-path'.")
+        }
+
         switch kind {
         case let .xcode(projectPath):
             #if canImport(XcodeSupport)

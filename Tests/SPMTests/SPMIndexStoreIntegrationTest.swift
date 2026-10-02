@@ -26,7 +26,7 @@ final class SPMIndexStoreIntegrationTest: XCTestCase {
             var stores: [FilePath] = []
             for (offset, mode) in modes.enumerated() {
                 let configuration = Configuration()
-                configuration.buildArguments = mode + ["--scratch-path", "'\(root.appending("mode-\(offset)").string)'", "-c", "release"]
+                configuration.buildArguments = mode + ["--scratch-path", root.appending("mode-\(offset)").string, "-c", "release"]
                 let driver = try SPMProjectDriver(configuration: configuration, shell: shell, logger: logger)
                 if offset == 0 {
                     // Reproduce a warm, automatically indexed build. Release auto

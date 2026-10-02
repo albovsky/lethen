@@ -73,8 +73,8 @@ if [ "$version" = latest ]; then
 fi
 
 # The version becomes part of a URL and a directory, so only release version syntax passes.
-if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-    fail "'$version' is not a Lethen version; use a release version such as 3.10.0, latest, or source."
+if ! printf '%s\n' "$version" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$'; then
+    fail "'$version' is not a Lethen version; use a release version such as 2026.10.1 (the month has no leading zero), latest, or source."
 fi
 
 case "$RUNNER_OS" in

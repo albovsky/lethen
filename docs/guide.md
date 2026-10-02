@@ -23,13 +23,13 @@ Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `
 
 ### Download the macOS zip
 
-Download [lethen-3.9.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.9.0/lethen-3.9.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.9.0/SHA256SUMS) into the same directory, then run there:
+Download [lethen-3.10.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.10.0/lethen-3.10.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.10.0/SHA256SUMS) into the same directory, then run there:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
-ditto -x -k lethen-3.9.0-macos-arm64.zip lethen-3.9.0
+ditto -x -k lethen-3.10.0-macos-arm64.zip lethen-3.10.0
 mkdir -p "$HOME/.local/bin"
-install -m 755 lethen-3.9.0/lethen "$HOME/.local/bin/lethen"
+install -m 755 lethen-3.10.0/lethen "$HOME/.local/bin/lethen"
 export PATH="$HOME/.local/bin:$PATH"
 lethen version
 ```
@@ -41,11 +41,11 @@ Keep the PATH export in your shell profile.
 [Mint](https://github.com/yonaskolb/Mint) builds Lethen from source at a release tag, which takes a few minutes and needs Xcode (or the Command Line Tools):
 
 ```sh
-mint install albovsky/lethen@3.9.0
-mint run albovsky/lethen@3.9.0 scan
+mint install albovsky/lethen@3.10.0
+mint run albovsky/lethen@3.10.0 scan
 ```
 
-To pin it for a project, add `albovsky/lethen@3.9.0` to your `Mintfile`.
+To pin it for a project, add `albovsky/lethen@3.10.0` to your `Mintfile`.
 
 ### Linux
 
@@ -62,7 +62,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 Then build the tag you want:
 
 ```sh
-git clone --branch 3.9.0 --depth 1 https://github.com/albovsky/lethen.git
+git clone --branch 3.10.0 --depth 1 https://github.com/albovsky/lethen.git
 cd lethen
 swift build -c release --product lethen
 lethen_bin_dir="$(swift build -c release --show-bin-path)"
@@ -135,9 +135,13 @@ Pass `--project` with the `.xcodeproj` or `.xcworkspace` and `--schemes` with th
 
 Interface Builder files, Info.plist files, and Core Data models found in the project are read for class and member references.
 
-`xcodebuild build-for-testing` builds the configuration of the scheme's Test action, usually Debug, so code compiled only in another configuration, such as the `#else` of `#if DEBUG`, looks unused. Each build line names the configuration it compiles, such as `Building Wikipedia with configuration Test`, read from the scheme file. When the scheme's Test action uses a different configuration from its Run action and no configuration is chosen, Lethen warns that code compiled only in the Run configuration is reported as unused and prints the `--configurations` flag that scans both. Schemes Xcode generates without a file name no configuration and never warn. `--configurations Debug Release` (`configurations: [Debug, Release]` in the configuration file) runs `build-for-testing -configuration <name>` for each listed configuration, each into its own DerivedData directory, and scans their index stores together: a reference found in any of them counts. The names must be build configurations of the project, and the build arguments must not also pass `-configuration`. Each configuration is built for testing so test targets stay in the scan; a configuration without testability, typically Release, fails when a test target uses `@testable import`. That failure fails the scan with xcodebuild's error. Pass `ENABLE_TESTABILITY=YES` after `--`, or list the configurations your app and tests actually use. `--configurations` with `--skip-build` needs one `--index-store-path` per configuration.
-
 `--skip-build` without `--index-store-path` scans without running `xcodebuild` builds. Lethen uses the most recently written of two indexes: its own from an earlier scan, or the one Xcode keeps for this project in its DerivedData (`~/Library/Developer/Xcode/DerivedData`, or the custom location set in Xcode's preferences, matched by the project path Xcode records there). It names the index it chose. Because this index may predate your edits, lethen checks it first: index units older than their source file are ignored, and if a source file has no unit as new as the file, the scan stops with a "stale" error that lists the files. Build in Xcode, or scan without `--skip-build`, to refresh it. Source files that Xcode never indexed are not detected, so build the schemes you scan at least once.
+
+#### Code compiled out by your test configuration
+
+`xcodebuild build-for-testing` builds the configuration of the scheme's Test action, usually Debug, so code compiled only in another configuration, such as the `#else` of `#if DEBUG`, looks unused. Each build line names the configuration it compiles, such as `Building Wikipedia with configuration Test`, read from the scheme file. When the scheme's Test action uses a different configuration from its Run action and no configuration is chosen, Lethen warns that code compiled only in the Run configuration is reported as unused and prints the `--configurations` flag that scans both. Schemes Xcode generates without a file name no configuration and never warn. `--configurations Debug Release` (`configurations: [Debug, Release]` in the configuration file) runs `build-for-testing -configuration <name>` for each listed configuration, each into its own DerivedData directory, and scans their index stores together: a reference found in any of them counts. The names must be build configurations of the project, and the build arguments must not also pass `-configuration`. Each configuration is built for testing so test targets stay in the scan; a configuration without testability, typically Release, fails when a test target uses `@testable import`. That failure fails the scan with xcodebuild's error. Pass `ENABLE_TESTABILITY=YES` after `--`, or list the configurations your app and tests actually use.
+
+`--skip-build --configurations Debug Release` scans without building. It reads the index of Lethen's last completed build of each listed configuration in an earlier `--configurations` scan of the same schemes with the same build arguments, and checks every one of them as described above: a source file edited after any one configuration's index was written stops the scan with a stale-index error, even when another configuration's index is current. A configuration whose last Lethen build did not complete, or that Lethen never built, fails the scan and is named, so scan once without `--skip-build` first. Xcode's own DerivedData index holds whichever configuration Xcode built last, so it is never used for `--configurations`. With `--index-store-path`, pass each configuration's store; explicit stores are read as given.
 
 ### Swift package plugin and Xcode command
 
@@ -162,9 +166,11 @@ For an Xcode project, right-click the project in the navigator and choose **leth
 
 ### Bazel
 
-`--bazel` queries the workspace for top-level application, test, and library targets, generates a hidden scan rule, and runs it. `--bazel-filter` narrows the default query and `--bazel-query` replaces it. Lethen passes `--check_visibility=false` unless you set `--bazel-check-visibility`, in which case the generated package must be visible to your targets.
+`--bazel` queries the workspace for top-level application, test, and library targets, generates a hidden scan rule, and runs it. The rule and the scan configuration are written to `lethen_generated` in the workspace's output base (`bazel info output_base`), a directory only you can write to. `--bazel-filter` narrows the default query and `--bazel-query` replaces it. Lethen passes `--check_visibility=false` unless you set `--bazel-check-visibility`, in which case the generated package must be visible to your targets.
 
 The Bazel Central Registry's `periphery` module is upstream Periphery, so add a source override for lethen in `MODULE.bazel`; `lethen scan --setup` prints the snippet for the installed version, and `lethen scan --bazel` warns when the override is missing.
+
+A Bazel scan always builds: the generated scan target indexes your targets and runs the scan, so `--skip-build` and `--index-store-path` stop a Bazel scan with an error. To scan an index store Bazel already wrote, describe the project with `--generic-project-config` (see Other build systems) and list the store there or pass it with `--index-store-path`.
 
 ### Other build systems
 
@@ -354,7 +360,7 @@ The repository is also a GitHub Action. It installs the release binary for the r
     baseline: baseline.json
 ```
 
-The action is part of every release after 3.9.0; pin the release tag, or a commit, and `version` defaults to the Lethen release with that tag. Its inputs:
+The action is part of every release from 3.10.0; pin the release tag, or a commit, and `version` defaults to the Lethen release with that tag. Its inputs:
 
 | Input | Default | Meaning |
 | --- | --- | --- |
@@ -368,7 +374,7 @@ The action is part of every release after 3.9.0; pin the release tag, or a commi
 
 The `count` output is the number of results after the baseline and confidence filters, and `results-file` is the path of the results in the chosen format, for example to upload as an artifact. The scan always runs with `--relative-results --disable-update-check`, and settings from `.periphery.yml` still apply.
 
-macOS release binaries are Apple silicon only, so use an Apple silicon runner such as `macos-26`. On Linux the release binary needs a Swift 6.3 or later toolchain on `PATH`, which it also uses to build the project; the action checks for `swift` but does not install it, so run the job in a container such as `swift:6.4-noble` or install Swift in an earlier step. Release binaries are tested on Ubuntu 22.04 and 24.04 images, and releases after 3.9.0 also on Ubuntu 26.04; the `swift:6.4` tag now points at Ubuntu 26.04, where the 3.9.0 binary cannot load `libxml2.so.2`, so pin an Ubuntu 24.04 image such as `swift:6.4-noble` when installing 3.9.0.
+macOS release binaries are Apple silicon only, so use an Apple silicon runner such as `macos-26`. On Linux the release binary needs a Swift 6.3 or later toolchain on `PATH`, which it also uses to build the project; the action checks for `swift` but does not install it, so run the job in a container such as `swift:6.4-noble` or install Swift in an earlier step. Release binaries are tested on Ubuntu 22.04 and 24.04 images, and releases from 3.10.0 also on Ubuntu 26.04; the `swift:6.4` tag now points at Ubuntu 26.04, where the 3.9.0 binary cannot load `libxml2.so.2`, so pin an Ubuntu 24.04 image such as `swift:6.4-noble` when installing 3.9.0.
 
 A baseline takes two steps: run `lethen scan --write-baseline baseline.json` once locally and commit the file, then pass it as `baseline`, so pull requests fail only on new results.
 

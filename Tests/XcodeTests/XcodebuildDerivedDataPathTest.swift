@@ -49,7 +49,7 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
         try xcodebuild.build(project: project, scheme: "A", allSchemes: ["B", "A"])
         let version = try xcodebuild.version().djb2Hex
         let expected = try Constants.cachePath().appending("DerivedData-\(version)-\(project.name.djb2Hex)-\("AB".djb2Hex)")
-        XCTAssertEqual(shell.derivedDataPaths, ["'\(expected.string)'"])
+        XCTAssertEqual(shell.derivedDataPaths, [expected.string])
     }
 
     func testDerivedDataPathDependsOnTheConfiguration() throws {
@@ -84,16 +84,23 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
 
     func testIndexStoreAndRemovalUseTheBuildsPath() throws {
         try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], configuration: "Release", additionalArguments: ["-destination", "platform=macOS"])
-        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
         let built = try XCTUnwrap(shell.derivedDataPaths.first)
-        let removed = try XCTUnwrap(shell.executed.last)
-        XCTAssertEqual(removed.prefix(2), ["rm", "-rf"])
-        XCTAssertEqual("'\(removed[2])'", built)
+        // The directory is removed in process, not by a command.
+        try FileManager.default.createDirectory(atPath: built, withIntermediateDirectories: true)
+        let commands = shell.executed.count
+        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: built))
+        XCTAssertEqual(shell.executed.count, commands)
+
+        // A DerivedData link whose target was deleted is removed too, so the clean build can create the directory.
+        try FileManager.default.createSymbolicLink(atPath: built, withDestinationPath: built + "-relocated-and-deleted")
+        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
+        XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: built))
 
         XCTAssertThrowsError(try xcodebuild.indexStorePath(project: project, schemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])) { error in
             guard case let LethenError.indexStoreNotFound(derivedDataPath) = error else { return XCTFail("\(error)") }
 
-            XCTAssertEqual("'\(derivedDataPath)'", built)
+            XCTAssertEqual(derivedDataPath, built)
         }
     }
 

@@ -36,6 +36,25 @@ final class ReleaseVersionTest: XCTestCase {
         try XCTAssertEqual(XCTUnwrap(ReleaseVersion("3.8.1+build.5")), XCTUnwrap(ReleaseVersion("3.8.1")))
     }
 
+    func testCalendarVersionsOrderAfterSemanticVersionsAndByMonth() throws {
+        let ordered = ["3.10.0", "2026.9.1", "2026.9.2", "2026.10.1-dev.1", "2026.10.1", "2026.10.2", "2026.11.1", "2027.1.1"]
+        let versions = try ordered.map { try XCTUnwrap(ReleaseVersion($0)) }
+
+        for (lower, higher) in zip(versions, versions.dropFirst()) {
+            XCTAssertLessThan(lower, higher, "\(lower) < \(higher)")
+        }
+
+        XCTAssertEqual(ReleaseVersion.latest(of: ordered.map { ($0, $0.contains("-")) }, includingPrereleases: false)?.tag, "2027.1.1")
+    }
+
+    func testRejectsZeroPaddedCalendarVersions() {
+        for tag in ["2026.09.1", "2026.9.01", "02026.9.1"] {
+            XCTAssertNil(ReleaseVersion(tag), tag)
+        }
+
+        XCTAssertNotNil(ReleaseVersion("2026.10.0"))
+    }
+
     func testRejectsNonVersionTags() {
         for tag in ["", "latest", "v3.8.1", "3.8.x", "3.8.1-", "3..1"] {
             XCTAssertNil(ReleaseVersion(tag), tag)

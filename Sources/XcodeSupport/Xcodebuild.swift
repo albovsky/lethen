@@ -51,29 +51,83 @@ public final class Xcodebuild {
             buildArguments: additionalArguments
         )
         var args = [
-            "-\(project.type)", "\"\(project.path.lexicallyNormalized().string.withEscapedQuotes)\"",
-            "-scheme", "\"\(scheme.withEscapedQuotes)\"",
+            "-\(project.type)", project.path.lexicallyNormalized().string,
+            "-scheme", scheme,
         ]
         if let configuration {
-            args += ["-configuration", "\"\(configuration.withEscapedQuotes)\""]
+            args += ["-configuration", configuration]
         }
         args += [
             "-parallelizeTargets",
-            "-derivedDataPath", "'\(derivedDataPath.string)'",
+            "-derivedDataPath", derivedDataPath.string,
             "-quiet",
             "build-for-testing",
         ]
         let envs = [
-            "CODE_SIGNING_ALLOWED=\"NO\"",
-            "ENABLE_BITCODE=\"NO\"",
-            "DEBUG_INFORMATION_FORMAT=\"dwarf\"",
-            "COMPILER_INDEX_STORE_ENABLE=\"YES\"",
-            "INDEX_ENABLE_DATA_STORE=\"YES\"",
+            "CODE_SIGNING_ALLOWED=NO",
+            "ENABLE_BITCODE=NO",
+            "DEBUG_INFORMATION_FORMAT=dwarf",
+            "COMPILER_INDEX_STORE_ENABLE=YES",
+            "INDEX_ENABLE_DATA_STORE=YES",
         ]
 
-        let quotedArguments = quote(arguments: additionalArguments)
-        let xcodebuild = ["xcodebuild"] + args + envs + quotedArguments
+        let xcodebuild = ["xcodebuild"] + args + envs + additionalArguments
         return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
+    }
+
+    /// Locks the DerivedData directories of `configurations` for this scan: exclusively to build into them, shared to
+    /// read their stores. The directories are locked in path order, so scans that lock overlapping sets cannot deadlock.
+    public func lockDerivedData(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configurations: [String?],
+        buildArguments: [String] = [],
+        exclusive: Bool
+    ) throws -> DerivedDataLock {
+        let directories = try configurations.map {
+            try derivedDataPath(for: project, schemes: schemes, configuration: $0, buildArguments: buildArguments)
+        }
+        return try DerivedDataLock(directories: directories, exclusive: exclusive) { [logger] directory in
+            logger.info("Waiting for another Lethen scan to finish with \(directory)...")
+        }
+    }
+
+    /// Starts this scan's builds into a DerivedData directory, which the caller has locked exclusively. A store left by
+    /// a failed or interrupted build lacks units for what it never compiled, which no freshness check can see, and an
+    /// incremental build over it need not recompile them, so a build reuses the directory only when its last build
+    /// completed for exactly this project, schemes, configuration and build arguments, and removes it otherwise. The
+    /// directory's name is a hash that other projects of the same name or other scheme sets can share. The completion
+    /// mark is removed before anything else, so a build that fails from here on leaves the directory unmarked.
+    public func beginBuild(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws {
+        let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        let marker = directory.appending(Self.completedBuildMarker)
+        let reusable = try FileManager.default.contents(atPath: marker.string)
+            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try marker.removeIfPresent()
+        if directory.exists, !reusable {
+            logger.debug("\(directory) holds no completed build of these schemes; removing it.")
+            try FileManager.default.removeItem(atPath: directory.string)
+        }
+
+        try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+    }
+
+    /// Marks the store complete once every build this scan started into the directory has succeeded. The caller still
+    /// holds the exclusive lock it began with.
+    public func completeBuild(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws {
+        let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        let contents = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        try contents.write(to: directory.appending(Self.completedBuildMarker).url, options: .atomic)
     }
 
     public func removeDerivedData(
@@ -83,7 +137,10 @@ public final class Xcodebuild {
         buildArguments: [String] = []
     ) throws {
         let path = try derivedDataPath(for: project, schemes: allSchemes, configuration: configuration, buildArguments: buildArguments)
-        try shell.exec(["rm", "-rf", path.string])
+        // The mark goes first: a removal that stops part way then leaves a directory with no completed build, which the
+        // next build removes again instead of building on what is left.
+        try path.appending(Self.completedBuildMarker).removeIfPresent()
+        try path.removeIfPresent()
     }
 
     public func indexStorePath(
@@ -102,6 +159,43 @@ public final class Xcodebuild {
         return path
     }
 
+    /// Whether the last build of every scheme into this DerivedData directory completed. A store whose build failed
+    /// or was interrupted can lack units for whole files, so `--skip-build` must not read it as a complete index.
+    public func hasCompletedBuild(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws -> Bool {
+        let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            .appending(Self.completedBuildMarker)
+        return try FileManager.default.contents(atPath: marker.string)
+            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+    }
+
+    static let completedBuildMarker = "lethen-build-completed"
+
+    /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
+    /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can
+    /// share it; the mark names exactly what was built.
+    static func markerContents(project: XcodeProjectlike, schemes: [String], configuration: String?, buildArguments: [String]) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(CompletedBuild(
+            project: project.path.lexicallyNormalized().string,
+            schemes: schemes.sorted(),
+            configuration: configuration,
+            buildArguments: buildArguments
+        ))
+    }
+
+    private struct CompletedBuild: Encodable {
+        let project: String
+        let schemes: [String]
+        let configuration: String?
+        let buildArguments: [String]
+    }
+
     func schemes(project: XcodeProjectlike, additionalArguments: [String]) throws -> Set<String> {
         try schemes(
             type: project.type,
@@ -112,13 +206,12 @@ public final class Xcodebuild {
 
     func schemes(type: String, path: String, additionalArguments: [String]) throws -> Set<String> {
         let args = [
-            "-\(type)", "\"\(path.withEscapedQuotes)\"",
+            "-\(type)", path,
             "-list",
             "-json",
         ]
 
-        let quotedArguments = quote(arguments: additionalArguments)
-        let xcodebuild = ["xcodebuild"] + args + quotedArguments
+        let xcodebuild = ["xcodebuild"] + args + additionalArguments
         let lines = try shell.exec(xcodebuild).split(separator: "\n").map { String($0).trimmed }
 
         // xcodebuild may output unrelated warnings, we need to strip them out otherwise
@@ -181,21 +274,49 @@ public final class Xcodebuild {
 
         return try Constants.cachePath().appending(name)
     }
+}
 
-    private func quote(arguments: [String]) -> [String] {
-        var quotedArguments = arguments
+/// `flock` locks on files beside DerivedData directories, so that removing a directory does not drop its lock. They
+/// are released by `release()`, or when the process exits.
+public final class DerivedDataLock {
+    private var descriptors: [Int32]
 
-        for (i, arg) in arguments.enumerated() {
-            if arg.hasPrefix("-"),
-               let value = arguments[safe: i + 1],
-               !value.hasPrefix("-"),
-               !value.hasPrefix("\""),
-               !value.hasPrefix("\'")
-            {
-                quotedArguments[i + 1] = "\"\(value)\""
+    init(directories: [FilePath], exclusive: Bool, wait: Bool = true, onWait: (FilePath) -> Void = { _ in }) throws {
+        descriptors = []
+        let operation = exclusive ? LOCK_EX : LOCK_SH
+        for directory in Set(directories).sorted() {
+            let lockFile = directory.removingLastComponent().appending((directory.lastComponent?.string ?? "") + ".lock")
+            try FileManager.default.createDirectory(atPath: lockFile.removingLastComponent().string, withIntermediateDirectories: true)
+            let descriptor = open(lockFile.string, O_RDWR | O_CREAT | O_CLOEXEC, 0o644)
+            guard descriptor >= 0 else {
+                release()
+                throw LethenError.usageError("Could not open \(lockFile): \(String(cString: strerror(errno)))")
+            }
+
+            descriptors.append(descriptor)
+            if flock(descriptor, operation | LOCK_NB) != 0 {
+                guard wait, errno == EWOULDBLOCK else {
+                    release()
+                    throw LethenError.usageError("\(directory) is in use by another Lethen scan.")
+                }
+
+                onWait(directory)
+                guard flock(descriptor, operation) == 0 else {
+                    release()
+                    throw LethenError.usageError("Could not lock \(lockFile): \(String(cString: strerror(errno)))")
+                }
             }
         }
+    }
 
-        return quotedArguments
+    deinit {
+        release()
+    }
+
+    public func release() {
+        for descriptor in descriptors {
+            close(descriptor)
+        }
+        descriptors = []
     }
 }

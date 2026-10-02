@@ -5,7 +5,7 @@ swift_binary(
     name = "LethenCLI",
     srcs = ["LethenCLI/main.swift"],
     module_name = "LethenCLI",
-    visibility = ["@@+generated+periphery_generated//:__pkg__"],
+    visibility = ["@@+generated+periphery_generated//lethen_scan:__pkg__"],
     deps = [
         "//Sources:Frontend",
         "@swift_argument_parser//:ArgumentParser",
@@ -17,7 +17,7 @@ optimized_swift_binary(
     target = ":LethenCLI",
     visibility = [
         "//:__pkg__",
-        "@@+generated+periphery_generated//:__pkg__",
+        "@@+generated+periphery_generated//lethen_scan:__pkg__",
     ],
 )
 
