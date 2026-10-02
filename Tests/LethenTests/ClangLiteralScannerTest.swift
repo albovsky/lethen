@@ -37,6 +37,31 @@ final class ClangLiteralScannerTest: XCTestCase {
         XCTAssertEqual(tokens(#"a = @"f\too"; b = @"f\qoo"; c = @"\x"; d = @"after";"#), ["after"])
     }
 
+    /// The preprocessor removes a backslash before a newline before it sees any token.
+    func testEscapedNewlinesAreSpliced() {
+        XCTAssertEqual(tokens("x = @\"renamed\\\nForObjC\";"), ["renamedForObjC"])
+        XCTAssertEqual(tokens("SEL s = @sel\\\nector(spliced);"), ["spliced"])
+        XCTAssertEqual(tokens("x = @\"renamed\\\r\nForObjC\";"), ["renamedForObjC"])
+    }
+
+    /// Comments are whitespace to the preprocessor, inside a selector expression as well.
+    func testCommentsInSelectorExpressionsAreWhitespace() {
+        XCTAssertEqual(tokens("SEL s = @selector /* note */ (commented:);"), ["commented"])
+        XCTAssertEqual(tokens("SEL s = @selector(inner /* note */ :with:);"), ["inner", "with"])
+        XCTAssertEqual(tokens("SEL s = @selector(first:\n    second:);"), ["first", "second"])
+        // A selector left open ends at a blank line and still counts, which errs towards likely.
+        XCTAssertEqual(tokens("SEL s = @selector(open\n\nSEL t = @selector(closed);"), ["open", "closed"])
+    }
+
+    /// A raw string in an Objective-C++ file has no escapes and its delimiters are not part of the text.
+    func testRawStringLiteralsAreReadWithoutTheirDelimiters() {
+        XCTAssertEqual(tokens(#"sel_registerName(R"(rawName)");"#), ["rawName"])
+        XCTAssertEqual(tokens(#"x = R"x(withDelimiter)x"; y = u8R"(prefixed)"; z = LR"(wide)";"#), ["withDelimiter", "prefixed", "wide"])
+        XCTAssertEqual(tokens("x = R\"(multi\nline)\"; y = @\"after\";"), ["after"])
+        // An identifier ending in R is not a raw string prefix.
+        XCTAssertEqual(tokens(#"FOOBAR"(notRaw)"; x = @"ordinary";"#), ["ordinary"])
+    }
+
     /// The compiler joins adjacent literals into one string.
     func testAdjacentLiteralsAreOneString() {
         XCTAssertEqual(tokens(#"NSClassFromString(@"Renamed" @"Class");"#), ["RenamedClass"])

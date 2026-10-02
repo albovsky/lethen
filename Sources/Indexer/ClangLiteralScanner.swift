@@ -41,7 +41,9 @@ enum ClangLiteralScanner {
 
     /// Scans the file's bytes, so a byte that is not UTF-8 in a comment or a prose string costs only
     /// that literal, never the rest of the file.
-    static func tokens(in bytes: [UInt8]) -> Set<String> {
+    static func tokens(in source: [UInt8]) -> Set<String> {
+        // The preprocessor removes every backslash-newline pair before it sees tokens.
+        let bytes = splicingLines(source)
         var tokens: Set<String> = []
         var index = 0
         var atLineStart = true
@@ -67,6 +69,11 @@ enum ClangLiteralScanner {
                 index = endOfLine(from: index, in: bytes)
             case slash where bytes[safe: index + 1] == star:
                 index = endOfBlockComment(from: index + 2, in: bytes)
+            case quote where rawStringDelimiter(before: index, in: bytes) != nil:
+                // A C++ raw string (`R"(name)"`, `R"x(name)x"`) has no escapes and may span lines.
+                let (literal, next) = rawStringLiteral(from: index + 1, delimiter: rawStringDelimiter(before: index, in: bytes) ?? [], in: bytes)
+                add(literal)
+                index = next
             case quote:
                 // Adjacent literals (`@"Renamed" @"Class"`) are one string to the compiler.
                 var (literal, next) = stringLiteral(from: index + 1, in: bytes)
@@ -95,9 +102,33 @@ enum ClangLiteralScanner {
 
     // MARK: - Private
 
-    /// The index after the opening quote of a string literal that directly follows the one ending before
-    /// `index`, with only whitespace, comments, and an optional `@` between them, or `nil`.
-    private static func adjacentLiteralStart(from index: Int, in bytes: [UInt8]) -> Int? {
+    /// The bytes with every backslash-newline pair removed, as the preprocessor splices lines.
+    private static func splicingLines(_ bytes: [UInt8]) -> [UInt8] {
+        guard bytes.contains(backslash) else { return bytes }
+
+        var result: [UInt8] = []
+        result.reserveCapacity(bytes.count)
+        var index = 0
+        while index < bytes.count {
+            if bytes[index] == backslash {
+                if bytes[safe: index + 1] == newline {
+                    index += 2
+                    continue
+                }
+                if bytes[safe: index + 1] == UInt8(ascii: "\r"), bytes[safe: index + 2] == newline {
+                    index += 3
+                    continue
+                }
+            }
+            result.append(bytes[index])
+            index += 1
+        }
+        return result
+    }
+
+    /// The index of the first byte after `index` that is not whitespace or a comment, which the
+    /// preprocessor turns into whitespace.
+    private static func skippingBlanksAndComments(from index: Int, in bytes: [UInt8]) -> Int {
         var cursor = index
         while cursor < bytes.count {
             if isBlank(bytes[cursor]) || bytes[cursor] == newline {
@@ -110,7 +141,13 @@ enum ClangLiteralScanner {
                 break
             }
         }
+        return cursor
+    }
 
+    /// The index after the opening quote of a string literal that directly follows the one ending before
+    /// `index`, with only whitespace, comments, and an optional `@` between them, or `nil`.
+    private static func adjacentLiteralStart(from index: Int, in bytes: [UInt8]) -> Int? {
+        var cursor = skippingBlanksAndComments(from: index, in: bytes)
         if bytes[safe: cursor] == at { cursor += 1 }
 
         return bytes[safe: cursor] == quote ? cursor + 1 : nil
@@ -260,21 +297,76 @@ enum ClangLiteralScanner {
     /// The selector in the parentheses after `@selector`, without whitespace, and the index after it.
     /// `nil` when no parenthesis follows. A selector that reaches the end of its line unclosed ends there.
     private static func selectorName(from index: Int, in bytes: [UInt8]) -> (name: [UInt8]?, next: Int) {
-        var cursor = index
-        while cursor < bytes.count, isBlank(bytes[cursor]) {
-            cursor += 1
-        }
-
+        var cursor = skippingBlanksAndComments(from: index, in: bytes)
         guard bytes[safe: cursor] == openParen else { return (nil, cursor) }
 
         var name: [UInt8] = []
         cursor += 1
-        while cursor < bytes.count, bytes[cursor] != closeParen, bytes[cursor] != newline {
-            if !isBlank(bytes[cursor]) { name.append(bytes[cursor]) }
+        while cursor < bytes.count, bytes[cursor] != closeParen {
+            if bytes[cursor] == slash, bytes[safe: cursor + 1] == slash || bytes[safe: cursor + 1] == star {
+                cursor = skippingBlanksAndComments(from: cursor, in: bytes)
+                continue
+            }
+            if bytes[cursor] == newline, !name.isEmpty, cursor + 1 < bytes.count, bytes[cursor + 1] != newline {
+                // A selector broken across lines is still one selector; a blank line means it was never closed.
+                cursor += 1
+                continue
+            }
+            if bytes[cursor] == newline { break }
 
+            if !isBlank(bytes[cursor]) { name.append(bytes[cursor]) }
             cursor += 1
         }
 
         return (name, cursor)
+    }
+
+    /// The delimiter of a C++ raw string whose opening quote is at `index` (`R"`, `LR"`, `u8R"`, `uR"`,
+    /// `UR"`), or `nil` when the quote opens an ordinary string. The delimiter is what stands between the
+    /// quote and the opening parenthesis, up to 16 bytes.
+    private static func rawStringDelimiter(before index: Int, in bytes: [UInt8]) -> [UInt8]? {
+        guard index > 0, bytes[index - 1] == UInt8(ascii: "R") else { return nil }
+
+        let prefixEnd = index - 1
+        let prefixStart = max(0, prefixEnd - 2)
+        let prefix = Array(bytes[prefixStart ..< prefixEnd])
+        let before = prefixStart > 0 ? bytes[prefixStart - 1] : nil
+        let validPrefixes: [[UInt8]] = [[], Array("L".utf8), Array("u".utf8), Array("U".utf8), Array("u8".utf8)]
+        let hasValidPrefix = validPrefixes.contains { candidate in
+            prefix.suffix(candidate.count).elementsEqual(candidate)
+                && !isIdentifierByte(prefix.dropLast(candidate.count).last ?? before ?? UInt8(ascii: " "))
+        }
+        guard hasValidPrefix else { return nil }
+
+        var cursor = index + 1
+        var delimiter: [UInt8] = []
+        while cursor < bytes.count, bytes[cursor] != openParen, delimiter.count <= 16 {
+            guard !isBlank(bytes[cursor]), bytes[cursor] != newline, bytes[cursor] != backslash, bytes[cursor] != quote else { return nil }
+
+            delimiter.append(bytes[cursor])
+            cursor += 1
+        }
+
+        return bytes[safe: cursor] == openParen ? delimiter : nil
+    }
+
+    /// The text of a raw string whose opening quote precedes `index`, and the index after its closing
+    /// `)delimiter"`, or the end of the file when it never closes.
+    private static func rawStringLiteral(from index: Int, delimiter: [UInt8], in bytes: [UInt8]) -> (text: [UInt8], next: Int) {
+        let start = index + delimiter.count + 1
+        let terminator = [closeParen] + delimiter + [quote]
+        var cursor = start
+        while cursor + terminator.count <= bytes.count {
+            if bytes[cursor ..< cursor + terminator.count].elementsEqual(terminator) {
+                return (Array(bytes[start ..< cursor]), cursor + terminator.count)
+            }
+            cursor += 1
+        }
+        return (Array(bytes[min(start, bytes.count)...]), bytes.count)
+    }
+
+    private static func isIdentifierByte(_ byte: UInt8) -> Bool {
+        (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z")) || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
+            || (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9")) || byte == UInt8(ascii: "_")
     }
 }
