@@ -344,7 +344,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                 .filter { $0.kind == .varInstance && classify(base, $0) != .skip }
                 .compactMap(\.declaredType)
             for (parameter, arguments) in zip(parameters, reference.genericArguments)
-                where storedTypes.contains(where: { Self.type($0, reaches: parameter.name) })
+                where storedTypes.contains(where: { type($0, reaches: parameter.name, classify: classify) })
             {
                 result.formUnion(arguments)
             }
@@ -352,9 +352,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         return result
     }
 
-    /// Whether a declared type is the generic parameter or reaches it through only the standard containers
-    /// (`Optional`, `Array`, `ContiguousArray`, `Set` and `Dictionary`, spelled out or as `?`, `!`, `[]` and `[:]`).
-    static func type(_ declared: String, reaches parameter: String) -> Bool {
+    /// Whether a declared type is the generic parameter or reaches it through the standard containers (`Optional`,
+    /// `Array`, `ContiguousArray`, `Set` and `Dictionary`, spelled out or as `?`, `!`, `[]` and `[:]`) or through a
+    /// generic struct of the scan that itself stores the matching parameter, such as `Box<T>` storing `T`. A wrapper
+    /// that does not store its parameter does not reach it. Whether the wrapper is itself decoded synthesized is not
+    /// checked, which retains more than strictly necessary.
+    private func type(_ declared: String, reaches parameter: String, classify: (Declaration, Declaration) -> PropertyUse, depth: Int = 0) -> Bool {
         var type = declared.filter { !$0.isWhitespace }
         while let last = type.last, last == "?" || last == "!" {
             type.removeLast()
@@ -367,11 +370,30 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         }
         if type.hasPrefix("["), type.hasSuffix("]") {
             let inner = String(type.dropFirst().dropLast())
-            return topLevelParts(of: inner, separator: ":").contains { Self.type($0, reaches: parameter) }
+            return Self.topLevelParts(of: inner, separator: ":").contains { self.type($0, reaches: parameter, classify: classify, depth: depth) }
         }
-        if let open = type.firstIndex(of: "<"), type.hasSuffix(">"), transparentContainers.contains(String(type[..<open])) {
-            let inner = String(type[type.index(after: open)...].dropLast())
-            return topLevelParts(of: inner, separator: ",").contains { Self.type($0, reaches: parameter) }
+        guard let open = type.firstIndex(of: "<"), type.hasSuffix(">") else { return false }
+
+        let name = String(type[..<open])
+        let arguments = Self.topLevelParts(of: String(type[type.index(after: open)...].dropLast()), separator: ",")
+        if Self.transparentContainers.contains(name) {
+            return arguments.contains { self.type($0, reaches: parameter, classify: classify, depth: depth) }
+        }
+
+        // A user's generic wrapper reaches the parameter when an argument does and the wrapper stores its own
+        // matching parameter.
+        guard depth < 4 else { return false }
+
+        let simpleName = name.split(separator: ".").last.map(String.init) ?? name
+        for wrapper in graph.declarations(ofKind: .struct) where wrapper.name == simpleName {
+            let parameters = wrapper.declarations.filter { $0.kind == .genericTypeParam }.sorted()
+            let stored = wrapper.declarations.filter { $0.kind == .varInstance && classify(wrapper, $0) != .skip }.compactMap(\.declaredType)
+            for (own, argument) in zip(parameters, arguments)
+                where self.type(argument, reaches: parameter, classify: classify, depth: depth + 1)
+                && stored.contains(where: { self.type($0, reaches: own.name, classify: classify, depth: depth + 1) })
+            {
+                return true
+            }
         }
         return false
     }
@@ -422,10 +444,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         let extensions = graph.extensions[type] ?? []
         let nested = type.declarations.union(extensions.flatMap(\.declarations))
         if let codingKeys = nested.first(where: { $0.name == "CodingKeys" && !$0.isImplicit && [.enum, .typealias].contains($0.kind) }) {
-            guard let keys = codingKeyEnum(for: codingKeys) else { return .skip }
+            // A typealias whose target is outside the scan cannot be inspected: every property stays eligible.
+            let external = codingKeys.kind == .typealias && resolveTypealias(codingKeys).map { $0.declaration == nil } == true
+            if !external {
+                guard let keys = codingKeyEnum(for: codingKeys) else { return .skip }
 
-            if !keys.declarations.contains(where: { $0.kind == .enumelement && $0.name == property.name }) {
-                return .skip
+                if !keys.declarations.contains(where: { $0.kind == .enumelement && $0.name == property.name }) {
+                    return .skip
+                }
             }
         }
 

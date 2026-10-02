@@ -444,6 +444,27 @@ struct FixtureStruct312AliasPageItem: Decodable {
     let aliasPageItemDecoded: Int
 }
 
+struct FixtureStruct312ExternalKeys: Decodable {
+    // The keys come from an unscanned module, so which properties they name is unknown: every eligible property is
+    // retained, and no omitted-key control is possible.
+    typealias CodingKeys = FixtureExternalKeys
+
+    let externalKept: Int
+}
+
+struct FixtureStruct312Holder2<T: Decodable>: Decodable {
+    let held: T
+}
+
+struct FixtureStruct312NestedOuter<T: Decodable>: Decodable {
+    let box: FixtureStruct312Holder2<T>
+}
+
+struct FixtureStruct312NestedItem: Decodable {
+    // Decoded through a wrapper that stores a wrapper that stores the parameter.
+    let nestedItemDecoded: Int
+}
+
 struct FixtureStruct312LabeledA: Decodable {
     let labeledADecoded: Int
 }
@@ -522,6 +543,10 @@ public class FixtureClass312Retainer {
         _ = try JSONDecoder().decode(FixtureStruct312Observed.self, from: data)
         _ = FixtureStruct312AliasPageItem(aliasPageItemDecoded: 1)
         _ = try JSONDecoder().decode(FixtureAlias312GenericPayload<FixtureStruct312AliasPageItem>.self, from: data)
+        _ = FixtureStruct312ExternalKeys(externalKept: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312ExternalKeys.self, from: data)
+        _ = FixtureStruct312NestedItem(nestedItemDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312NestedOuter<FixtureStruct312NestedItem>.self, from: data)
         labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
     }
 

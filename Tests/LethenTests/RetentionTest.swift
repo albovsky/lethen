@@ -2474,6 +2474,12 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct312AliasPageItem")) {
                 self.assertNotAssignOnlyProperty(.varInstance("aliasPageItemDecoded"))
             }
+            assertReferenced(.struct("FixtureStruct312ExternalKeys")) {
+                self.assertNotAssignOnlyProperty(.varInstance("externalKept"))
+            }
+            assertReferenced(.struct("FixtureStruct312NestedItem")) {
+                self.assertNotAssignOnlyProperty(.varInstance("nestedItemDecoded"))
+            }
             assertReferenced(.struct("FixtureStruct312LabeledA")) {
                 self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))
             }
