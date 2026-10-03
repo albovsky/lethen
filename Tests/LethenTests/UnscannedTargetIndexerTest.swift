@@ -6,7 +6,7 @@
     import SystemPackage
     import XCTest
 
-    /// The names an unscanned target's own Swift files use reach the graph with sites relative to the project
+    /// The names an unscanned target's own Swift files use reach the confidence evidence with sites relative to the project
     /// root; a file the target shares with a scanned target is indexed there and is not read again.
     final class UnscannedTargetIndexerTest: XCTestCase {
         private var root: FilePath!
@@ -35,12 +35,10 @@
             let configuration = Configuration()
             configuration.projectRoot = root
             let logger = Logger(quiet: true, verbose: false, colorMode: .never)
-            let graph = SourceGraph(configuration: configuration, logger: logger)
             let evidence = ConfidenceEvidenceCollector()
 
             try UnscannedTargetIndexer(
                 targets: [UnscannedTarget(name: "WidgetsExtension", swiftSourceFiles: [own, shared], sharedSourceFiles: [shared])],
-                graph: SourceGraphMutex(graph: graph),
                 evidence: evidence,
                 logger: logger.contextualized(with: "test"),
                 configuration: configuration
@@ -65,12 +63,10 @@
             let configuration = Configuration()
             configuration.projectRoot = root
             let logger = Logger(quiet: true, verbose: false, colorMode: .never)
-            let graph = SourceGraph(configuration: configuration, logger: logger)
             let evidence = ConfidenceEvidenceCollector()
 
             try UnscannedTargetIndexer(
                 targets: [UnscannedTarget(name: "T", swiftSourceFiles: [own, root.appending("Missing.swift")], sharedSourceFiles: [])],
-                graph: SourceGraphMutex(graph: graph),
                 evidence: evidence,
                 logger: logger.contextualized(with: "test"),
                 configuration: configuration

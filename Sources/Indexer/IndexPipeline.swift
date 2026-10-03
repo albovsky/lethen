@@ -60,7 +60,6 @@ public struct IndexPipeline {
         if !plan.unscannedTargets.isEmpty {
             try UnscannedTargetIndexer(
                 targets: plan.unscannedTargets,
-                graph: graph,
                 evidence: evidence,
                 logger: logger,
                 configuration: configuration

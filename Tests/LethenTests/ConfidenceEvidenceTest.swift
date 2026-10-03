@@ -31,26 +31,6 @@ final class ConfidenceEvidenceTest: XCTestCase {
         XCTAssertNil(names?.testable["Other"])
     }
 
-    func testMergeOfTwoEvidenceValues() {
-        var a = ConfidenceEvidence()
-        a.addLiteralTokens(["x"])
-        a.clangCoverage = ClangCoverage(unindexedFiles: [])
-        var b = ConfidenceEvidence()
-        b.addLiteralTokens(["y"])
-        b.addSkippedBranchNames(NameSites(names: ["N": "s"]), modules: ["M"])
-        b.addUnscannedTargetNames(NameSites(names: ["W": "E.swift:1"]), target: "Ext", sharedSourceFiles: [FilePath("/p/W.swift")], testableModules: ["App"])
-        b.clangCoverage = ClangCoverage(unindexedFiles: [FilePath("/p/other.m")])
-        a.merge(b)
-        XCTAssertEqual(a.literalTokens, ["x", "y"])
-        XCTAssertEqual(a.skippedBranches["M"]?.names["N"], "s")
-        XCTAssertEqual(a.unscannedTargets["Ext"]?.testable["App"]?.names["W"], "E.swift:1")
-        XCTAssertEqual(a.clangCoverage, ClangCoverage(unindexedFiles: []), "the receiver's coverage wins")
-
-        var empty = ConfidenceEvidence()
-        empty.merge(b)
-        XCTAssertEqual(empty.clangCoverage, b.clangCoverage, "coverage is taken when the receiver has none")
-    }
-
     func testCollectorIsSafeUnderConcurrentAdds() {
         let collector = ConfidenceEvidenceCollector()
         DispatchQueue.concurrentPerform(iterations: 200) { i in

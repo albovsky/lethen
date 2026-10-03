@@ -48,22 +48,4 @@ public struct ConfidenceEvidence: Equatable {
     var hasNameEvidence: Bool {
         !unscannedTargets.isEmpty || !skippedBranches.isEmpty
     }
-
-    /// Unions the evidence, keeping the smallest site for each name and this value's clang coverage unless it has none.
-    public mutating func merge(_ other: ConfidenceEvidence) {
-        literalTokens.formUnion(other.literalTokens)
-        for (module, sites) in other.skippedBranches {
-            skippedBranches[module, default: NameSites()].merge(sites)
-        }
-        for (target, names) in other.unscannedTargets {
-            var entry = unscannedTargets[target] ?? UnscannedTargetNames()
-            entry.all.merge(names.all)
-            for (module, sites) in names.testable {
-                entry.testable[module, default: NameSites()].merge(sites)
-            }
-            entry.sharedSourceFiles.formUnion(names.sharedSourceFiles)
-            unscannedTargets[target] = entry
-        }
-        if clangCoverage == nil { clangCoverage = other.clangCoverage }
-    }
 }

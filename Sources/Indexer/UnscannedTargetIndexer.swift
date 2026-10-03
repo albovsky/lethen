@@ -15,14 +15,12 @@ import SystemPackage
 /// is not seen.
 final class UnscannedTargetIndexer: Indexer {
     private let targets: [UnscannedTarget]
-    private let graph: SourceGraphMutex
     private let evidence: ConfidenceEvidenceCollector
     private let logger: ContextualLogger
     private let projectRoot: FilePath
 
-    required init(targets: [UnscannedTarget], graph: SourceGraphMutex, evidence: ConfidenceEvidenceCollector, logger: ContextualLogger, configuration: Configuration) {
+    required init(targets: [UnscannedTarget], evidence: ConfidenceEvidenceCollector, logger: ContextualLogger, configuration: Configuration) {
         self.targets = targets
-        self.graph = graph
         self.evidence = evidence
         self.logger = logger.contextualized(with: "unscanned-target")
         projectRoot = configuration.projectRoot

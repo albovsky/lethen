@@ -2,7 +2,7 @@
 
 ##### Breaking
 
-- None.
+- Library clients of `PeripheryKit` and its `Indexer` module: confidence evidence moved out of `SourceGraph`, so `IndexPipeline.perform()` returns an `IndexResult` (with `evidence`) instead of the line count, and `ScanResultBuilder.build(for:configuration:)` takes a `ConfidenceAssessor` built from that evidence, `ScanResultBuilder.build(for:configuration:confidence:)`. A source-compatible overload would report every declaration as `certain`, so the old entry point is not kept. The command line and its output are unchanged.
 
 ##### Enhancements
 
