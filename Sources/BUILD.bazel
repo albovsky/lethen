@@ -251,17 +251,11 @@ swift_library(
         "Indexer/ObjCReferenceIndexer.swift",
         "Indexer/SourceFileCollector.swift",
         "Indexer/SwiftIndexer.swift",
-<<<<<<< HEAD
         "Indexer/SyntaxAnalysis/EnumCasePatternAnalysis.swift",
         "Indexer/SyntaxAnalysis/IndexedFile.swift",
         "Indexer/SyntaxAnalysis/SyntaxAnalysis.swift",
-<<<<<<< HEAD
         "Indexer/SyntaxAnalysis/ValueUseAnalysis.swift",
-=======
-=======
         "Indexer/UnscannedTargetIndexer.swift",
->>>>>>> origin/master
->>>>>>> refactor/syntax-analysis-enum-case-pattern
         "Indexer/XCDataModelIndexer.swift",
         "Indexer/XCDataModelParser.swift",
         "Indexer/XCMappingModelIndexer.swift",
