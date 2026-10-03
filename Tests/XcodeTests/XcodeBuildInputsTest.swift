@@ -93,6 +93,32 @@ final class XcodeBuildInputsTest: XCTestCase {
         XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed), file)
     }
 
+    /// The walk does not follow symbolic links, so a listed file is read through them: its time is the one of the file
+    /// the link leads to, whether the link is the file or a directory above it.
+    func testListedFileBehindASymbolicLinkIsCheckedThroughIt() throws {
+        let other = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen other \(UUID().uuidString)").path)
+        try FileManager.default.createDirectory(at: other.url, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: other.url) }
+        let target = other.appending("Target.xcconfig")
+        try Data().write(to: target.url)
+        try FileManager.default.createSymbolicLink(atPath: root.appending("Linked").string, withDestinationPath: other.string)
+        try FileManager.default.createSymbolicLink(atPath: root.appending("Link.xcconfig").string, withDestinationPath: target.string)
+        try settle()
+        // settle() follows links, so the links themselves are dated here.
+        for link in ["Linked", "Link.xcconfig"] {
+            var times = [timeval(tv_sec: Int(before.timeIntervalSince1970), tv_usec: 0), timeval(tv_sec: Int(before.timeIntervalSince1970), tv_usec: 0)]
+            XCTAssertEqual(lutimes(root.appending(link).string, &times), 0)
+        }
+        try FileManager.default.setAttributes([.modificationDate: before], ofItemAtPath: target.string)
+        let files: Set = [root.appending("Linked/Target.xcconfig"), root.appending("Link.xcconfig")]
+        XCTAssertNil(XcodeBuildInputs.firstChange(roots: [root], files: files, started: started, completed: completed))
+
+        try FileManager.default.setAttributes([.modificationDate: after], ofItemAtPath: target.string)
+        for file in files {
+            XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed), file)
+        }
+    }
+
     func testVersionControlBuildOutputAndUserStateAreIgnored() throws {
         try write(".git/index")
         try write(".build/debug/App.swift")

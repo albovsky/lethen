@@ -18,7 +18,7 @@ public enum XcodeBuildInputs {
     /// enumerated, and so does one whose time equals the limit, since file times are coarse.
     ///
     /// Version control and build directories, `.DS_Store`, and the per-user state in `xcuserdata` are skipped, except
-    /// for the schemes in it, which choose what a build compiles. Symbolic links are not followed.
+    /// for the schemes in it, which choose what a build compiles. Symbolic links under a root are not followed; a listed file is read through them.
     public static func firstChange(roots: [FilePath], files: Set<FilePath>, started: Date, completed: Date) -> FilePath? {
         for root in roots {
             if let change = firstChange(under: root, started: started, completed: completed) {
@@ -28,7 +28,9 @@ public enum XcodeBuildInputs {
 
         for file in files.sorted() {
             let limit = compiledExtensions.contains(file.extension?.lowercased() ?? "") ? completed : started
-            guard let date = modificationDate(of: file), date < limit else { return file }
+            // A listed file's time is the one of the file a symbolic link leads to, not of the link.
+            let resolved = FilePath(file.url.resolvingSymlinksInPath().path)
+            guard let date = modificationDate(of: resolved), date < limit else { return file }
         }
 
         return nil

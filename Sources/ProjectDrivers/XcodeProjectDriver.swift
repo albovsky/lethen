@@ -379,9 +379,9 @@
 
             let kinds = ProjectFileKind.allCases
             let roots = ([project.sourceRoot] + project.projectSourceRoots).map { $0.lexicallyNormalized() }.removingDuplicates()
-            // Declared files outside every root, such as an external .xcconfig, are not reached by the walk.
-            let declared = project.declaredInputFiles.filter { file in !roots.contains { file.starts(with: $0) } }
-            let files = project.targets.flatMapSet { target in kinds.flatMapSet { target.files(kind: $0) } }.union(declared)
+            // Declared files are compared themselves, inside the roots or not: the walk does not follow symlinks, so
+            // a file behind a symlinked directory, or outside every root like an external .xcconfig, is not reached by it.
+            let files = project.targets.flatMapSet { target in kinds.flatMapSet { target.files(kind: $0) } }.union(project.declaredInputFiles)
             return buildConfigurations.filter { buildConfiguration in
                 guard let dates = try? xcodebuild.completedBuildDates(
                     project: project,

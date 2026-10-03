@@ -292,6 +292,29 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         })
     }
 
+    /// The walk of the project's directory does not follow symlinks, and an edit to a file in a symlink's target
+    /// changes neither the link nor a directory, so a declared file behind a symlinked directory is compared itself.
+    func testEditedXcconfigBehindASymlinkedDirectoryBuilds() throws {
+        let xcconfig = try externalFile("Extra.xcconfig", contents: "SWIFT_ACTIVE_COMPILATION_CONDITIONS = A\n")
+        try FileManager.default.createSymbolicLink(
+            atPath: root.appending("ConfigurationsProject/Linked").string,
+            withDestinationPath: xcconfig.removingLastComponent().string
+        )
+        try editProject { text in
+            text.replacingOccurrences(
+                of: "/* Begin PBXFileReference section */\n",
+                with: "/* Begin PBXFileReference section */\n\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* Extra.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Extra.xcconfig; path = Linked/Extra.xcconfig; sourceTree = \"<group>\"; };\n"
+            ).replacingOccurrences(
+                of: "\t\t\t\t3C57B168ABF45A4AEDE2A1AB /* Products */,\n\t\t\t);\n\t\t\tsourceTree",
+                with: "\t\t\t\t3C57B168ABF45A4AEDE2A1AB /* Products */,\n\t\t\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* Extra.xcconfig */,\n\t\t\t);\n\t\t\tsourceTree"
+            )
+        }
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "SWIFT_ACTIVE_COMPILATION_CONDITIONS = B\n".write(to: xcconfig.url, atomically: false, encoding: .utf8)
+        })
+    }
+
     /// A declared file that no longer exists is a change, not a file to forget.
     func testDeletedXcconfigOutsideTheScannedDirectoryBuilds() throws {
         let xcconfig = try declareExternalXcconfig()
