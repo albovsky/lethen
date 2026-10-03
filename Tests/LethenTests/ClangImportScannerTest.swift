@@ -151,12 +151,22 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("@import A;\n/* periphery:ignore:all */\n").map(\.commentCommands), [[.ignoreAll]])
     }
 
-    /// The header name of an include is skipped, but a comment after it is still a comment.
+    /// The header name of an include is skipped, but a comment after it is still a comment, and a
+    /// block comment that starts on an include line continues past it.
     func testFileWideIgnoreCommandOnAnIncludeLine() {
         let found = imports("#import \"Header.h\" // periphery:ignore:all\n@import A;\n")
 
         XCTAssertEqual(found.map(\.commentCommands), [[.ignoreAll]])
         XCTAssertEqual(imports("#include <A//ignore:all.h>\n@import A;\n").map(\.commentCommands), [[]])
+        XCTAssertEqual(imports("#include <A.h> /* periphery:ignore:all\n */\n@import A;\n").map(\.commentCommands), [[.ignoreAll]])
+        XCTAssertEqual(imports("#include <A.h> /* see\n@import Other;\n*/\n@import A;\n").map(\.module), ["A"])
+    }
+
+    /// A macro's replacement list imports nothing until the macro is used, which the index shows.
+    func testImportsInMacroDefinitionsAreNotFound() {
+        XCTAssertEqual(imports("#define OPTIONAL_IMPORT @import A;\n@import B;\n").map(\.module), ["B"])
+        XCTAssertEqual(imports("#define S \"\\\" @import X; \"\n@import B;\n").map(\.module), ["B"])
+        XCTAssertEqual(imports("#pragma mark - @import X;\n@import B; // periphery:ignore\n").map(\.commentCommands), [[.ignore]])
     }
 
     func testIgnoreCommandOnTheSameLine() throws {

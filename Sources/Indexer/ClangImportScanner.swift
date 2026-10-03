@@ -40,16 +40,9 @@ enum ClangImportScanner {
                 } else if directive == "endif" {
                     conditionalDepth = max(0, conditionalDepth - 1)
                 }
-                // A header name such as `<A//B.h>` is not code, and other directives are scanned as code.
-                // A comment after the header name still is one.
-                if ClangLiteralScanner.isIncludeDirective(at: index, in: bytes) {
-                    let end = ClangLiteralScanner.endOfLine(from: index, in: bytes)
-                    ignoresAll = ignoresAll || trailingComment(from: index, to: end, in: bytes)
-                        .map { CommentCommand.parseCommand(inComment: $0) == .ignoreAll } ?? false
-                    index = end
-                } else {
-                    index += 1
-                }
+                // The rest of a directive is not code: a header name such as `<A//B.h>`, or a macro's
+                // replacement list, which imports nothing until the macro is used. Its comments still are.
+                index = endOfDirective(from: index, in: bytes, isInclude: ClangLiteralScanner.isIncludeDirective(at: index, in: bytes), ignoresAll: &ignoresAll)
             case ClangLiteralScanner.slash where bytes[safe: index + 1] == ClangLiteralScanner.slash:
                 let end = ClangLiteralScanner.endOfLine(from: index, in: bytes)
                 ignoresAll = ignoresAll || CommentCommand.parseCommand(inComment: text(bytes[index ..< end])) == .ignoreAll
@@ -110,26 +103,38 @@ enum ClangImportScanner {
         String(bytes: slice, encoding: .utf8) ?? ""
     }
 
-    /// The comment that follows the header name of an include directive on its line, or `nil`.
-    private static func trailingComment(from index: Int, to end: Int, in bytes: [UInt8]) -> String? {
-        var cursor = index
-        var inHeaderName: UInt8?
-        while cursor + 1 < end {
+    /// The index of the newline that ends the directive at `index`, or the end of the file. String and
+    /// character literals, and an include's `<header name>`, are skipped as such, a `//` comment ends
+    /// the directive, and a block comment continues past the newlines it spans. Each comment is read
+    /// for a file-wide ignore command.
+    private static func endOfDirective(from index: Int, in bytes: [UInt8], isInclude: Bool, ignoresAll: inout Bool) -> Int {
+        var cursor = index + 1
+        var afterName = false
+        while cursor < bytes.count {
             let byte = bytes[cursor]
-            if let closing = inHeaderName {
-                if byte == closing { inHeaderName = nil }
-            } else if byte == ClangLiteralScanner.quote {
-                inHeaderName = ClangLiteralScanner.quote
-            } else if byte == UInt8(ascii: "<") {
-                inHeaderName = UInt8(ascii: ">")
-            } else if byte == ClangLiteralScanner.slash,
-                      bytes[cursor + 1] == ClangLiteralScanner.slash || bytes[cursor + 1] == ClangLiteralScanner.star
-            {
-                return text(bytes[cursor ..< end])
+            switch byte {
+            case ClangLiteralScanner.newline:
+                return cursor
+            case ClangLiteralScanner.slash where bytes[safe: cursor + 1] == ClangLiteralScanner.slash:
+                let end = ClangLiteralScanner.endOfLine(from: cursor, in: bytes)
+                ignoresAll = ignoresAll || CommentCommand.parseCommand(inComment: text(bytes[cursor ..< end])) == .ignoreAll
+                return end
+            case ClangLiteralScanner.slash where bytes[safe: cursor + 1] == ClangLiteralScanner.star:
+                let end = ClangLiteralScanner.endOfBlockComment(from: cursor + 2, in: bytes)
+                ignoresAll = ignoresAll || CommentCommand.parseCommand(inComment: text(bytes[cursor ..< end])) == .ignoreAll
+                cursor = end
+            case ClangLiteralScanner.quote:
+                cursor = ClangLiteralScanner.anyStringLiteral(openingQuoteAt: cursor, in: bytes).next
+            case ClangLiteralScanner.apostrophe:
+                cursor = ClangLiteralScanner.endOfCharacterLiteral(from: cursor + 1, in: bytes)
+            case UInt8(ascii: "<") where isInclude && afterName:
+                cursor = (bytes[cursor...].firstIndex(of: UInt8(ascii: ">")) ?? bytes.count - 1) + 1
+            default:
+                afterName = afterName || ClangLiteralScanner.isIdentifierByte(byte)
+                cursor += 1
             }
-            cursor += 1
         }
-        return nil
+        return bytes.count
     }
 
     /// The lowercase name after the `#` at `index`, such as `ifdef`, or an empty string. Blanks and
