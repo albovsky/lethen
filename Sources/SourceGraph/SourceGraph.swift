@@ -337,8 +337,8 @@ public final class SourceGraph {
     ])
 
     /// Kinds a file of an unscanned target can name: the skipped-branch kinds, subscripts, which such a file
-    /// spells as `store[key]`, and macros, spelled `#makeWidget()`.
-    private static let nameEvidenceKinds = skippedBranchKinds.union([.functionSubscript, .macro])
+    /// spells as `store[key]`, macros, spelled `#makeWidget()`, and associated types, spelled `T.Item`.
+    private static let nameEvidenceKinds = skippedBranchKinds.union([.functionSubscript, .macro, .associatedtype])
 
     /// The names a runtime lookup can spell for the declaration: its Swift base name, the Objective-C
     /// name of an exposed declaration when `@objc(name)` differs from it, and the setter selector of an

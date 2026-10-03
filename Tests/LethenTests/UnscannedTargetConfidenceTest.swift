@@ -153,6 +153,20 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(graph.assessConfidence(of: member).confidence, .certain)
     }
 
+    /// `T.Item` names the associated type through a type, so the protocol must be named too.
+    func testAssociatedTypesAreMatchedThroughTheirProtocol() {
+        let graph = makeGraph()
+        let protocolDeclaration = declaration("P", kind: .protocol, in: otherFile, accessibility: .public)
+        let item = declaration("Item", kind: .associatedtype, in: otherFile, accessibility: .public, parent: protocolDeclaration)
+        let other = declaration("Element", kind: .associatedtype, in: otherFile, accessibility: .public, parent: protocolDeclaration)
+        use(graph, ["Item"], members: ["Item"])
+        XCTAssertEqual(graph.assessConfidence(of: item).confidence, .certain)
+
+        use(graph, ["P"])
+        XCTAssertEqual(graph.assessConfidence(of: item).confidence, .likely)
+        XCTAssertEqual(graph.assessConfidence(of: other).confidence, .certain, "The control: not named")
+    }
+
     func testMacrosAreMatchedByName() {
         let graph = makeGraph()
         use(graph, ["makeWidget"])
