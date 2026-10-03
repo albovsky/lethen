@@ -372,11 +372,75 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         try assertBuilds(afterPlantedBuildDoing: {})
     }
 
-    /// A phase set to run on every build can write anything, and no file time says it did not.
-    func testAlwaysOutOfDateRunScriptNeverReuses() throws {
+    /// A phase set to run on every build only rewrites what it declares, which is compared like any other file: with
+    /// no declared outputs it cannot write a source, so it no longer disables reuse. This replaces the rule that any
+    /// such phase did.
+    func testAlwaysOutOfDateRunScriptWithNoDeclaredOutputsReuses() throws {
         try addScriptPhase(alwaysOutOfDate: true)
 
+        try assertReuses()
+    }
+
+    /// An output in a build setting directory could be a source that no walk reaches.
+    func testRunScriptOutputThatIsAnUnresolvableSourceNeverReuses() throws {
+        try addScriptPhase(outputPaths: ["$(DERIVED_FILE_DIR)/Gen.swift"], alwaysOutOfDate: true)
+
         try assertBuilds(afterPlantedBuildDoing: {})
+    }
+
+    /// A phase that copies resources into the product, as Wikipedia's test fixtures phase does, writes no source.
+    func testRunScriptOutputInTheProductDirectoryReuses() throws {
+        try addScriptPhase(outputPaths: ["$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Fixtures"])
+
+        try assertReuses()
+    }
+
+    /// An output outside every checked directory that is a source, though a path Lethen resolves, is out of reach too.
+    func testRunScriptSourceOutputOutsideEveryCheckedDirectoryNeverReuses() throws {
+        try addScriptPhase(outputPaths: ["$(SRCROOT)/../External/Gen.swift"], alwaysOutOfDate: true)
+
+        try assertBuilds(afterPlantedBuildDoing: {})
+    }
+
+    /// A declared output that a scan does not read, or one inside the project's directory, is no obstacle.
+    func testRunScriptOutputsThatAreCheckedOrIrrelevantReuse() throws {
+        try addScriptPhase(outputPaths: ["$(SRCROOT)/ConfigurationsProject/Gen.swift", "$(SRCROOT)/../External/Out.txt"], alwaysOutOfDate: true)
+
+        try assertReuses()
+    }
+
+    /// Localized strings are rewritten by builds and change nothing a scan reads.
+    func testStringsFileRewrittenAfterTheBuildStartedStillReuses() throws {
+        let strings = root.appending("ConfigurationsProject/en.lproj/Localizable.strings")
+        try FileManager.default.createDirectory(atPath: strings.removingLastComponent().string, withIntermediateDirectories: true)
+        try "\"a\" = \"a\";\n".write(to: strings.url, atomically: true, encoding: .utf8)
+
+        try assertReuses(afterPlantedBuildDoing: {
+            try "\"a\" = \"b\";\n".write(to: strings.url, atomically: false, encoding: .utf8)
+        })
+    }
+
+    func testStringsFileAddedStillReuses() throws {
+        try assertReuses(afterPlantedBuildDoing: {
+            let directory = root.appending("ConfigurationsProject/fr.lproj")
+            try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+            try "\"a\" = \"a\";\n".write(to: directory.appending("Localizable.strings").url, atomically: true, encoding: .utf8)
+        })
+    }
+
+    func testSourceDeletedFromTheProjectDirectoryBuilds() throws {
+        try assertBuilds(afterPlantedBuildDoing: {
+            try FileManager.default.removeItem(atPath: root.appending("ConfigurationsProject/ConfigurationsProject/Conditional.swift").string)
+        })
+    }
+
+    func testHeaderRewrittenAfterTheBuildStartedBuilds() throws {
+        let header = root.appending("ConfigurationsProject/ConfigurationsProject/Shared.h")
+        try "int shared(void);\n".write(to: header.url, atomically: true, encoding: .utf8)
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "int shared(void);\nint other(void);\n".write(to: header.url, atomically: false, encoding: .utf8)
+        })
     }
 
     // MARK: - Declared paths
@@ -486,7 +550,7 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
     }
 
     /// Adds a Run Script phase with these inputs to the copy's first target.
-    private func addScriptPhase(inputPaths: [String] = [], inputFileListPaths: [String] = [], alwaysOutOfDate: Bool = false) throws {
+    private func addScriptPhase(inputPaths: [String] = [], inputFileListPaths: [String] = [], outputPaths: [String] = [], alwaysOutOfDate: Bool = false) throws {
         func list(_ paths: [String]) -> String {
             paths.map { "\t\t\t\t\"\($0)\",\n" }.joined()
         }
@@ -513,7 +577,7 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
                     \t\t\toutputFileListPaths = (
                     \t\t\t);
                     \t\t\toutputPaths = (
-                    \t\t\t);
+                    \(list(outputPaths))\t\t\t);
                     \t\t\trunOnlyForDeploymentPostprocessing = 0;
                     \t\t\tshellPath = /bin/sh;
                     \t\t\tshellScript = "true";
@@ -537,6 +601,15 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
 
     /// Plants a completed build of the copy, ages every file, runs `change`, and expects `build()` to run one build.
     private func assertBuilds(afterPlantedBuildDoing change: () throws -> Void, file: StaticString = #filePath, line: UInt = #line) throws {
+        try assertBuildCount(1, afterPlantedBuildDoing: change, file: file, line: line)
+    }
+
+    /// Plants a completed build of the copy, ages every file, runs `change`, and expects `build()` to run none.
+    private func assertReuses(afterPlantedBuildDoing change: () throws -> Void = {}, file: StaticString = #filePath, line: UInt = #line) throws {
+        try assertBuildCount(0, afterPlantedBuildDoing: change, file: file, line: line)
+    }
+
+    private func assertBuildCount(_ expected: Int, afterPlantedBuildDoing change: () throws -> Void, file: StaticString, line: UInt) throws {
         let shell = RecordingShell()
         let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
         let configuration = Self.configuration(["Debug"], buildArguments: buildArguments)
@@ -561,7 +634,7 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: scanned, schemes: Set(schemes))
         try driver.build()
 
-        XCTAssertEqual(shell.streamed.count, 1, "\(shell.streamed)", file: file, line: line)
+        XCTAssertEqual(shell.streamed.count, expected, "\(shell.streamed)", file: file, line: line)
     }
 
     private struct Builds {

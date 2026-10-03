@@ -115,6 +115,14 @@ public final class Xcodebuild {
         }
 
         try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+        // The tracked files are listed before the start mark, so one added after the list but before the mark is
+        // still a difference from it; a project whose files cannot be identified records none, and is never reused.
+        try directory.appending(Self.buildInputsManifest).removeIfPresent()
+        if let inputs = XcodeBuildInputs.scanInputs(of: project) {
+            let paths = XcodeBuildInputs.trackedPaths(roots: inputs.roots, files: inputs.files).map(\.string).sorted()
+            try Self.manifestEncoder.encode(paths).write(to: directory.appending(Self.buildInputsManifest).url)
+        }
+
         // Written before anything is built, so no file the build reads can change after the mark without being newer.
         try Data().write(to: directory.appending(Self.startedBuildMarker).url)
     }
@@ -197,12 +205,36 @@ public final class Xcodebuild {
         return (started, completed)
     }
 
+    /// The tracked files `beginBuild` listed for the last build of this DerivedData directory, or `nil` when it left
+    /// none, as a build by an earlier Lethen does.
+    public func recordedBuildInputs(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws -> Set<FilePath>? {
+        let manifest = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            .appending(Self.buildInputsManifest)
+        guard let data = FileManager.default.contents(atPath: manifest.string),
+              let paths = try? JSONDecoder().decode([String].self, from: data)
+        else { return nil }
+
+        return Set(paths.map { FilePath($0) })
+    }
+
     private static func modificationDate(of path: FilePath) -> Date? {
         try? FileManager.default.attributesOfItem(atPath: path.string)[.modificationDate] as? Date
     }
 
     static let completedBuildMarker = "lethen-build-completed"
     static let startedBuildMarker = "lethen-build-started"
+    static let buildInputsManifest = "lethen-build-inputs.json"
+
+    private static let manifestEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        return encoder
+    }()
 
     /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
     /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can

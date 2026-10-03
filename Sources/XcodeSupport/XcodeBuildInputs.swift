@@ -1,119 +1,178 @@
 import Foundation
+import SourceGraph
 import SystemPackage
 
 /// Whether anything an earlier build depends on changed since it started. A build's index units describe the files
-/// as the build read them, so a project whose files are all older than the build's start can reuse them.
+/// as the build read them, so a project whose tracked files are all older than the build's start can reuse them.
+///
+/// Only files that can change what a scan reports are tracked, by extension: the sources a build compiles, the files
+/// that shape how it compiles them, and the ones Lethen reads itself. Anything else, such as localized strings, asset
+/// catalogs or a script's generated resources, is rewritten by builds without changing a scan's result, so a project
+/// whose build phases touch them can still reuse its build.
 public enum XcodeBuildInputs {
+    /// Sources a build compiles. They may be newer than the build's start, as long as they predate its completion: the
+    /// build can have written them, and the index collector checks each against its own unit.
     private static let compiledExtensions: Set<String> = ["swift", "m", "mm", "c", "cc", "cpp", "cxx"]
-    private static let skippedDirectories: Set<String> = [".git", ".build", "xcuserdata"]
-    private static let skippedFiles: Set<String> = [".DS_Store"]
+    /// Files that decide how sources are compiled, which the build can read without compiling them.
+    private static let buildShapingExtensions: Set<String> = [
+        "h", "hh", "hpp", "pch", "modulemap", "def", "xcconfig", "xcscheme", "pbxproj", "xcworkspacedata", "entitlements",
+    ]
+    private static let buildShapingNames: Set<String> = ["Package.swift", "Package.resolved"]
+    /// Files Lethen reads itself while scanning.
+    private static let readExtensions: Set<String> = ["plist", "xib", "storyboard", "xcdatamodel", "xcdatamodeld", "xcmappingmodel"]
+    /// Directories whose contents are the file, so everything inside is tracked.
+    private static let packageExtensions: Set<String> = ["xcdatamodel", "xcdatamodeld", "xcmappingmodel"]
+    private static let skippedDirectories: Set<String> = [".git", ".build"]
 
-    /// The first path under `roots`, or in `files`, that changed after a build that ran from `started` to `completed`,
-    /// or `nil` when none did. Any directory or file that is not a compiled source must predate `started`, whether
-    /// it is found in a root or listed: a directory changes when an entry is added, removed or renamed, and every
-    /// other file, such as a project file, a build setting file or a header, can change what the build compiles
-    /// without the build rewriting it. A compiled source may be newer than `started` as long as it predates
-    /// `completed`; the build can have written it, and the index collector checks each such file against its own
-    /// unit. A path that cannot be read counts as changed, as does a root that does not exist or cannot be
-    /// enumerated, and so does one whose time equals the limit, since file times are coarse.
+    /// Whether a file at `path` can change what a scan reports.
+    public static func isTracked(_ path: FilePath) -> Bool {
+        guard let name = path.lastComponent?.string else { return false }
+
+        let pathExtension = path.extension?.lowercased() ?? ""
+        return compiledExtensions.contains(pathExtension) || buildShapingExtensions.contains(pathExtension)
+            || readExtensions.contains(pathExtension) || buildShapingNames.contains(name)
+    }
+
+    /// The directories to walk for tracked files, and the files to track whatever they are called, for a scan of
+    /// `project`: its source root and the directories it declares, and every file its targets and declarations name.
+    /// Declared files are tracked themselves, inside the roots or not: the walk does not follow symlinks, so a file
+    /// behind a symlinked directory, or outside every root like an external `.xcconfig`, is not reached by it. `nil`
+    /// when a target's files cannot be identified.
+    public static func scanInputs(of project: XcodeProjectlike) -> (roots: [FilePath], files: Set<FilePath>)? {
+        guard (try? project.targets.forEach { try $0.identifyFiles() }) != nil else { return nil }
+
+        var roots: [FilePath] = []
+        for root in ([project.sourceRoot] + project.projectSourceRoots).map({ $0.lexicallyNormalized() }) where !roots.contains(root) {
+            roots.append(root)
+        }
+
+        let kinds = ProjectFileKind.allCases
+        let files = project.targets.flatMapSet { target in kinds.flatMapSet { target.files(kind: $0) } }.union(project.declaredInputFiles)
+        return (roots, files)
+    }
+
+    /// The tracked files under `roots`, and `files`, which are tracked whatever they are called. Written when a build
+    /// starts so that a file added, removed or renamed afterwards shows as a difference. A root that cannot be
+    /// enumerated contributes what could be read; `firstChange` reports it.
+    public static func trackedPaths(roots: [FilePath], files: Set<FilePath>) -> Set<FilePath> {
+        Set(walk(roots: roots, files: files).entries.map(\.path))
+    }
+
+    /// The first tracked path under `roots`, or in `files`, that changed after a build that ran from `started` to
+    /// `completed`, or `nil` when none did. A compiled source may be newer than `started` as long as it predates
+    /// `completed`; every other tracked file must predate `started`. `recorded` is `trackedPaths` as it was when the
+    /// build started, so a file added, removed or renamed since is a change, which directory times, that builds
+    /// rewrite, cannot tell. A path that cannot be read counts as changed, as does a listed file that was there when the build started and is gone, a root that does not exist or
+    /// cannot be enumerated, and so does a file whose time equals the limit, since file times are coarse.
     ///
     /// Version control and build directories, `.DS_Store`, and the per-user state in `xcuserdata` are skipped, except
-    /// for the schemes in it, which choose what a build compiles. A root that is a symbolic link is walked as its target, but links under a root are not followed; a listed file is read through them.
-    public static func firstChange(roots: [FilePath], files: Set<FilePath>, started: Date, completed: Date) -> FilePath? {
+    /// for the schemes in it, which choose what a build compiles. A root that is a symbolic link is walked as its
+    /// target, but links under a root are not followed; a listed file is read through them.
+    public static func firstChange(
+        roots: [FilePath],
+        files: Set<FilePath>,
+        recorded: Set<FilePath>,
+        started: Date,
+        completed: Date
+    ) -> FilePath? {
+        let found = walk(roots: roots, files: files)
+        if let failure = found.failure { return failure }
+
+        for (path, date) in found.entries.sorted(by: { $0.path.string < $1.path.string }) {
+            let limit = compiledExtensions.contains(path.extension?.lowercased() ?? "") ? completed : started
+            guard let date, date < limit else { return path }
+        }
+
+        let current = Set(found.entries.map(\.path))
+        return current.symmetricDifference(recorded).min { $0.string < $1.string }
+    }
+
+    // MARK: - Private
+
+    private struct Walk {
+        var entries: [(path: FilePath, date: Date?)] = []
+        var failure: FilePath?
+    }
+
+    private static func walk(roots: [FilePath], files: Set<FilePath>) -> Walk {
+        var found = Walk()
+        var seen: Set<FilePath> = []
         for root in roots {
-            if let change = firstChange(under: root, started: started, completed: completed) {
-                return change
+            walk(root: root, into: &found, seen: &seen)
+        }
+
+        for file in files.sorted(by: { $0.string < $1.string }) {
+            // A listed file's time is the one of the file a symbolic link leads to, not of the link, and it replaces
+            // the time of the same file found in a root.
+            let resolved = FilePath(file.url.resolvingSymlinksInPath().path)
+            let date = modificationDate(of: resolved)
+            // A listed file that does not exist, such as a generated `.xcconfig` that is not checked in, is absent from
+            // the list as well; it is a change only once it appears, or if it was there when the build started.
+            if seen.insert(file).inserted {
+                if date != nil { found.entries.append((file, date)) }
+            } else if let index = found.entries.firstIndex(where: { $0.path == file }) {
+                found.entries[index].date = date
             }
         }
 
-        for file in files.sorted() {
-            let limit = compiledExtensions.contains(file.extension?.lowercased() ?? "") ? completed : started
-            // A listed file's time is the one of the file a symbolic link leads to, not of the link.
-            let resolved = FilePath(file.url.resolvingSymlinksInPath().path)
-            guard let date = modificationDate(of: resolved), date < limit else { return file }
-        }
-
-        return nil
+        return found
     }
 
-    private static func firstChange(under root: FilePath, started: Date, completed: Date) -> FilePath? {
+    private static func walk(root: FilePath, into found: inout Walk, seen: inout Set<FilePath>) {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isDirectoryKey, .isSymbolicLinkKey]
         var unreadable: FilePath?
         // A root that is itself a symbolic link is walked as its target, which the enumerator would not enter.
         let target = FilePath(root.url.resolvingSymlinksInPath().path)
-        let enumerator = FileManager.default.enumerator(
-            at: target.url,
-            includingPropertiesForKeys: keys,
-            options: [],
-            errorHandler: { url, _ in
-                unreadable = FilePath(url.path)
-                return false
-            }
-        )
-        guard let enumerator else { return root }
-
-        // The root is a directory like any other: a file added directly to it changes its time.
-        guard let rootDate = modificationDate(of: target), rootDate < started else { return root }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: target.string, isDirectory: &isDirectory), isDirectory.boolValue,
+              let enumerator = FileManager.default.enumerator(
+                  at: target.url,
+                  includingPropertiesForKeys: keys,
+                  options: [],
+                  errorHandler: { url, _ in
+                      unreadable = FilePath(url.path)
+                      return false
+                  }
+              )
+        else {
+            found.failure = found.failure ?? root
+            return
+        }
 
         // The enumerator reports paths with symbolic links resolved, such as /private/var for /var; the names are
         // appended to the root as it was given instead.
         var components: [String] = []
         for case let url as URL in enumerator {
-            if let unreadable { return unreadable }
-
             components.removeSubrange(min(enumerator.level - 1, components.count)...)
             components.append(url.lastPathComponent)
-            let path = components.reduce(root) { $0.appending($1) }
-            guard let values = try? url.resourceValues(forKeys: Set(keys)),
-                  let date = values.contentModificationDate
-            else { return path }
-
             let name = url.lastPathComponent
-            if values.isDirectory == true, values.isSymbolicLink != true {
-                if skippedDirectories.contains(name) {
-                    enumerator.skipDescendants()
-                    // The user's schemes are not skipped with the rest of their state.
-                    if name == "xcuserdata", let change = firstChange(inUserData: path, started: started) {
-                        return change
-                    }
-
-                    continue
-                }
-
-                if date >= started { return path }
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            if values?.isDirectory == true, values?.isSymbolicLink != true {
+                if skippedDirectories.contains(name) { enumerator.skipDescendants() }
 
                 continue
             }
 
-            if skippedFiles.contains(name) { continue }
+            if name == ".DS_Store" { continue }
 
-            let limit = compiledExtensions.contains(url.pathExtension.lowercased()) ? completed : started
-            if date >= limit { return path }
+            let path = components.reduce(root) { $0.appending($1) }
+            guard isTracked(path, below: components.dropLast()) else { continue }
+
+            if seen.insert(path).inserted {
+                found.entries.append((path, values?.contentModificationDate))
+            }
         }
 
-        return unreadable
+        if let unreadable { found.failure = found.failure ?? unreadable }
     }
 
-    /// The schemes of an `xcuserdata` directory, which Xcode builds from, that changed after `started`. The
-    /// directories around them are the user's state, which Xcode rewrites without it changing what is built.
-    private static func firstChange(inUserData directory: FilePath, started: Date) -> FilePath? {
-        guard let enumerator = FileManager.default.enumerator(
-            at: directory.url,
-            includingPropertiesForKeys: [.contentModificationDateKey],
-            options: []
-        ) else { return directory }
+    /// Whether the file reached through `parents` is tracked there: inside a package directory everything is, and
+    /// inside `xcuserdata`, the user's own state, only the schemes are.
+    private static func isTracked(_ path: FilePath, below parents: ArraySlice<String>) -> Bool {
+        if parents.contains("xcuserdata") { return path.extension == "xcscheme" }
+        if parents.contains(where: { packageExtensions.contains(($0 as NSString).pathExtension.lowercased()) }) { return true }
 
-        var components: [String] = []
-        for case let url as URL in enumerator {
-            components.removeSubrange(min(enumerator.level - 1, components.count)...)
-            components.append(url.lastPathComponent)
-            guard url.pathExtension == "xcscheme" else { continue }
-
-            let scheme = components.reduce(directory) { $0.appending($1) }
-            guard let date = modificationDate(of: scheme), date < started else { return scheme }
-        }
-
-        return nil
+        return isTracked(path)
     }
 
     private static func modificationDate(of path: FilePath) -> Date? {

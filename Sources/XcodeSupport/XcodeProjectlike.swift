@@ -12,8 +12,8 @@ public protocol XcodeProjectlike: AnyObject {
     /// The files every project this container loads declares as file references, such as an `.xcconfig`,
     /// or as Run Script inputs.
     var declaredInputFiles: Set<FilePath> { get }
-    /// Whether a Run Script input of any project this container loads cannot be resolved to a path, so a build's
-    /// inputs cannot all be checked.
+    /// Whether a Run Script phase of any project this container loads reads or writes a path that cannot be resolved,
+    /// or writes a tracked file that no checked root or declared input reaches, so a build's inputs cannot all be checked.
     var hasUnenumerableBuildInputs: Bool { get }
     /// The project-level build configurations of every project this one loads, such as Debug and Release.
     var buildConfigurationNames: Set<String> { get }

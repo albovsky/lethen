@@ -3,10 +3,13 @@ import SystemPackage
 @testable import XcodeSupport
 import XCTest
 
-/// A build's index can be reused only while nothing it depends on changed since it started: any directory, and any
-/// file but a compiled source, must predate the start, and a compiled source the completion.
+/// A build's index can be reused only while nothing it depends on changed since it started: every tracked file but a
+/// compiled source must predate the start, a compiled source the completion, and the tracked files must be the ones
+/// the build started with. Files a scan does not read, and directory times, do not matter.
 final class XcodeBuildInputsTest: XCTestCase {
     private var root: FilePath!
+    /// The tracked files as the build started.
+    private var recorded: Set<FilePath> = []
     private let started = Date(timeIntervalSinceReferenceDate: 1000)
     private let completed = Date(timeIntervalSinceReferenceDate: 2000)
     private let before = Date(timeIntervalSinceReferenceDate: 500)
@@ -23,6 +26,7 @@ final class XcodeBuildInputsTest: XCTestCase {
         try write("Config.xcconfig")
         try write("Package.resolved")
         try settle()
+        recorded = XcodeBuildInputs.trackedPaths(roots: [root], files: [])
     }
 
     override func tearDownWithError() throws {
@@ -59,12 +63,72 @@ final class XcodeBuildInputsTest: XCTestCase {
         }
     }
 
-    func testFileAddedInASubdirectoryIsReportedThroughItsDirectory() throws {
+    func testFileAddedIsReportedWhateverItsDate() throws {
         try write("Sources/New.swift")
         try touch("Sources/New.swift", before)
-        try touch("Sources", between)
 
-        XCTAssertEqual(change(), root.appending("Sources"))
+        XCTAssertEqual(change(), root.appending("Sources/New.swift"))
+    }
+
+    func testFileRemovedIsReported() throws {
+        try FileManager.default.removeItem(at: root.appending("Sources/Support.h").url)
+
+        XCTAssertEqual(change(), root.appending("Sources/Support.h"))
+    }
+
+    func testFileRenamedIsReported() throws {
+        try FileManager.default.moveItem(at: root.appending("Sources/App.swift").url, to: root.appending("Sources/Renamed.swift").url)
+
+        XCTAssertEqual(change(), root.appending("Sources/App.swift"))
+    }
+
+    /// A build phase that rewrites localized strings, or a folder of them, changes nothing a scan reads.
+    func testFilesAScanDoesNotReadAreIgnored() throws {
+        try write("en.lproj/Localizable.strings")
+        try write("Assets.xcassets/Contents.json")
+        try settle()
+        recorded = XcodeBuildInputs.trackedPaths(roots: [root], files: [])
+
+        for path in ["en.lproj/Localizable.strings", "Assets.xcassets/Contents.json", "en.lproj", "Assets.xcassets", "Sources", ""] {
+            try touch(path, after)
+        }
+        try write("fr.lproj/Localizable.strings")
+        try write("Sources/Notes.md")
+
+        XCTAssertNil(change())
+    }
+
+    func testEveryTrackedKindIsReportedWhenEditedDuringTheBuild() throws {
+        let paths = [
+            "A.h", "A.hh", "A.hpp", "A.pch", "A.modulemap", "A.def", "A.xcconfig", "A.xcscheme", "A.entitlements",
+            "App.xcworkspace/contents.xcworkspacedata", "Info.plist", "Main.storyboard", "View.xib",
+            "Model.xcdatamodeld/Model.xcdatamodel/contents", "Model.xcdatamodeld/.xccurrentversion", "Map.xcmappingmodel/xcmapping.xml",
+        ]
+        for path in paths {
+            try write(path)
+        }
+        try settle()
+        recorded = XcodeBuildInputs.trackedPaths(roots: [root], files: [])
+        XCTAssertNil(change())
+
+        for path in paths {
+            try touch(path, between)
+
+            XCTAssertEqual(change(), root.appending(path), path)
+            try touch(path, before)
+        }
+    }
+
+    func testListedFileIsTrackedWhateverItIsCalled() throws {
+        let file = root.appending("Scripts/Inputs.txt")
+        try write("Scripts/Inputs.txt")
+        try settle()
+        let recorded = XcodeBuildInputs.trackedPaths(roots: [root], files: [file])
+        XCTAssertTrue(recorded.contains(file))
+
+        try touch("Scripts/Inputs.txt", between)
+
+        XCTAssertEqual(firstChange(roots: [root], files: [file], recorded: recorded), file)
     }
 
     func testEqualTimestampsCountAsChanged() throws {
@@ -83,14 +147,20 @@ final class XcodeBuildInputsTest: XCTestCase {
         let file = other.appending("Shared.swift")
         try Data().write(to: file.url)
         try FileManager.default.setAttributes([.modificationDate: before], ofItemAtPath: file.string)
-        XCTAssertNil(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed))
+        XCTAssertNil(firstChange(roots: [root], files: [file]))
 
         try FileManager.default.setAttributes([.modificationDate: after], ofItemAtPath: file.string)
-        XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed), file)
+        XCTAssertEqual(firstChange(roots: [root], files: [file]), file)
 
-        // A listed file that no longer exists is a change too.
+        // A listed file that no longer exists is a change too, but one that never existed is not, until it appears.
+        try FileManager.default.setAttributes([.modificationDate: before], ofItemAtPath: file.string)
+        let recorded = XcodeBuildInputs.trackedPaths(roots: [root], files: [file])
         try FileManager.default.removeItem(at: file.url)
-        XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed), file)
+        XCTAssertEqual(firstChange(roots: [root], files: [file], recorded: recorded), file)
+        XCTAssertNil(firstChange(roots: [root], files: [file], recorded: XcodeBuildInputs.trackedPaths(roots: [root], files: [])))
+        try Data().write(to: file.url)
+        try FileManager.default.setAttributes([.modificationDate: before], ofItemAtPath: file.string)
+        XCTAssertEqual(firstChange(roots: [root], files: [file], recorded: XcodeBuildInputs.trackedPaths(roots: [root], files: [])), file)
     }
 
     /// The walk does not follow symbolic links, so a listed file is read through them: its time is the one of the file
@@ -111,11 +181,11 @@ final class XcodeBuildInputsTest: XCTestCase {
         }
         try FileManager.default.setAttributes([.modificationDate: before], ofItemAtPath: target.string)
         let files: Set = [root.appending("Linked/Target.xcconfig"), root.appending("Link.xcconfig")]
-        XCTAssertNil(XcodeBuildInputs.firstChange(roots: [root], files: files, started: started, completed: completed))
+        XCTAssertNil(firstChange(roots: [root], files: files))
 
         try FileManager.default.setAttributes([.modificationDate: after], ofItemAtPath: target.string)
         for file in files {
-            XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed), file)
+            XCTAssertEqual(firstChange(roots: [root], files: [file]), file)
         }
     }
 
@@ -141,6 +211,7 @@ final class XcodeBuildInputsTest: XCTestCase {
         let scheme = "App.xcodeproj/xcuserdata/u.xcuserdatad/xcschemes/App.xcscheme"
         try write(scheme)
         try settle()
+        recorded = XcodeBuildInputs.trackedPaths(roots: [root], files: [])
         XCTAssertNil(change())
 
         try touch(scheme, between)
@@ -160,26 +231,27 @@ final class XcodeBuildInputsTest: XCTestCase {
             try Data().write(to: file.url)
             try FileManager.default.setAttributes([.modificationDate: between], ofItemAtPath: file.string)
 
-            XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed), file, name)
+            XCTAssertEqual(firstChange(roots: [root], files: [file]), file, name)
         }
 
         let source = other.appending("Shared.swift")
         try Data().write(to: source.url)
         try FileManager.default.setAttributes([.modificationDate: between], ofItemAtPath: source.string)
 
-        XCTAssertNil(XcodeBuildInputs.firstChange(roots: [root], files: [source], started: started, completed: completed))
+        XCTAssertNil(firstChange(roots: [root], files: [source]))
     }
 
     func testMissingRootIsReported() {
         let missing = root.appending("Removed")
 
-        XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root, missing], files: [], started: started, completed: completed), missing)
+        XCTAssertEqual(firstChange(roots: [root, missing], files: []), missing)
     }
 
     func testUnreadableDirectoryIsReported() throws {
         let locked = root.appending("Locked")
         try write("Locked/Hidden.swift")
         try settle()
+        recorded = XcodeBuildInputs.trackedPaths(roots: [root], files: [])
         XCTAssertNil(change())
 
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.string)
@@ -192,12 +264,12 @@ final class XcodeBuildInputsTest: XCTestCase {
         let link = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen build inputs link \(UUID().uuidString)").path)
         defer { try? FileManager.default.removeItem(at: link.url) }
         try FileManager.default.createSymbolicLink(atPath: link.string, withDestinationPath: root.string)
-        XCTAssertNil(XcodeBuildInputs.firstChange(roots: [link], files: [], started: started, completed: completed))
+        XCTAssertNil(firstChange(roots: [link], files: []))
 
         try touch("Sources/App.swift", after)
 
         XCTAssertEqual(
-            XcodeBuildInputs.firstChange(roots: [link], files: [], started: started, completed: completed),
+            firstChange(roots: [link], files: []),
             link.appending("Sources/App.swift")
         )
     }
@@ -205,7 +277,18 @@ final class XcodeBuildInputsTest: XCTestCase {
     // MARK: - Private
 
     private func change() -> FilePath? {
-        XcodeBuildInputs.firstChange(roots: [root], files: [], started: started, completed: completed)
+        firstChange(roots: [root], files: [], recorded: recorded)
+    }
+
+    /// With no `recorded` list, the files found now are taken as the ones the build started with.
+    private func firstChange(roots: [FilePath], files: Set<FilePath>, recorded: Set<FilePath>? = nil) -> FilePath? {
+        XcodeBuildInputs.firstChange(
+            roots: roots,
+            files: files,
+            recorded: recorded ?? XcodeBuildInputs.trackedPaths(roots: roots, files: files),
+            started: started,
+            completed: completed
+        )
     }
 
     private func write(_ path: String) throws {
