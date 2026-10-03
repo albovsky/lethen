@@ -446,8 +446,8 @@ public final class SourceGraph {
 
     func markUnusedModuleImport(_ statement: ImportStatement) {
         let location = statement.location.relativeTo(configuration.projectRoot)
-        let usr = "import-\(statement.module)-\(location)"
-        let decl = Declaration(name: statement.module, kind: .module, usrs: [usr], location: statement.location)
+        let usr = "import-\(statement.qualifiedModule)-\(location)"
+        let decl = Declaration(name: statement.qualifiedModule, kind: .module, usrs: [usr], location: statement.location)
         unusedModuleImports.insert(decl)
     }
 

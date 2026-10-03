@@ -100,7 +100,7 @@ open class SourceGraphTestCase: XCTestCase {
 
     func assertReferenced(_ description: DeclarationDescription, scopedAssertions: (() -> Void)? = nil, file: StaticString = #file, line: UInt = #line) {
         if case .module = description.kind {
-            if let declaration = Self.graph.unusedModuleImports.first(where: { $0.name == description.name }) {
+            if let declaration = unusedModuleImport(description) {
                 XCTFail("Expected declaration to be referenced: \(declaration)", file: file, line: line)
             }
         } else {
@@ -129,7 +129,7 @@ open class SourceGraphTestCase: XCTestCase {
 
     func assertNotReferenced(_ description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) {
         if case .module = description.kind {
-            if Self.graph.unusedModuleImports.first(where: { $0.name == description.name }) == nil {
+            if unusedModuleImport(description) == nil {
                 XCTFail("Expected module to not be referenced: \(description.name)", file: file, line: line)
             }
 
@@ -332,6 +332,25 @@ open class SourceGraphTestCase: XCTestCase {
         scopeStack.removeLast()
     }
 
+    /// Scopes module-import assertions, and declaration lookups, to the file with this name.
+    func file(_ name: String, scopedAssertions: (() -> Void)? = nil) {
+        scopeStack.append(.file(name))
+        scopedAssertions?()
+        scopeStack.removeLast()
+    }
+
+    /// Asserts that the scan read an import of the module, as written, in the file with this name, so
+    /// that a test that expects the import to be kept shows the import was seen and then retained.
+    func assertImport(_ qualifiedModule: String, inFile fileName: String, file: StaticString = #file, line: UInt = #line) {
+        let found = Self.graph.indexedSourceFiles.contains { sourceFile in
+            sourceFile.path.lastComponent?.string == fileName
+                && sourceFile.importStatements.contains { $0.qualifiedModule == qualifiedModule }
+        }
+        if !found {
+            XCTFail("Expected an import of \(qualifiedModule) in \(fileName).", file: file, line: line)
+        }
+    }
+
     // MARK: - Private
 
     private func materialize(_ description: DeclarationDescription, in defaultDeclarations: Set<Declaration>? = nil, fail: Bool = true, file: StaticString, line: UInt) -> Declaration? {
@@ -350,6 +369,20 @@ open class SourceGraphTestCase: XCTestCase {
         return matchedDeclaration
     }
 
+    /// The unused import the description names, in the files the scope allows. A module name alone can
+    /// match imports in several files, so a description may also name a line.
+    private func unusedModuleImport(_ description: DeclarationDescription) -> Declaration? {
+        let fileNames = scopeStack.compactMap { scope -> String? in
+            if case let .file(name) = scope { name } else { nil }
+        }
+        return Self.graph.unusedModuleImports.first { declaration in
+            let fileName = declaration.location.file.path.lastComponent?.string
+            return declaration.name == description.name
+                && (description.line.map { declaration.location.line == $0 } ?? true)
+                && fileNames.allSatisfy { $0 == fileName }
+        }
+    }
+
     private func scopedDeclarations(from defaultDeclarations: Set<Declaration>? = nil) -> Set<Declaration> {
         let allDeclarations = defaultDeclarations ?? Self.graph.rootDeclarations
 
@@ -365,6 +398,8 @@ open class SourceGraphTestCase: XCTestCase {
                 }
             case let .module(module):
                 result = result.filter { $0.location.file.modules.contains(module) }
+            case let .file(name):
+                result = result.filter { $0.location.file.path.lastComponent?.string == name }
             }
         }
     }

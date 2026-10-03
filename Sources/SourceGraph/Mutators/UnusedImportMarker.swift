@@ -6,6 +6,9 @@ import Shared
 ///
 /// A module import is unused when the source file contains no references to it, and no other
 /// imported modules either export it, or extend declarations declared by it.
+///
+/// A C or Objective-C file brings its own evidence, `SourceFile.clangReferencedModules`, which names
+/// submodules (`WMF.WMFLogging`), so an `@import` is matched at the precision it was written with.
 final class UnusedImportMarker: SourceGraphMutator {
     private let graph: SourceGraph
     private let configuration: Configuration
@@ -21,7 +24,7 @@ final class UnusedImportMarker: SourceGraphMutator {
         guard !configuration.disableUnusedImportAnalysis else { return }
 
         var referencedModulesByFile = graph.indexedSourceFiles.reduce(into: [SourceFile: Set<String>]()) { result, file in
-            result[file] = []
+            result[file] = file.clangReferencedModules
         }
         var moduleCache: [String: Set<String>] = [:]
 
@@ -70,17 +73,17 @@ final class UnusedImportMarker: SourceGraphMutator {
                     // Exclude conditional imports as they may provide symbols for sections of code
                     // that are also conditionally compiled.
                     !$0.isConditional &&
-                        // Exclude ignore commented imports
-                        !$0.commentCommands.contains(.ignore) &&
+                        // Exclude ignore commented imports, and every import of a file with `ignore:all`.
+                        !$0.commentCommands.contains(where: { $0 == .ignore || $0 == .ignoreAll }) &&
                         // Exclude exported/public imports because even though they may be unreferenced
                         // in the current file, their exported symbols may be referenced in others.
                         !$0.isExported &&
                         // Exclude explicitly retained modules.
-                        !retainedModules.contains($0.module) &&
+                        !retainedModules.contains($0.module) && !retainedModules.contains($0.qualifiedModule) &&
                         // Only Consider modules that have been indexed as we need to see which modules
                         // they export.
                         graph.isModuleIndexed($0.module) &&
-                        !referencedModules.contains($0.module) &&
+                        !Self.isModule($0.qualifiedModule, referencedIn: referencedModules) &&
                         !graph.moduleExportsUnindexedModules($0.module)
                 }
 
@@ -88,11 +91,22 @@ final class UnusedImportMarker: SourceGraphMutator {
                 // In the simple case, a module is unused if it's not referenced. However, it's
                 // possible the module exports other referenced modules.
                 guard !referencedModules.contains(where: {
-                    graph.isModule($0, exportedBy: unreferencedImport.module)
+                    graph.isModule(String($0.prefix { $0 != "." }), exportedBy: unreferencedImport.module)
                 }) else { continue }
 
                 graph.markUnusedModuleImport(unreferencedImport)
             }
+        }
+    }
+
+    /// Whether a referenced module name satisfies an import of `qualified`. A name equal to the import
+    /// does, and so does one nested in it (`WMF.WMFLogging` for an import of `WMF`). A name that contains
+    /// the import (`WMF` for an import of `WMF.WMFLogging`) does too: a symbol from the umbrella header,
+    /// or from a module the umbrella re-exports, may come through any submodule, and the index cannot
+    /// say which import provided it. Swift names are all top-level, so only equality applies there.
+    static func isModule(_ qualified: String, referencedIn referencedModules: Set<String>) -> Bool {
+        referencedModules.contains {
+            $0 == qualified || $0.hasPrefix(qualified + ".") || qualified.hasPrefix($0 + ".")
         }
     }
 

@@ -27,6 +27,18 @@ final class ClangUSRTest: XCTestCase {
         XCTAssertEqual(ClangUSR.normalized("c:@M@App"), "c:@M@App")
     }
 
+    func testNamesTheModuleOfASwiftGeneratedUSR() {
+        XCTAssertEqual(ClangUSR.module(of: "c:@M@WMFData@E@ImageWidth@ImageWidthW3840"), "WMFData")
+        XCTAssertEqual(ClangUSR.module(of: "c:@M@App@objc(cs)Store(im)loadFrom:"), "App")
+        XCTAssertEqual(ClangUSR.module(of: "c:@CM@App@objc(cs)Store(im)reload"), "App")
+        XCTAssertEqual(ClangUSR.module(of: "c:@CM@App@@objc(cs)NSObject(im)reload"), "App")
+        XCTAssertNil(ClangUSR.module(of: "c:objc(cs)Store"))
+        XCTAssertNil(ClangUSR.module(of: "c:@E@Mode@ModeFast"))
+        XCTAssertNil(ClangUSR.module(of: "c:@M@"))
+        XCTAssertNil(ClangUSR.module(of: "c:@M@App"))
+        XCTAssertNil(ClangUSR.module(of: "s:3App5StoreC"))
+    }
+
     func testResolvesByTheUSRThenByTheModulelessForm() {
         let graph = makeGraph()
         let store = add(to: graph, "Store", usr: "c:@M@App@objc(cs)Store")

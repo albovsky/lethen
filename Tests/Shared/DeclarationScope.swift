@@ -3,4 +3,5 @@
 enum DeclarationScope {
     case declaration(Declaration)
     case module(String)
+    case file(String)
 }

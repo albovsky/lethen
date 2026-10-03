@@ -12,26 +12,32 @@ import SystemPackage
 /// count, as in `StringLiteralTokenVisitor`. It does not expand macros or follow `#if`, so a literal
 /// in any branch counts.
 enum ClangLiteralScanner {
-    private static let newline = UInt8(ascii: "\n")
-    private static let slash = UInt8(ascii: "/")
-    private static let star = UInt8(ascii: "*")
-    private static let quote = UInt8(ascii: "\"")
-    private static let apostrophe = UInt8(ascii: "'")
-    private static let backslash = UInt8(ascii: "\\")
-    private static let hash = UInt8(ascii: "#")
-    private static let at = UInt8(ascii: "@")
-    private static let openParen = UInt8(ascii: "(")
-    private static let closeParen = UInt8(ascii: ")")
+    static let newline = UInt8(ascii: "\n")
+    static let slash = UInt8(ascii: "/")
+    static let star = UInt8(ascii: "*")
+    static let quote = UInt8(ascii: "\"")
+    static let apostrophe = UInt8(ascii: "'")
+    static let backslash = UInt8(ascii: "\\")
+    static let hash = UInt8(ascii: "#")
+    static let at = UInt8(ascii: "@")
+    static let openParen = UInt8(ascii: "(")
+    static let closeParen = UInt8(ascii: ")")
     private static let selectorKeyword = Array("@selector".utf8)
 
     /// The tokens of every file that can be read, and the files that cannot: a file compiled into the
-    /// index but gone or unreadable since may spell a lookup the scan then cannot see.
-    static func scan(files: [FilePath]) -> (tokens: Set<String>, unreadFiles: [FilePath]) {
+    /// index but gone or unreadable since may spell a lookup the scan then cannot see. `visit` receives
+    /// each file's bytes, so a caller that scans the same files for something else reads them once.
+    static func scan(
+        files: [FilePath],
+        visiting visit: (FilePath, [UInt8]) -> Void = { _, _ in }
+    ) -> (tokens: Set<String>, unreadFiles: [FilePath]) {
         var tokens: Set<String> = []
         var unreadFiles: [FilePath] = []
         for file in files {
             if let data = FileManager.default.contents(atPath: file.string) {
-                tokens.formUnion(self.tokens(in: Array(data)))
+                let bytes = Array(data)
+                tokens.formUnion(self.tokens(in: bytes))
+                visit(file, bytes)
             } else {
                 unreadFiles.append(file)
             }
@@ -43,7 +49,7 @@ enum ClangLiteralScanner {
     /// that literal, never the rest of the file.
     static func tokens(in source: [UInt8]) -> Set<String> {
         // The preprocessor removes every backslash-newline pair before it sees tokens.
-        let bytes = splicingLines(source)
+        let bytes = splicingLines(source).bytes
         var tokens: Set<String> = []
         var index = 0
         var atLineStart = true
@@ -97,20 +103,25 @@ enum ClangLiteralScanner {
 
     // MARK: - Private
 
-    /// The bytes with every backslash-newline pair removed, as the preprocessor splices lines.
-    private static func splicingLines(_ bytes: [UInt8]) -> [UInt8] {
-        guard bytes.contains(backslash) else { return bytes }
+    /// The bytes with every backslash-newline pair removed, as the preprocessor splices lines, and the
+    /// index in the result at which each removed pair stood, so a caller can still number the lines
+    /// of the original file.
+    static func splicingLines(_ bytes: [UInt8]) -> (bytes: [UInt8], splices: [Int]) {
+        guard bytes.contains(backslash) else { return (bytes, []) }
 
         var result: [UInt8] = []
+        var splices: [Int] = []
         result.reserveCapacity(bytes.count)
         var index = 0
         while index < bytes.count {
             if bytes[index] == backslash {
                 if bytes[safe: index + 1] == newline {
+                    splices.append(result.count)
                     index += 2
                     continue
                 }
                 if bytes[safe: index + 1] == UInt8(ascii: "\r"), bytes[safe: index + 2] == newline {
+                    splices.append(result.count)
                     index += 3
                     continue
                 }
@@ -118,12 +129,12 @@ enum ClangLiteralScanner {
             result.append(bytes[index])
             index += 1
         }
-        return result
+        return (result, splices)
     }
 
     /// The index of the first byte after `index` that is not whitespace or a comment, which the
     /// preprocessor turns into whitespace.
-    private static func skippingBlanksAndComments(from index: Int, in bytes: [UInt8]) -> Int {
+    static func skippingBlanksAndComments(from index: Int, in bytes: [UInt8]) -> Int {
         var cursor = index
         while cursor < bytes.count {
             if isBlank(bytes[cursor]) || bytes[cursor] == newline {
@@ -142,7 +153,7 @@ enum ClangLiteralScanner {
     /// The index of the opening quote of a string literal that directly follows the one ending before
     /// `index`, with only whitespace, comments, an optional `@`, and an optional raw-string prefix between
     /// them, or `nil`.
-    private static func adjacentLiteralQuote(from index: Int, in bytes: [UInt8]) -> Int? {
+    static func adjacentLiteralQuote(from index: Int, in bytes: [UInt8]) -> Int? {
         var cursor = skippingBlanksAndComments(from: index, in: bytes)
         if bytes[safe: cursor] == at { cursor += 1 }
 
@@ -157,7 +168,7 @@ enum ClangLiteralScanner {
 
     /// The text of the string literal whose opening quote is at `index`, raw or ordinary, and the
     /// index after it. A C++ raw string (`R"(name)"`, `R"x(name)x"`) has no escapes and may span lines.
-    private static func anyStringLiteral(openingQuoteAt index: Int, in bytes: [UInt8]) -> (text: [UInt8], next: Int) {
+    static func anyStringLiteral(openingQuoteAt index: Int, in bytes: [UInt8]) -> (text: [UInt8], next: Int) {
         if let delimiter = rawStringDelimiter(before: index, in: bytes) {
             return rawStringLiteral(from: index + 1, delimiter: delimiter, in: bytes)
         }
@@ -165,16 +176,16 @@ enum ClangLiteralScanner {
         return stringLiteral(from: index + 1, in: bytes)
     }
 
-    private static func isBlank(_ byte: UInt8) -> Bool {
+    static func isBlank(_ byte: UInt8) -> Bool {
         byte == UInt8(ascii: " ") || byte == UInt8(ascii: "\t") || byte == UInt8(ascii: "\r")
     }
 
-    private static func endOfLine(from index: Int, in bytes: [UInt8]) -> Int {
+    static func endOfLine(from index: Int, in bytes: [UInt8]) -> Int {
         bytes[index...].firstIndex(of: newline) ?? bytes.count
     }
 
     /// The index after the closing `*/`, or the end of the file when the comment is unterminated.
-    private static func endOfBlockComment(from index: Int, in bytes: [UInt8]) -> Int {
+    static func endOfBlockComment(from index: Int, in bytes: [UInt8]) -> Int {
         var cursor = index
         while cursor + 1 < bytes.count {
             if bytes[cursor] == star, bytes[cursor + 1] == slash { return cursor + 2 }
@@ -186,7 +197,7 @@ enum ClangLiteralScanner {
     }
 
     /// Whether the directive after the `#` at `index` is `import` or `include`.
-    private static func isIncludeDirective(at index: Int, in bytes: [UInt8]) -> Bool {
+    static func isIncludeDirective(at index: Int, in bytes: [UInt8]) -> Bool {
         var cursor = index + 1
         while cursor < bytes.count, isBlank(bytes[cursor]) {
             cursor += 1
@@ -290,7 +301,7 @@ enum ClangLiteralScanner {
 
     /// The index after a character literal whose opening apostrophe precedes `index`, so that `'"'`
     /// does not open a string.
-    private static func endOfCharacterLiteral(from index: Int, in bytes: [UInt8]) -> Int {
+    static func endOfCharacterLiteral(from index: Int, in bytes: [UInt8]) -> Int {
         var cursor = index
         while cursor < bytes.count, bytes[cursor] != newline {
             if bytes[cursor] == backslash {
@@ -378,7 +389,7 @@ enum ClangLiteralScanner {
         return (Array(bytes[min(start, bytes.count)...]), bytes.count)
     }
 
-    private static func isIdentifierByte(_ byte: UInt8) -> Bool {
+    static func isIdentifierByte(_ byte: UInt8) -> Bool {
         (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z")) || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
             || (byte >= UInt8(ascii: "0") && byte <= UInt8(ascii: "9")) || byte == UInt8(ascii: "_")
     }
