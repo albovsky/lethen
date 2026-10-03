@@ -34,10 +34,11 @@ final class NameUseCollectorTest: XCTestCase {
     /// since in a skipped `#if` clause they would match every initializer or subscript of the module.
     func testConstructorCallsAndSubscriptsAreUsesForTheFileReaderOnly() {
         var seen: [String] = []
-        _ = NameUseCollector(Syntax(Parser.parse(source: "let widget = Widget(size: 1)\nlet value = store[key]\nlet other = makeWidget()\nlet qualified = Framework.Button(title: \"x\")\n"))) { seen.append($0.name) }
+        _ = NameUseCollector(Syntax(Parser.parse(source: "let widget = Widget(size: 1)\nlet value = store[key]\nlet other = makeWidget()\nlet qualified = Framework.Button(title: \"x\")\nlet generic = Framework.Box<Int>()\n"))) { seen.append($0.name) }
         XCTAssertTrue(seen.contains("init"))
         XCTAssertTrue(seen.contains("Widget.init"))
         XCTAssertTrue(seen.contains("Button.init"), "A module-qualified construction is a constructor call too")
+        XCTAssertTrue(seen.contains("Box.init"), "So is a generic one")
         XCTAssertTrue(seen.contains("subscript"))
         XCTAssertFalse(seen.contains("makeWidget.init"))
 

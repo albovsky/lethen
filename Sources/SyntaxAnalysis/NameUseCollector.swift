@@ -101,8 +101,12 @@ public struct NameUseCollector {
             // starts with a capital letter, a function does not. The use is also recorded as `Widget.init`, so
             // a match can be placed at a use of this type's initializer rather than any type's.
             let access = reference.parent?.as(MemberAccessExprSyntax.self)
+            // `Framework.Widget<Int>()` wraps the access in a generic specialization before the call.
+            let qualifiedCallee = access.map { access in
+                access.parent?.as(GenericSpecializationExprSyntax.self).flatMap { $0.expression.id == access.id ? Syntax($0) : nil } ?? Syntax(access)
+            }
             let isQualifiedTypeCall = access?.declName.id == reference.id
-                && access?.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == access?.id
+                && qualifiedCallee?.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == qualifiedCallee?.id
             if (isCalled && access == nil) || isQualifiedTypeCall, name.first?.isUppercase == true {
                 record("init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
                 record("\(name).init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)

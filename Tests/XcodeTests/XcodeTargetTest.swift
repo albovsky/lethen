@@ -102,6 +102,22 @@ final class XcodeTargetTest: XCTestCase {
         XCTAssertEqual(target.dependencyNames, ["UIKitProject", "RemoteFramework"])
     }
 
+    /// Linking a project target's product is an implicit dependency, which Xcode honors without a
+    /// `PBXTargetDependency`.
+    func testDependencyNamesIncludeLinkedProductsOfProjectTargets() throws {
+        let framework = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "Target With Spaces" })
+        let product = try XCTUnwrap(framework.product)
+        let buildFile = PBXBuildFile(file: product)
+        let phase = PBXFrameworksBuildPhase(files: [buildFile])
+        let pbxTarget = PBXNativeTarget(name: "Linker", buildPhases: [phase])
+        let pbxproj = project.xcodeProject.pbxproj
+        pbxproj.add(object: buildFile)
+        pbxproj.add(object: phase)
+        pbxproj.add(object: pbxTarget)
+
+        XCTAssertEqual(XcodeTarget(project: project, target: pbxTarget).dependencyNames, ["Target With Spaces"])
+    }
+
     func testModuleNamesAreTheConfiguredProductModuleNamesOrTheDefault() throws {
         // Each configuration may name the module differently; a unit could come from any of them.
         let debug = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("DebugCore")])

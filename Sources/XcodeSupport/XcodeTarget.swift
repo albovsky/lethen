@@ -22,10 +22,19 @@ public final class XcodeTarget {
         target.name
     }
 
-    /// The names of the targets this one depends on, which Xcode builds before it. A dependency on a target
-    /// of another project of the workspace is a proxy whose `remoteInfo` is that target's name.
+    /// The names of the targets this one depends on: the explicit dependencies, which Xcode builds before it
+    /// (a dependency on a target of another project of the workspace is a proxy whose `remoteInfo` is that
+    /// target's name), and the targets of this project whose product it links, which Xcode treats as implicit
+    /// dependencies.
     public var dependencyNames: Set<String> {
-        target.dependencies.compactMapSet { $0.target?.name ?? $0.targetProxy?.remoteInfo }
+        let explicit = target.dependencies.compactMapSet { $0.target?.name ?? $0.targetProxy?.remoteInfo }
+        let linkedFiles = target.buildPhases.compactMap { $0 as? PBXFrameworksBuildPhase }
+            .flatMap { $0.files ?? [] }
+            .compactMap(\.file)
+        let linked = project.xcodeProject.pbxproj.nativeTargets
+            .filter { candidate in candidate !== target && linkedFiles.contains { $0 === candidate.product } }
+            .map(\.name)
+        return explicit.union(linked)
     }
 
     /// The names the target's Swift module can have, which its index units carry: each plain
