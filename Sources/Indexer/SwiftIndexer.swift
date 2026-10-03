@@ -317,18 +317,9 @@ final class SwiftIndexer: Indexer {
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
             }
-            let valueUses = ValueUseSyntaxVisitor(locations: locationBuilder)
-            valueUses.walk(multiplexingSyntaxVisitor.syntax)
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
             graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
-            for (call, arguments) in valueUses.arguments {
-                let values = file.references(at: arguments)
-                for reference in file.references(at: call) {
-                    reference.hasGenericValueArguments = !arguments.isDisjoint(with: valueUses.genericTypeLocations)
-                    reference.valueArgumentReferences = values
-                }
-            }
             identifyUnusedParameters(using: multiplexingSyntaxVisitor)
             applyCommentCommands(using: multiplexingSyntaxVisitor)
         }

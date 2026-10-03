@@ -241,6 +241,7 @@ swift_library(
         "Indexer/SyntaxAnalysis/EnumCasePatternAnalysis.swift",
         "Indexer/SyntaxAnalysis/IndexedFile.swift",
         "Indexer/SyntaxAnalysis/SyntaxAnalysis.swift",
+        "Indexer/SyntaxAnalysis/ValueUseAnalysis.swift",
         "Indexer/XCDataModelIndexer.swift",
         "Indexer/XCDataModelParser.swift",
         "Indexer/XCMappingModelIndexer.swift",
