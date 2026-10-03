@@ -30,18 +30,19 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertTrue(collector.hasIndexableSyntax)
     }
 
-    /// `Widget(...)` calls an initializer, `store[key]` a subscript; the index records both under those names.
-    func testConstructorCallsAndSubscriptsAreMemberUses() {
-        let collector = collect("""
-        let widget = Widget(size: 1)
-        let value = store[key]
-        let other = makeWidget()
-        _ = Store.shared[0]
-        """)
-        XCTAssertEqual(collector.uses["init"], true)
-        XCTAssertNil(collector.uses["Widget.init"], "A qualified spelling is for the file reader, not the index names")
-        XCTAssertEqual(collector.uses["subscript"], true)
-        XCTAssertTrue(collector.constructionUses.isSuperset(of: ["init", "subscript", "Widget"]))
+    /// `Widget(...)` calls an initializer, `store[key]` a subscript; those names reach the file reader only,
+    /// since in a skipped `#if` clause they would match every initializer or subscript of the module.
+    func testConstructorCallsAndSubscriptsAreUsesForTheFileReaderOnly() {
+        var seen: [String] = []
+        _ = NameUseCollector(Syntax(Parser.parse(source: "let widget = Widget(size: 1)\nlet value = store[key]\nlet other = makeWidget()\n"))) { seen.append($0.name) }
+        XCTAssertTrue(seen.contains("init"))
+        XCTAssertTrue(seen.contains("Widget.init"))
+        XCTAssertTrue(seen.contains("subscript"))
+
+        let collector = collect("let widget = Widget(size: 1)\nlet value = store[key]\nlet other = makeWidget()\n")
+        XCTAssertNil(collector.uses["init"])
+        XCTAssertNil(collector.uses["subscript"])
+        XCTAssertEqual(collector.uses["Widget"], true)
         XCTAssertEqual(collector.uses["makeWidget"], true, "A call to a function records only the function")
     }
 

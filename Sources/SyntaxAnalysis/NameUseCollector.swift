@@ -42,10 +42,12 @@ public struct NameUseCollector {
         collect(node, inPattern: false)
     }
 
-    /// Records a use. A `qualified` name, `Store.shared`, is a second spelling of a use already recorded by
-    /// its bare name; it reaches `onUse` only, since `uses` holds the names the index records.
-    private mutating func record(_ name: String, isMember: Bool, isConstruction: Bool, at node: Syntax, qualified: Bool = false) {
-        if !qualified {
+    /// Records a use. A name `forFileReaderOnly` reaches `onUse` but not `uses`: `Store.shared` is a second
+    /// spelling of a use already recorded by its bare name, and `init` or `subscript` for `Widget(...)` or
+    /// `store[key]` would match every initializer or subscript of a module in a skipped `#if` clause, where
+    /// no type name narrows the match as it does for a file of an unscanned target.
+    private mutating func record(_ name: String, isMember: Bool, isConstruction: Bool, at node: Syntax, forFileReaderOnly: Bool = false) {
+        if !forFileReaderOnly {
             uses[name] = (uses[name] ?? false) || isMember
             if isConstruction { constructionUses.insert(name) }
         }
@@ -99,14 +101,14 @@ public struct NameUseCollector {
             // starts with a capital letter, a function does not. The use is also recorded as `Widget.init`, so
             // a match can be placed at a use of this type's initializer rather than any type's.
             if isCalled, reference.parent?.is(MemberAccessExprSyntax.self) != true, name.first?.isUppercase == true {
-                record("init", isMember: true, isConstruction: !inPattern, at: node)
-                record("\(name).init", isMember: true, isConstruction: !inPattern, at: node, qualified: true)
+                record("init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
+                record("\(name).init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
             }
             // `Store.shared` names the member through its type; recorded as `Store.shared` as well.
             if let access = reference.parent?.as(MemberAccessExprSyntax.self), access.declName.id == reference.id,
                let base = access.base?.as(DeclReferenceExprSyntax.self)?.baseName.text, base.first?.isUppercase == true
             {
-                record("\(base).\(name)", isMember: true, isConstruction: !inPattern, at: node, qualified: true)
+                record("\(base).\(name)", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
             }
         } else if let type = node.as(IdentifierTypeSyntax.self) {
             let name = type.name.identifier?.name ?? type.name.text
@@ -116,7 +118,7 @@ public struct NameUseCollector {
             record(name, isMember: true, isConstruction: !inPattern, at: node)
         } else if node.is(SubscriptCallExprSyntax.self) {
             // `store[key]` is a use of a subscript, which the index records under that name.
-            record("subscript", isMember: true, isConstruction: !inPattern, at: node)
+            record("subscript", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
         }
         for child in node.children(viewMode: .sourceAccurate) {
             collect(child, inPattern: inPattern)
