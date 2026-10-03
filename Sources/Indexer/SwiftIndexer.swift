@@ -325,11 +325,13 @@ final class SwiftIndexer: Indexer {
                 topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder)
             )
             visitDeclarations(using: declarationSyntaxVisitor)
-            let patterns = EnumCasePatternSyntaxVisitor()
-            patterns.walk(multiplexingSyntaxVisitor.syntax)
-            let patternLocations = Set(patterns.memberPositions.map { locationBuilder.location(at: $0) })
-            for reference in indexedReferences where reference.declarationKind == .enumelement && patternLocations.contains(reference.location) {
-                reference.role = .enumCasePattern
+            let file = IndexedFile(
+                syntax: multiplexingSyntaxVisitor.syntax,
+                locationBuilder: locationBuilder,
+                referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init)
+            )
+            for analysis in SyntaxAnalysisList.all {
+                try analysis.init(configuration: configuration).apply(to: file)
             }
             let valueUses = ValueUseSyntaxVisitor(locations: locationBuilder)
             valueUses.walk(multiplexingSyntaxVisitor.syntax)
@@ -353,7 +355,7 @@ final class SwiftIndexer: Indexer {
                     )
                 }
             }
-            let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
+            let referencesByLocation = file.referencesByLocation
             for (call, arguments) in valueUses.arguments {
                 let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })
                 for reference in referencesByLocation[call, default: []] {
