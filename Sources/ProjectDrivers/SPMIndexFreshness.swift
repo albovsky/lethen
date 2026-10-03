@@ -23,18 +23,41 @@ import SystemPackage
 ///    have been recompiled in full.
 ///
 /// Anything that cannot be verified is reported, and the caller falls back to a clean build.
+///
+/// A target the build never compiles, such as an executable used only by a command plugin, has no units
+/// and no objects. It is not part of the contract: verification records it in the stamp, and the next
+/// scan reuses the tree only while it still has no objects. A target with objects but no units, or with
+/// units for only some of its sources, was compiled without indexing and cleans.
 struct SPMIndexFreshness {
     /// SwiftPM does not rebuild when only `-Xswiftc` flags change, so a stamp from other arguments or
     /// another compiler cannot vouch for the objects in the tree.
     struct Stamp: Codable, Equatable {
-        var format = 2
+        var format = 3
         let swiftVersion: String
         let buildArguments: [String]
+        /// Modules of targets the build did not compile, sorted. Verification recomputes them after every
+        /// build, so they inform the next preparation but never decide whether a stamp matches.
+        var unbuiltTargets: [String] = []
+
+        /// Whether a stamp written by another build vouches for this one's tree.
+        func describesSameBuild(as other: Stamp) -> Bool {
+            format == other.format && swiftVersion == other.swiftVersion && buildArguments == other.buildArguments
+        }
     }
 
     struct Source: Hashable {
         let path: FilePath
         let module: String
+        /// Names a build directory of the source's target can carry: the target, its module, and the
+        /// products it belongs to. swiftbuild names directories `<Name>-t.build` or `<Name>-p.build`, the
+        /// native build system `<Module>.build`.
+        var directoryNames: Set<String> = []
+    }
+
+    struct Verification: Equatable {
+        var issues: [Issue] = []
+        /// Modules of targets with no unit and no object: the build never compiled them.
+        var unbuiltTargets: Set<String> = []
     }
 
     enum Preparation: Equatable {
@@ -51,6 +74,7 @@ struct SPMIndexFreshness {
         case unresolvedObject(FilePath, recorded: String)
         case importerNotRecompiled(module: String, importer: String)
         case notAPackageSource(FilePath)
+        case compiledWithoutIndexing(target: String, object: FilePath)
 
         var description: String {
             switch self {
@@ -68,6 +92,8 @@ struct SPMIndexFreshness {
                 "\(module) was recompiled but \(importer), which imports it, was not"
             case let .notAPackageSource(path):
                 "\(path) has a unit but is no longer a source of the package"
+            case let .compiledWithoutIndexing(target, object):
+                "\(target) has no units but was compiled, as \(object)"
             }
         }
     }
@@ -116,17 +142,32 @@ struct SPMIndexFreshness {
 
     // MARK: - Before building
 
-    func prepare(sources: Set<Source>, stampDate: Date) throws -> Preparation {
+    /// - Parameter unbuiltTargets: the modules the stamp recorded as never compiled.
+    func prepare(sources allSources: Set<Source>, stampDate: Date, unbuiltTargets: Set<String> = []) throws -> Preparation {
         let units = try sourceUnits()
         if let unresolved = units.first(where: { $0.object == nil }) {
             return .clean(reason: "object \(unresolved.recordedObject) matches no single object file")
         }
-        if let removed = unitsOutsidePackageSources(units, sources: sources).first {
+        if let removed = unitsOutsidePackageSources(units, sources: allSources).first {
             return .clean(reason: "\(removed) has a unit but is no longer a source of the package")
         }
 
         let modulesByDirectory = moduleObjectDirectories(units)
         let objects = objectFiles()
+
+        // A recorded target that is still without units stays out of the contract only while it is still
+        // without objects. One that has units now is checked like any other module, and verification
+        // rejects units it did not rewrite.
+        let unitModules = Set(units.map(\.module))
+        let unbuilt = unbuiltTargets.subtracting(unitModules)
+        let unbuiltSources = allSources.filter { unbuilt.contains($0.module) }
+        for module in unbuilt.sorted() {
+            let names = unbuiltSources.filter { $0.module == module }.reduce(into: Set<String>()) { $0.formUnion($1.directoryNames) }
+            if let object = Self.firstObject(of: objects, named: names, excluding: Set(modulesByDirectory.keys)) {
+                return .clean(reason: "\(module) was recorded as not built but now has objects, such as \(object)")
+            }
+        }
+        let sources = allSources.subtracting(unbuiltSources)
         var resolvedDirectories: [FilePath: FilePath] = [:]
         func module(of object: ObjectFile) -> String? {
             guard let directory = Self.targetBuildDirectory(of: object.path) else { return nil }
@@ -163,12 +204,34 @@ struct SPMIndexFreshness {
 
     // MARK: - After building
 
-    func verify(sources: Set<Source>, buildStart: Date) throws -> [Issue] {
+    func verify(sources: Set<Source>, buildStart: Date) throws -> Verification {
         let units = try sourceUnits()
         let unitsByFile = Dictionary(grouping: units, by: \.mainFile)
+        var result = Verification()
         var issues: [Issue] = unitsOutsidePackageSources(units, sources: sources).map { .notAPackageSource($0) }
 
-        for source in sources.sorted(by: { $0.path.string < $1.path.string }) {
+        // A module none of whose sources has a unit and that has no object of its own was never compiled.
+        // One with objects was compiled without indexing; one with some units is checked source by source.
+        let unitModules = Set(units.map(\.module))
+        let claimedDirectories = Set(moduleObjectDirectories(units).keys)
+        var objects: [ObjectFile]?
+        for (module, moduleSources) in Dictionary(grouping: sources, by: \.module).sorted(by: { $0.key < $1.key }) {
+            guard !unitModules.contains(module),
+                  !moduleSources.contains(where: { !(unitsByFile[Self.resolved($0.path)] ?? []).isEmpty })
+            else { continue }
+
+            if objects == nil {
+                objects = objectFiles()
+            }
+            let names = moduleSources.reduce(into: Set<String>()) { $0.formUnion($1.directoryNames) }
+            if let object = Self.firstObject(of: objects ?? [], named: names, excluding: claimedDirectories) {
+                issues.append(.compiledWithoutIndexing(target: module, object: object))
+            } else {
+                result.unbuiltTargets.insert(module)
+            }
+        }
+
+        for source in sources.sorted(by: { $0.path.string < $1.path.string }) where !result.unbuiltTargets.contains(source.module) {
             let path = Self.resolved(source.path)
             guard let fileUnits = unitsByFile[path], !fileUnits.isEmpty else {
                 issues.append(.missingUnit(path))
@@ -213,7 +276,8 @@ struct SPMIndexFreshness {
             }
         }
 
-        return issues
+        result.issues = issues
+        return result
     }
 
     // MARK: - Private
@@ -329,6 +393,27 @@ struct SPMIndexFreshness {
             result.append(ObjectFile(path: FilePath(url.path), date: date))
         }
         return result
+    }
+
+    /// The first object, by path, in a `<Name>.build` or `<Name>-<kind>.build` directory for one of the
+    /// names, skipping directories that indexed modules compile into. Matching is deliberately broad: an
+    /// object wrongly attributed to a target only turns "never built" into "compiled without indexing",
+    /// which cleans.
+    private static func firstObject(of objects: [ObjectFile], named names: Set<String>, excluding claimed: Set<FilePath>) -> FilePath? {
+        guard !names.isEmpty else { return nil }
+
+        var resolvedDirectories: [FilePath: FilePath] = [:]
+        return objects.lazy
+            .map(\.path)
+            .filter { object in
+                guard let directory = targetBuildDirectory(of: object), let name = directory.lastComponent?.string else { return false }
+
+                let resolved = resolvedDirectories[directory] ?? Self.resolved(directory)
+                resolvedDirectories[directory] = resolved
+                let base = String(name.dropLast(".build".count))
+                return !claimed.contains(resolved) && names.contains { base == $0 || base.hasPrefix($0 + "-") }
+            }
+            .min { $0.string < $1.string }
     }
 
     /// For each module, the modules whose units import it.

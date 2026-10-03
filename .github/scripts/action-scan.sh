@@ -65,8 +65,15 @@ if [ "$format" = github-actions ] && [ -n "${GITHUB_WORKSPACE:-}" ]; then
         "$workspace"/*) prefix="${here#"$workspace"/}/" ;;
     esac
 fi
-# Escaped for the replacement side of the sed expression below.
-escaped_prefix="$(printf '%s' "$prefix" | sed 's/[\\&|]/\\&/g')"
+# The prefix becomes part of each annotation's `file` property, so it is escaped as lethen
+# escapes property values, or a comma, colon or newline in a directory name would end the
+# property or the command. It is then escaped for the replacement side of the sed expression.
+property="${prefix//\%/%25}"
+property="${property//$'\r'/%0D}"
+property="${property//$'\n'/%0A}"
+property="${property//:/%3A}"
+property="${property//,/%2C}"
+escaped_prefix="$(printf '%s' "$property" | sed 's/[\\&|]/\\&/g')"
 annotate() {
     sed "s|^::warning file=|::warning file=$escaped_prefix|"
 }

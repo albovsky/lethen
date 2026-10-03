@@ -6,6 +6,7 @@ import Shared
 public final class SourceGraph {
     public private(set) var allDeclarations: Set<Declaration> = []
     public private(set) var usedDeclarations: Set<Declaration> = []
+
     public private(set) var redundantProtocols: [Declaration: (references: Set<Reference>, inherited: Set<Reference>)] = [:]
     public private(set) var rootDeclarations: Set<Declaration> = []
     public private(set) var redundantPublicAccessibility: [Declaration: Set<String>] = [:]
@@ -29,9 +30,6 @@ public final class SourceGraph {
     public var recordsRetentionSources = false
     /// Enum cases referenced only in patterns.
     public private(set) var unconstructedEnumCases: Set<Declaration> = []
-    /// Identifier-like words found in string literals across the scanned sources.
-    public private(set) var literalTokens: Set<String> = []
-
     private var indexedModules: Set<String> = []
     private var unindexedExportedModules: Set<String> = []
     private var allDeclarationsByKind: [Declaration.Kind: Set<Declaration>] = [:]
@@ -45,35 +43,6 @@ public final class SourceGraph {
         self.configuration = configuration
         self.logger = logger
     }
-
-    public func addLiteralTokens(_ tokens: Set<String>) {
-        literalTokens.formUnion(tokens)
-    }
-
-    public func assessConfidence(of declaration: Declaration) -> ConfidenceAssessment {
-        let objcAttributes: Set<String> = ["objc", "objc.name", "objcMembers"]
-        let isObjcExposed = declaration.isObjcAccessible
-            || declaration.attributes.contains { objcAttributes.contains($0.name) }
-            || declaration.modifiers.contains("dynamic")
-
-        if isObjcExposed, !configuration.retainObjcAccessible, !configuration.retainObjcAnnotated {
-            return .init(confidence: .likely, reason: "it is accessible from Objective-C, and Lethen cannot see references made from Objective-C")
-        }
-
-        if Self.dynamicallyNamedKinds.contains(declaration.kind), literalTokens.contains(Self.baseName(of: declaration.name)) {
-            return .init(confidence: .likely, reason: "its name appears in a string literal")
-        }
-
-        return .init(confidence: .certain, reason: nil)
-    }
-
-    /// Kinds a runtime lookup by name can reach: types, methods, properties, and enum cases. Not
-    /// parameters, locals, imports, or extensions.
-    private static let dynamicallyNamedKinds: Set<Declaration.Kind> = [
-        .class, .struct, .enum, .protocol, .enumelement,
-        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic,
-        .varClass, .varGlobal, .varInstance, .varStatic,
-    ]
 
     /// The name without argument labels: `load(from:)` becomes `load`.
     public static func baseName(of name: String) -> String {
@@ -261,6 +230,12 @@ public final class SourceGraph {
         allReferencesByUsr[reference.usr, default: []].insert(reference)
     }
 
+    /// Adds a reference from top-level code, which has no declaration to hold it, after `indexingComplete`.
+    public func addRoot(_ reference: Reference) {
+        add(reference)
+        _ = rootReferences.insert(reference)
+    }
+
     public func add(_ references: Set<Reference>) {
         allReferences.formUnion(references)
         references.forEach { allReferencesByUsr[$0.usr, default: []].insert($0) }
@@ -348,8 +323,8 @@ public final class SourceGraph {
 
     func markUnusedModuleImport(_ statement: ImportStatement) {
         let location = statement.location.relativeTo(configuration.projectRoot)
-        let usr = "import-\(statement.module)-\(location)"
-        let decl = Declaration(name: statement.module, kind: .module, usrs: [usr], location: statement.location)
+        let usr = "import-\(statement.qualifiedModule)-\(location)"
+        let decl = Declaration(name: statement.qualifiedModule, kind: .module, usrs: [usr], location: statement.location)
         unusedModuleImports.insert(decl)
     }
 
@@ -473,6 +448,14 @@ public final class SourceGraph {
 
         return inheritedTypeReferences(of: decl).contains {
             [.protocol, .typealias].contains($0.declarationKind) && encodableTypes.contains($0.name)
+        }
+    }
+
+    func isDecodable(_ decl: Declaration) -> Bool {
+        let decodableTypes = ["Decodable"] + configuration.externalCodableProtocols
+
+        return inheritedTypeReferences(of: decl).contains {
+            [.protocol, .typealias].contains($0.declarationKind) && decodableTypes.contains($0.name)
         }
     }
 

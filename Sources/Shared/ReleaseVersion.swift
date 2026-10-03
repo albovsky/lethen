@@ -1,7 +1,8 @@
 /// A release tag ordered by Semantic Versioning precedence.
 ///
 /// Unlike a numeric string comparison, a release ranks above all of its own prereleases, so `3.8.1` is newer than
-/// both `3.8.1-dev.2` and `3.8.1-beta`.
+/// both `3.8.1-dev.2` and `3.8.1-beta`. Calendar versions (`YYYY.M.N`, for example `2026.10.1`) are ordinary
+/// three-part versions and rank above every `3.x` release.
 public struct ReleaseVersion: Comparable, CustomStringConvertible {
     public let tag: String
     private let core: [Int]
@@ -10,7 +11,13 @@ public struct ReleaseVersion: Comparable, CustomStringConvertible {
     public init?(_ tag: String) {
         let withoutBuildMetadata = tag.split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false)[0]
         let parts = withoutBuildMetadata.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
-        let core = parts[0].split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
+        let coreParts = parts[0].split(separator: ".", omittingEmptySubsequences: false)
+
+        // Semantic Versioning forbids leading zeros, so a calendar tag such as `2026.09.1` is not a version; the month
+        // is written without one (`2026.9.1`).
+        guard coreParts.allSatisfy({ $0 == "0" || $0.first != "0" }) else { return nil }
+
+        let core = coreParts.map { Int($0) }
 
         guard !core.isEmpty, core.allSatisfy({ $0 != nil }) else { return nil }
 

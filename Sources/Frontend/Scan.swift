@@ -20,6 +20,7 @@ final class Scan: ScanRunning {
     private let swiftVersion: SwiftVersion
     private var sourceFileCount = 0
     private var lineCount: Int?
+    private var evidence = ConfidenceEvidence()
 
     required init(configuration: Configuration, logger: Logger, swiftVersion: SwiftVersion) {
         self.configuration = configuration
@@ -34,11 +35,14 @@ final class Scan: ScanRunning {
         let statistics: ScanStatistics?
         /// The analyzed source graph, which `lethen explain` reads.
         let graph: SourceGraph?
+        /// The confidence the results were built with, which `lethen explain` reads too.
+        let confidence: ConfidenceAssessor?
 
-        init(results: [ScanResult], statistics: ScanStatistics? = nil, graph: SourceGraph? = nil) {
+        init(results: [ScanResult], statistics: ScanStatistics? = nil, graph: SourceGraph? = nil, confidence: ConfidenceAssessor? = nil) {
             self.results = results
             self.statistics = statistics
             self.graph = graph
+            self.confidence = confidence
         }
     }
 
@@ -46,6 +50,26 @@ final class Scan: ScanRunning {
     var recordsRetentionSources: Bool {
         get { graph.recordsRetentionSources }
         set { graph.recordsRetentionSources = newValue }
+    }
+
+    /// Build arguments quoted as if for a shell, such as `'/tmp/Build Space'`, `--scratch-path='/tmp/Build Space'`, or
+    /// the build setting `OTHER_SWIFT_FLAGS='-DA -DB'`. Commands used to run through a shell, which removed such quotes;
+    /// they now reach the build tool as written.
+    static func shellQuotedArguments(_ arguments: [String]) -> [String] {
+        func isQuoted(_ text: Substring) -> Bool {
+            text.count >= 2 && ["'", "\""].contains { text.hasPrefix($0) && text.hasSuffix($0) }
+        }
+
+        return arguments.filter { argument in
+            if isQuoted(argument[...]) {
+                return true
+            }
+
+            // An option's value or a build setting's value after the first `=`.
+            guard let equals = argument.firstIndex(of: "=") else { return false }
+
+            return isQuoted(argument[argument.index(after: equals)...])
+        }
     }
 
     func perform(project: Project) throws -> Output {
@@ -56,6 +80,10 @@ final class Scan: ScanRunning {
                 logger.warn("The '--index-store-path' option implies '--skip-build', specify it to silence this warning.")
                 configuration.skipBuild = true
             }
+        }
+
+        for argument in Self.shellQuotedArguments(configuration.buildArguments + configuration.xcodeListArguments) {
+            logger.warn("The build argument \(argument) reaches the build with its quotes, because lethen passes build arguments to the build tool as written, without a shell. Remove the quotes.")
         }
 
         let driver = try setup(project)
@@ -70,13 +98,14 @@ final class Scan: ScanRunning {
         try index(driver)
         let declarationCount = graph.allDeclarations.count
         try analyze()
-        let results = buildResults()
+        let confidence = ConfidenceAssessor(evidence: evidence, graph: graph, configuration: configuration)
+        let results = buildResults(confidence: confidence)
         let statistics = configuration.stats ? ScanStatistics(
             sourceFileCount: sourceFileCount,
             lineCount: lineCount,
             declarationCount: declarationCount
         ) : nil
-        return Output(results: results, statistics: statistics, graph: graph)
+        return Output(results: results, statistics: statistics, graph: graph, confidence: confidence)
     }
 
     // MARK: - Private
@@ -108,7 +137,9 @@ final class Scan: ScanRunning {
         logger.endInterval(planInterval)
         let graphMutex = SourceGraphMutex(graph: graph)
         let pipeline = IndexPipeline(plan: plan, graph: graphMutex, logger: indexLogger, configuration: configuration, swiftVersion: swiftVersion)
-        lineCount = try pipeline.perform()
+        let indexResult = try pipeline.perform()
+        lineCount = indexResult.scannedLOC
+        evidence = indexResult.evidence
         sourceFileCount = plan.sourceFiles.count
         logger.endInterval(indexInterval)
     }
@@ -130,9 +161,9 @@ final class Scan: ScanRunning {
         logger.endInterval(analyzeInterval)
     }
 
-    private func buildResults() -> [ScanResult] {
+    private func buildResults(confidence: ConfidenceAssessor) -> [ScanResult] {
         let resultInterval = logger.beginInterval("result:build")
-        let results = ScanResultBuilder.build(for: graph, configuration: configuration)
+        let results = ScanResultBuilder.build(for: graph, configuration: configuration, confidence: confidence)
         logger.endInterval(resultInterval)
         return results
     }

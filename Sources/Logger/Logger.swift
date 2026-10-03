@@ -80,10 +80,11 @@ public struct Logger: Sendable {
         log(text, output: stdout)
     }
 
+    /// Writes debug output to standard error so that it never mixes with results on standard output.
     public func debug(_ text: String) {
         guard verbose else { return }
 
-        log(text, output: stdout)
+        log(text, output: stderr)
     }
 
     /// Writes progress to standard error so that it never mixes with results on standard output.
@@ -171,6 +172,10 @@ public struct ContextualLogger: Sendable {
 
     public func debug(_ text: String) {
         logger.debug("[\(context)] \(text)")
+    }
+
+    public func warn(_ text: String) {
+        logger.warn(text)
     }
 
     public func beginInterval(_ name: StaticString) -> SignpostInterval {

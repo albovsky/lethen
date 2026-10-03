@@ -1,0 +1,600 @@
+import ExternalModuleFixtures
+import Foundation
+
+struct FixtureStruct312: Decodable {
+    // Required by the synthesized init(from:) when a type reaches a decoder: not assign-only.
+    let decoded: Int
+    // A nested value is decoded too, so its properties are required as well.
+    let nested: FixtureStruct312Nested
+    // A default value does not make a decoded property optional.
+    var withDefault: Int = 0
+    // An initialized constant is never decoded, so nothing reads it and it is unused.
+    let fixed = 7
+}
+
+struct FixtureStruct312Nested: Decodable {
+    let nestedValue: Int
+}
+
+struct FixtureStruct312Codable: Codable {
+    // Codable includes Decodable.
+    let codableDecoded: Int
+}
+
+struct FixtureStruct312Generic: Decodable {
+    // Its metatype is passed to an indexed function generic over Decodable.
+    let genericDecoded: Int
+}
+
+struct FixtureStruct312Extension {
+    let extensionDecoded: Int
+}
+
+extension FixtureStruct312Extension: Decodable {}
+
+struct FixtureStruct312Keyed: Decodable {
+    // Named by CodingKeys, so it is decoded.
+    let kept: Int
+    // Absent from CodingKeys, so it is not decoded.
+    var skipped: Int = 0
+
+    enum CodingKeys: String, CodingKey {
+        case kept
+    }
+}
+
+struct FixtureStruct312Undecoded: Decodable {
+    // Control: no type reaches a decoder, so nothing requires it.
+    let neverDecoded: Int
+}
+
+struct FixtureStruct312Optional: Decodable {
+    // Control: an optional property is decoded with decodeIfPresent, so removing it changes nothing.
+    let optionalDecoded: Int?
+    var spelledOutOptional: Optional<Int>
+    var implicitlyUnwrapped: Int!
+}
+
+struct FixtureStruct312Passed: Decodable {
+    // Used-but-not-decoded control: its metatype reaches an indexed, unconstrained function.
+    let passedButNotDecoded: Int
+}
+
+struct FixtureStruct312Printed: Decodable {
+    // Control: an unindexed call that does not decode (print) is not evidence.
+    let printedButNotDecoded: Int
+}
+
+struct FixtureStruct312Metadata: Decodable {
+    // Control: its metatype goes to an unconstrained parameter of a call whose other parameter is Decodable.
+    let metadataNotDecoded: Int
+}
+
+struct FixtureStruct312Placeholder: Decodable {
+    let placeholderDecoded: Int
+}
+
+struct FixtureStruct312Where: Decodable {
+    // Constrained by a where clause, passed by label past a defaulted parameter.
+    let whereDecoded: Int
+}
+
+struct FixtureStruct312Initializer: Decodable {
+    // Passed to a constrained generic initializer.
+    let initializerDecoded: Int
+}
+
+struct FixtureStruct312Variadic: Decodable {
+    let variadicDecoded: Int
+}
+
+struct FixtureStruct312VariadicOther: Decodable {
+    let variadicOtherDecoded: Int
+}
+
+protocol FixtureProtocol312HasPayload {
+    associatedtype Payload
+}
+
+struct FixtureStruct312Dependent: Decodable, FixtureProtocol312HasPayload {
+    // Control: only its associated Payload is constrained to Decodable by the helper it reaches, not the type itself.
+    typealias Payload = Int
+
+    let dependentNotDecoded: Int
+}
+
+struct FixtureStruct312Loader {
+    init<T: Decodable>(_: T.Type) {}
+}
+
+struct FixtureStruct312Boxed: Decodable {
+    // Control: only an element of a generic wrapper is constrained, not the wrapper's own parameter.
+    let boxedNotDecoded: Int
+}
+
+struct FixtureStruct312Box<T: Decodable>: Decodable {
+    let value: T
+}
+
+struct FixtureStruct312ValueOnly: Decodable {
+    // Control: a value passed for a Decodable parameter has already been decoded; only a metatype decodes.
+    let valueNotDecoded: Int
+}
+
+struct FixtureStruct312Composed: Decodable {
+    // Passed as the metatype of a protocol composition.
+    let composedDecoded: Int
+}
+
+typealias FixtureAlias312 = Decodable
+
+struct FixtureStruct312Aliased: Decodable {
+    // Control: a typealias to Decodable is not recognized, so it is not evidence.
+    let aliasedNotDecoded: Int
+}
+
+public struct FixtureStruct312Key: CodingKey, Decodable {
+    // Control: an external decoding call decodes only its metatype argument, not the key passed beside it.
+    public let stringValue: String
+    public let intValue: Int? = nil
+    let keyNotDecoded: Int
+
+    public init?(stringValue: String) {
+        self.stringValue = stringValue
+        keyNotDecoded = 0
+    }
+
+    public init?(intValue _: Int) {
+        nil
+    }
+}
+
+struct FixtureStruct312Lazy: Decodable {
+    let lazyAnchor: Int
+    // The synthesized initializer does not decode a lazy property. Lethen never reports one as assign-only, so this
+    // is not observable in the results; the rule only keeps the model from inventing reads.
+    lazy var lazyNotDecoded = 0
+}
+
+struct FixtureStruct312Holder: Decodable {
+    // Control: optional, so decoded with decodeIfPresent and not required itself.
+    let child: FixtureStruct312Child?
+}
+
+struct FixtureStruct312Child: Decodable {
+    // Retained: decodeIfPresent still runs Child's synthesized initializer when the key is present.
+    let childRequired: Int
+}
+
+struct FixtureStruct312Page<Value: Decodable>: Decodable {
+    let items: [Value]
+    let total: Int
+}
+
+struct FixtureStruct312Item: Decodable {
+    // Decoded as the generic argument of a decoded Page.
+    let itemDecoded: Int
+}
+
+struct FixtureStruct312Phantom<Tag>: Decodable {
+    // Never stores a Tag, so decoding a Phantom decodes no Tag.
+    let count: Int
+}
+
+struct FixtureStruct312Tag: Decodable {
+    // Control: only the phantom parameter of a decoded generic names it.
+    let tagNotDecoded: Int
+}
+
+struct FixtureStruct312Envelope<Value>: Decodable {
+    // Stores the parameter only inside another generic wrapper, which this rule does not follow.
+    let wrapped: FixtureStruct312Phantom<Value>
+}
+
+struct FixtureStruct312Nested2: Decodable {
+    // Control: reached only through Phantom<T> inside a decoded Envelope<T>.
+    let nested2NotDecoded: Int
+}
+
+struct FixtureStruct312Dictionary<Value: Decodable>: Decodable {
+    let table: [String: Value]
+}
+
+struct FixtureStruct312Entry: Decodable {
+    let entryDecoded: Int
+}
+
+struct FixtureStruct312Overload: Decodable {
+    // An unrelated init(from:) overload does not replace the synthesized init(from: Decoder).
+    let overloadDecoded: Int
+
+    init(from number: Int) {
+        overloadDecoded = number
+    }
+}
+
+typealias FixtureAlias312Decoder = Decoder
+
+struct FixtureStruct312AliasInit: Decodable {
+    // Control: init(from:) taking a typealias of Decoder is still a custom initializer.
+    let aliasInitNotDecoded: Int
+
+    init(from _: FixtureAlias312Decoder) throws {
+        aliasInitNotDecoded = 0
+    }
+}
+
+struct FixtureStruct312Fake: Decodable {
+    // Control: decoded only through an external type that merely shares the container's name.
+    let fakeNotDecoded: Int
+}
+
+enum FixtureSharedKeys312: String, CodingKey {
+    case sharedKept
+}
+
+struct FixtureStruct312SharedKeys: Decodable {
+    typealias CodingKeys = FixtureSharedKeys312
+
+    // Named by the aliased keys, so it is decoded.
+    let sharedKept: Int
+    // Absent from the aliased keys, so it is not.
+    var sharedSkipped: Int = 0
+}
+
+typealias FixtureAlias312Middle = FixtureAlias312Decoder
+typealias FixtureAlias312Number = Int
+typealias FixtureAlias312Keys = FixtureSharedKeys312
+
+struct FixtureStruct312ChainInit: Decodable {
+    // Control: a two-step alias of Decoder is still the coder.
+    let chainInitNotDecoded: Int
+
+    init(from _: FixtureAlias312Middle) throws {
+        chainInitNotDecoded = 0
+    }
+}
+
+struct FixtureStruct312NumberOverload: Decodable {
+    // An overload taking an alias of Int is unrelated to the coder, so decoding stays synthesized.
+    let numberOverloadDecoded: Int
+
+    init(from number: FixtureAlias312Number) {
+        numberOverloadDecoded = number
+    }
+}
+
+struct FixtureStruct312ChainKeys: Decodable {
+    typealias CodingKeys = FixtureAlias312Keys
+
+    let sharedKept: Int
+    var sharedSkipped: Int = 0
+}
+
+struct FixtureStruct312Unkeyed: Decodable {
+    let unkeyedDecoded: Int
+}
+
+struct FixtureStruct312Single: Decodable {
+    let singleDecoded: Int
+}
+
+struct FixtureStruct312Protocol: Decodable {
+    let protocolDecoded: Int
+}
+
+typealias FixtureAlias312Shadowed = Decoder
+
+struct FixtureStruct312Shadowing: Decodable {
+    // The nested alias shadows the global one: this overload takes an Int, so decoding stays synthesized.
+    typealias FixtureAlias312Shadowed = Int
+
+    let shadowingDecoded: Int
+
+    init(from number: FixtureAlias312Shadowed) {
+        shadowingDecoded = number
+    }
+}
+
+enum FixtureQualifier312 {
+    typealias MyDecoder = Decoder
+}
+
+enum FixtureQualifierPlain312 {
+    typealias MyDecoder = Int
+}
+
+struct FixtureStruct312Qualified: Decodable {
+    // Control: a qualified alias of Decoder is still the coder.
+    let qualifiedNotDecoded: Int
+
+    init(from _: FixtureQualifier312.MyDecoder) throws {
+        qualifiedNotDecoded = 0
+    }
+}
+
+struct FixtureStruct312QualifiedPlain: Decodable {
+    // The qualifier's alias names an Int, so this overload is unrelated and decoding stays synthesized.
+    let qualifiedPlainDecoded: Int
+
+    init(from number: FixtureQualifierPlain312.MyDecoder) {
+        qualifiedPlainDecoded = number
+    }
+}
+
+struct FixtureStruct312Concrete: Decodable {
+    // Control: held only as the phantom argument of a stored property.
+    let concreteNotDecoded: Int
+}
+
+struct FixtureStruct312Outer: Decodable {
+    let value: FixtureStruct312Phantom<FixtureStruct312Concrete>
+}
+
+struct FixtureStruct312Wrapped: Decodable {
+    // Held as the argument of a stored property whose generic type does store it.
+    let wrappedDecoded: Int
+}
+
+struct FixtureStruct312OuterPage: Decodable {
+    let page: FixtureStruct312Page<FixtureStruct312Wrapped>
+}
+
+struct FixtureStruct312OptionalModel: Decodable {
+    // Decoded as the argument of Optional<...>.self.
+    let optionalModelDecoded: Int
+}
+
+struct FixtureStruct312ArrayModel: Decodable {
+    // Decoded as the argument of Array<...>.self.
+    let arrayModelDecoded: Int
+}
+
+struct FixtureStruct312NestedOptional<V: Decodable>: Decodable {
+    let items: [V?]
+}
+
+struct FixtureStruct312NestedTable<V: Decodable>: Decodable {
+    let table: [String: [V]]
+}
+
+struct FixtureStruct312OptionalItem: Decodable {
+    let optionalItemDecoded: Int
+}
+
+struct FixtureStruct312TableItem: Decodable {
+    let tableItemDecoded: Int
+}
+
+struct FixtureStruct312DictModel: Decodable {
+    // Decoded as the value type of [String: ...].self.
+    let dictModelDecoded: Int
+}
+
+struct FixtureStruct312Computed: Decodable {
+    let computedAnchor: Int
+
+    // Computed, so the synthesized initializer never decodes it, even though its body references nothing.
+    var computedConstant: Int {
+        42
+    }
+}
+
+enum FixtureQualifiedHolder312 {
+    struct Model: Decodable {
+        // Decoded as a qualified generic argument.
+        let qualifiedModelDecoded: Int
+    }
+}
+
+struct FixtureStruct312Aliased1: Decodable {
+    // Decoded through a typealias of itself.
+    let aliased1Decoded: Int
+}
+
+struct FixtureStruct312Aliased2: Decodable {
+    // Decoded through a two-step chain of aliases.
+    let aliased2Decoded: Int
+}
+
+struct FixtureStruct312AliasedCustom: Decodable {
+    // Control: an alias of a type with its own init(from:) changes nothing.
+    let aliasedCustomNotDecoded: Int
+
+    init(from _: Decoder) throws {
+        aliasedCustomNotDecoded = 0
+    }
+}
+
+typealias FixtureAlias312Payload1 = FixtureStruct312Aliased1
+typealias FixtureAlias312Payload2Step = FixtureStruct312Aliased2
+typealias FixtureAlias312Payload2 = FixtureAlias312Payload2Step
+typealias FixtureAlias312Custom = FixtureStruct312AliasedCustom
+
+enum FixtureQualifier312Phantom {
+    struct Wrapper<Tag>: Decodable {
+        let wrapperCount: Int
+    }
+}
+
+struct FixtureStruct312QualifiedConcrete: Decodable {
+    // Control: held only as the argument of a qualified phantom wrapper.
+    let qualifiedConcreteNotDecoded: Int
+}
+
+struct FixtureStruct312QualifiedOuter: Decodable {
+    let value: FixtureQualifier312Phantom.Wrapper<FixtureStruct312QualifiedConcrete>
+}
+
+struct FixtureStruct312ObservedChild: Decodable {
+    // Held by a stored property with an observer, which is still decoded.
+    let observedChildDecoded: Int
+}
+
+struct FixtureStruct312Observed: Decodable {
+    var observedChild: FixtureStruct312ObservedChild {
+        didSet {}
+    }
+}
+
+typealias FixtureAlias312GenericPayload<T: Decodable> = FixtureStruct312Page<T>
+
+struct FixtureStruct312AliasPageItem: Decodable {
+    // Decoded as the argument of a generic typealias of a Page.
+    let aliasPageItemDecoded: Int
+}
+
+struct FixtureStruct312ExternalKeys: Decodable {
+    // The keys come from an unscanned module, so which properties they name is unknown: every eligible property is
+    // retained, and no omitted-key control is possible.
+    typealias CodingKeys = FixtureExternalKeys
+
+    let externalKept: Int
+}
+
+struct FixtureStruct312Holder2<T: Decodable>: Decodable {
+    let held: T
+}
+
+struct FixtureStruct312NestedOuter<T: Decodable>: Decodable {
+    let box: FixtureStruct312Holder2<T>
+}
+
+struct FixtureStruct312NestedItem: Decodable {
+    // Decoded through a wrapper that stores a wrapper that stores the parameter.
+    let nestedItemDecoded: Int
+}
+
+struct FixtureStruct312LabeledA: Decodable {
+    let labeledADecoded: Int
+}
+
+struct FixtureStruct312LabeledB: Decodable {
+    let labeledBDecoded: Int
+}
+
+struct FixtureStruct312Custom: Decodable {
+    // Control: an explicit init(from:) replaces the synthesized one, so its writes count normally.
+    let notDecodedByCustom: Int
+
+    init(from _: Decoder) throws {
+        notDecodedByCustom = 0
+    }
+}
+
+public class FixtureClass312Retainer {
+    public func decode(_ data: Data) throws {
+        _ = try JSONDecoder().decode(FixtureStruct312.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Codable.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Extension.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Keyed.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Optional.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Custom.self, from: data)
+        load(FixtureStruct312Generic.self)
+        mixed(FixtureStruct312Placeholder.self, metadata: FixtureStruct312Metadata.self)
+        constrained(extra: 1, FixtureStruct312Where.self)
+        _ = FixtureStruct312Loader(FixtureStruct312Initializer.self)
+        variadic(FixtureStruct312Variadic.self, FixtureStruct312Variadic.self)
+        variadicMixed(FixtureStruct312Variadic.self, FixtureStruct312VariadicOther.self)
+        inspect(FixtureStruct312Dependent.self)
+        boxed(makeBox())
+        valueOnly(FixtureStruct312ValueOnly(valueNotDecoded: 2))
+        composed(FixtureStruct312Composed.self)
+        aliased(FixtureStruct312Aliased.self)
+        _ = try JSONDecoder().decode(FixtureStruct312Lazy.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Holder.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Page<FixtureStruct312Item>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Phantom<FixtureStruct312Tag>.self, from: data)
+        _ = FixtureStruct312Tag(tagNotDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Envelope<FixtureStruct312Nested2>.self, from: data)
+        _ = FixtureStruct312Nested2(nested2NotDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Dictionary<FixtureStruct312Entry>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Overload.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312AliasInit.self, from: data)
+        _ = FixtureStruct312Fake(fakeNotDecoded: 1)
+        _ = FakeDecodingContainer().decode(FixtureStruct312Fake.self, forKey: "fake")
+        _ = try JSONDecoder().decode(FixtureStruct312SharedKeys.self, from: data)
+        _ = FixtureStruct312SharedKeys(sharedKept: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312ChainInit.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312NumberOverload.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312ChainKeys.self, from: data)
+        _ = FixtureStruct312ChainKeys(sharedKept: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Shadowing.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Qualified.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312QualifiedPlain.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Outer.self, from: data)
+        _ = FixtureStruct312Concrete(concreteNotDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312OuterPage.self, from: data)
+        _ = try JSONDecoder().decode(Optional<FixtureStruct312OptionalModel>.self, from: data)
+        _ = try JSONDecoder().decode(Array<FixtureStruct312ArrayModel>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312NestedOptional<FixtureStruct312OptionalItem>.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312NestedTable<FixtureStruct312TableItem>.self, from: data)
+        _ = try JSONDecoder().decode([String: FixtureStruct312DictModel].self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Computed.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312Page<FixtureQualifiedHolder312.Model>.self, from: data)
+        _ = FixtureStruct312Aliased1(aliased1Decoded: 1)
+        _ = FixtureStruct312Aliased2(aliased2Decoded: 2)
+        _ = try JSONDecoder().decode(FixtureAlias312Payload1.self, from: data)
+        _ = try JSONDecoder().decode(FixtureAlias312Payload2.self, from: data)
+        _ = try JSONDecoder().decode(FixtureAlias312Custom.self, from: data)
+        _ = try JSONDecoder().decode(FixtureStruct312QualifiedOuter.self, from: data)
+        _ = FixtureStruct312QualifiedConcrete(qualifiedConcreteNotDecoded: 1)
+        _ = FixtureStruct312ObservedChild(observedChildDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312Observed.self, from: data)
+        _ = FixtureStruct312AliasPageItem(aliasPageItemDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureAlias312GenericPayload<FixtureStruct312AliasPageItem>.self, from: data)
+        _ = FixtureStruct312ExternalKeys(externalKept: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312ExternalKeys.self, from: data)
+        _ = FixtureStruct312NestedItem(nestedItemDecoded: 1)
+        _ = try JSONDecoder().decode(FixtureStruct312NestedOuter<FixtureStruct312NestedItem>.self, from: data)
+        labeled(types: FixtureStruct312LabeledA.self, FixtureStruct312LabeledB.self)
+    }
+
+    func variadic<T: Decodable>(_: T.Type...) {}
+
+    public func readUnkeyed(_ container: inout UnkeyedDecodingContainer) throws {
+        _ = try container.decode(FixtureStruct312Unkeyed.self)
+    }
+
+    public func readSingle(_ container: SingleValueDecodingContainer) throws {
+        _ = try container.decode(FixtureStruct312Single.self)
+    }
+
+    public func readProtocol<C: KeyedDecodingContainerProtocol>(_ container: C, key: C.Key) throws {
+        _ = try container.decode(FixtureStruct312Protocol.self, forKey: key)
+    }
+
+    func labeled(types _: any Decodable.Type...) {}
+
+    func boxed<T: Decodable>(_: FixtureStruct312Box<T>) {}
+
+    func makeBox() -> FixtureStruct312Box<FixtureStruct312Boxed> { fatalError() }
+
+    func valueOnly<T: Decodable>(_: T) {}
+
+    func composed(_: any (Decodable & Sendable).Type) {}
+
+    func aliased(_: any FixtureAlias312.Type) {}
+
+    public func read(_ container: KeyedDecodingContainer<FixtureStruct312Key>, key: FixtureStruct312Key) throws {
+        _ = try container.decode([Int].self, forKey: key)
+    }
+
+    func variadicMixed(_: any Decodable.Type...) {}
+
+    func inspect<T: FixtureProtocol312HasPayload>(_: T.Type) where T.Payload: Decodable {}
+
+    func mixed<D: Decodable, U>(_: D.Type, metadata _: U.Type) {}
+
+    func constrained<D>(extra _: Int = 0, _: D.Type) where D: Decodable {}
+
+    func load<T: Decodable>(_: T.Type) {}
+
+    public func hold() {
+        keep(FixtureStruct312Passed.self)
+        print(FixtureStruct312Printed.self)
+        _ = FixtureStruct312Undecoded.self
+    }
+
+    func keep<T>(_: T.Type) {}
+}

@@ -228,8 +228,8 @@
   "moduleExtensions": {
     "//bazel:generated.bzl%generated": {
       "general": {
-        "bzlTransitiveDigest": "nMR2FBcoRPImVocN9DNOnm2NQWyTbJPu7SHJgAXsLFw=",
-        "usagesDigest": "TcjgBJTi9SA5tJCGWIAErLSNYLIL94TrQhRpaZZGzRE=",
+        "bzlTransitiveDigest": "vdYryiEPIfSCu90COgKYvaKaoonlrlEEvolxq+9PWpA=",
+        "usagesDigest": "WDvPnxRxF+eMOK/LI8Ee82Xpq5GML0kz+z/ftTznrC8=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
           "periphery_generated": {

@@ -21,7 +21,7 @@ BAZEL_NAMES = {
 }
 
 VISIBILITY = {
-    "LethenCLI" => "@@+generated+periphery_generated//:__pkg__",
+    "LethenCLI" => "@@+generated+periphery_generated//lethen_scan:__pkg__",
 }
 
 MACOS_DEPS = [
@@ -111,7 +111,7 @@ def generate_bazel_rule(path, rule, name, attrs)
             target = ":#{name}",
             visibility = [
                 "//:__pkg__",
-                "@@+generated+periphery_generated//:__pkg__",
+                "@@+generated+periphery_generated//lethen_scan:__pkg__",
             ],
         )
         EOS

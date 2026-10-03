@@ -26,8 +26,8 @@ public struct SourceFileCollector {
     /// version: the units written after the file last changed, or, when every unit is older, the most
     /// recently written version, identified by its content-addressed main record.
     ///
-    /// - Parameter requireFreshUnits: fail with `LethenError.staleIndexStore` instead when a source file
-    ///   has units but none as new as the file. Used for stores lethen did not just build, such as
+    /// - Parameter requireFreshUnits: fail with `LethenError.staleIndexStore` instead when a store has
+    ///   units for a source file but none as new as the file. Used for stores lethen did not just build, such as
     ///   `--skip-build` scans; an explicit `--index-store-path` stays authoritative.
     public init(
         indexStorePaths: Set<FilePath>,
@@ -95,13 +95,15 @@ public struct SourceFileCollector {
         var result: [SourceFile: [IndexUnit]] = [:]
         var clangResult: [SourceFile: [IndexUnit]] = [:]
         for (file, units) in Dictionary(grouping: collected, by: \.file) {
+            // Each store must be current on its own: with one store per configuration, a fresh unit in one
+            // does not make up for another store's units of an older version of the file.
+            if requireFreshUnits, let store = Self.storeWithoutFreshUnits(units) {
+                staleFiles[file] = store
+                continue
+            }
+
             var chosen = units.filter(\.isFresh)
             if chosen.isEmpty {
-                if requireFreshUnits {
-                    staleFiles[file] = units[0].storePath
-                    continue
-                }
-
                 chosen = Self.newestVersion(of: units)
             }
 
@@ -152,6 +154,14 @@ public struct SourceFileCollector {
         let date: Date
         let isFresh: Bool
         let isClang: Bool
+    }
+
+    /// The first store, by path, whose units for a file are all older than the file.
+    private static func storeWithoutFreshUnits(_ units: [CollectedUnit]) -> FilePath? {
+        Dictionary(grouping: units, by: \.storePath)
+            .filter { !$0.value.contains(where: \.isFresh) }
+            .keys
+            .min()
     }
 
     /// The units that indexed the same content as the most recently written unit. Units of one version

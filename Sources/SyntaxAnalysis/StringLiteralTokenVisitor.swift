@@ -26,7 +26,7 @@ public final class StringLiteralTokenVisitor: SyntaxVisitor {
     }
 
     /// The identifiers of a symbol-shaped string, or nil when the string is not one.
-    static func symbolIdentifiers(in text: String) -> [String]? {
+    public static func symbolIdentifiers(in text: String) -> [String]? {
         var identifiers: [String] = []
         var current = ""
 

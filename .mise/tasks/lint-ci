@@ -7,3 +7,5 @@ cd $MISE_PROJECT_ROOT
 bazel run //bazel/dev:buildifier.check
 mise exec -- swiftformat --quiet --strict .
 mise exec -- swiftlint lint --quiet --strict
+bash .github/scripts/check-release-isolation.sh
+bash .github/scripts/check-release-isolation-test.sh

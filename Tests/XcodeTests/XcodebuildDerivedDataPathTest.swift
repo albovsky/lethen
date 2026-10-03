@@ -49,7 +49,7 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
         try xcodebuild.build(project: project, scheme: "A", allSchemes: ["B", "A"])
         let version = try xcodebuild.version().djb2Hex
         let expected = try Constants.cachePath().appending("DerivedData-\(version)-\(project.name.djb2Hex)-\("AB".djb2Hex)")
-        XCTAssertEqual(shell.derivedDataPaths, ["'\(expected.string)'"])
+        XCTAssertEqual(shell.derivedDataPaths, [expected.string])
     }
 
     func testDerivedDataPathDependsOnTheConfiguration() throws {
@@ -84,16 +84,23 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
 
     func testIndexStoreAndRemovalUseTheBuildsPath() throws {
         try xcodebuild.build(project: project, scheme: "A", allSchemes: ["A"], configuration: "Release", additionalArguments: ["-destination", "platform=macOS"])
-        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
         let built = try XCTUnwrap(shell.derivedDataPaths.first)
-        let removed = try XCTUnwrap(shell.executed.last)
-        XCTAssertEqual(removed.prefix(2), ["rm", "-rf"])
-        XCTAssertEqual("'\(removed[2])'", built)
+        // The directory is removed in process, not by a command.
+        try FileManager.default.createDirectory(atPath: built, withIntermediateDirectories: true)
+        let commands = shell.executed.count
+        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: built))
+        XCTAssertEqual(shell.executed.count, commands)
+
+        // A DerivedData link whose target was deleted is removed too, so the clean build can create the directory.
+        try FileManager.default.createSymbolicLink(atPath: built, withDestinationPath: built + "-relocated-and-deleted")
+        try xcodebuild.removeDerivedData(for: project, allSchemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])
+        XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: built))
 
         XCTAssertThrowsError(try xcodebuild.indexStorePath(project: project, schemes: ["A"], configuration: "Release", buildArguments: ["-destination", "platform=macOS"])) { error in
             guard case let LethenError.indexStoreNotFound(derivedDataPath) = error else { return XCTFail("\(error)") }
 
-            XCTAssertEqual("'\(derivedDataPath)'", built)
+            XCTAssertEqual(derivedDataPath, built)
         }
     }
 
@@ -106,5 +113,48 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
         XCTAssertEqual(shell.streamed.first?.first, "xcodebuild")
         XCTAssertEqual(shell.streamed.first?.contains("build-for-testing"), true)
         XCTAssertEqual(lines.withLock { $0 }, ["note: Building targets in dependency order"])
+    }
+
+    // MARK: - Completed builds
+
+    func testBeginBuildMarksWhenTheBuildStarted() throws {
+        let arguments = ["LETHEN_TEST_STARTED=\(UUID().uuidString)"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: ["A"], buildArguments: arguments)
+        defer { removeDerivedData(directory) }
+
+        try xcodebuild.beginBuild(project: project, schemes: ["A"], buildArguments: arguments)
+
+        XCTAssertTrue(directory.appending(Xcodebuild.startedBuildMarker).exists)
+    }
+
+    func testCompletedBuildDatesNeedTheMarkTheStartAndTheStore() throws {
+        let arguments = ["LETHEN_TEST_DATES=\(UUID().uuidString)"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: ["A"], buildArguments: arguments)
+        defer { removeDerivedData(directory) }
+        func dates(schemes: [String] = ["A"]) throws -> (started: Date, completed: Date)? {
+            try xcodebuild.completedBuildDates(project: project, schemes: schemes, buildArguments: arguments)
+        }
+
+        try xcodebuild.beginBuild(project: project, schemes: ["A"], buildArguments: arguments)
+        try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        XCTAssertNil(try dates(), "an unmarked build is not complete")
+
+        try xcodebuild.completeBuild(project: project, schemes: ["A"], buildArguments: arguments)
+        let both = try XCTUnwrap(dates())
+        XCTAssertLessThanOrEqual(both.started, both.completed)
+        XCTAssertNil(try dates(schemes: ["B"]), "the mark names another scheme set")
+
+        try directory.appending(Xcodebuild.startedBuildMarker).removeIfPresent()
+        XCTAssertNil(try dates(), "a directory without a start mark predates this check")
+
+        try Data().write(to: directory.appending(Xcodebuild.startedBuildMarker).url)
+        XCTAssertNotNil(try dates())
+        try directory.appending("Index.noindex").removeIfPresent()
+        XCTAssertNil(try dates(), "a build without its store has nothing to read")
+    }
+
+    private func removeDerivedData(_ directory: FilePath) {
+        try? FileManager.default.removeItem(atPath: directory.string)
+        try? FileManager.default.removeItem(atPath: directory.string + ".lock")
     }
 }

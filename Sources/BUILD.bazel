@@ -5,7 +5,7 @@ swift_binary(
     name = "LethenCLI",
     srcs = ["LethenCLI/main.swift"],
     module_name = "LethenCLI",
-    visibility = ["@@+generated+periphery_generated//:__pkg__"],
+    visibility = ["@@+generated+periphery_generated//lethen_scan:__pkg__"],
     deps = [
         "//Sources:Frontend",
         "@swift_argument_parser//:ArgumentParser",
@@ -17,18 +17,20 @@ optimized_swift_binary(
     target = ":LethenCLI",
     visibility = [
         "//:__pkg__",
-        "@@+generated+periphery_generated//:__pkg__",
+        "@@+generated+periphery_generated//lethen_scan:__pkg__",
     ],
 )
 
 swift_library(
     name = "XcodeSupport",
     srcs = [
+        "XcodeSupport/XcodeBuildInputs.swift",
         "XcodeSupport/XcodeDerivedDataLocator.swift",
         "XcodeSupport/XcodeProject.swift",
         "XcodeSupport/XcodeProjectSetupGuide.swift",
         "XcodeSupport/XcodeProjectlike.swift",
         "XcodeSupport/XcodeSchemeConfigurations.swift",
+        "XcodeSupport/XcodeSharedSchemes.swift",
         "XcodeSupport/XcodeTarget.swift",
         "XcodeSupport/XcodeWorkspace.swift",
         "XcodeSupport/Xcodebuild.swift",
@@ -50,6 +52,8 @@ swift_library(
         "SyntaxAnalysis/EnumCasePatternSyntaxVisitor.swift",
         "SyntaxAnalysis/ImportSyntaxVisitor.swift",
         "SyntaxAnalysis/MultiplexingSyntaxVisitor.swift",
+        "SyntaxAnalysis/NameUseCollector.swift",
+        "SyntaxAnalysis/SkippedConditionalBranchVisitor.swift",
         "SyntaxAnalysis/SourceLOCCounter.swift",
         "SyntaxAnalysis/SourceLocationBuilder.swift",
         "SyntaxAnalysis/StringLiteralTokenVisitor.swift",
@@ -71,8 +75,13 @@ swift_library(
 swift_library(
     name = "SourceGraph",
     srcs = [
+        "SourceGraph/Confidence/ConfidenceAssessor.swift",
+        "SourceGraph/Confidence/ConfidenceEvidence.swift",
+        "SourceGraph/Confidence/ConfidenceEvidenceCollector.swift",
+        "SourceGraph/Confidence/NameSites.swift",
         "SourceGraph/Elements/Accessibility.swift",
         "SourceGraph/Elements/AssetReference.swift",
+        "SourceGraph/Elements/ClangCoverage.swift",
         "SourceGraph/Elements/CommandIgnoreKind.swift",
         "SourceGraph/Elements/CommentCommand.swift",
         "SourceGraph/Elements/Confidence.swift",
@@ -83,6 +92,7 @@ swift_library(
         "SourceGraph/Elements/ProjectFileKind.swift",
         "SourceGraph/Elements/Reference.swift",
         "SourceGraph/Elements/SourceFile.swift",
+        "SourceGraph/Elements/UnscannedTarget.swift",
         "SourceGraph/Mutators/AccessibilityCascader.swift",
         "SourceGraph/Mutators/AncestralReferenceEliminator.swift",
         "SourceGraph/Mutators/AppIntentsRetainer.swift",
@@ -230,6 +240,9 @@ swift_library(
 swift_library(
     name = "Indexer",
     srcs = [
+        "Indexer/ClangImportScanner.swift",
+        "Indexer/ClangLiteralScanner.swift",
+        "Indexer/ClangModuleSymbolMap.swift",
         "Indexer/IndexPipeline.swift",
         "Indexer/IndexPlan.swift",
         "Indexer/Indexer.swift",
@@ -238,9 +251,13 @@ swift_library(
         "Indexer/ObjCReferenceIndexer.swift",
         "Indexer/SourceFileCollector.swift",
         "Indexer/SwiftIndexer.swift",
+<<<<<<< HEAD
         "Indexer/SyntaxAnalysis/EnumCasePatternAnalysis.swift",
         "Indexer/SyntaxAnalysis/IndexedFile.swift",
         "Indexer/SyntaxAnalysis/SyntaxAnalysis.swift",
+=======
+        "Indexer/UnscannedTargetIndexer.swift",
+>>>>>>> origin/master
         "Indexer/XCDataModelIndexer.swift",
         "Indexer/XCDataModelParser.swift",
         "Indexer/XCMappingModelIndexer.swift",

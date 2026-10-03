@@ -74,6 +74,69 @@ struct FixtureStruct226Appended: Encodable {
     }
 }
 
+struct FixtureStruct226Metatype: Encodable {
+    // Control: its metatype rides beside an encoded value; a metatype is not an encoded value.
+    let metatypeNotEncoded: Int
+
+    init(metatypeNotEncoded: Int) {
+        self.metatypeNotEncoded = metatypeNotEncoded
+    }
+}
+
+struct FixtureStruct226Overload: Encodable {
+    // An unrelated encode(to:) overload does not replace the synthesized encode(to: Encoder).
+    let overloadEncoded: Int
+
+    init(overloadEncoded: Int) {
+        self.overloadEncoded = overloadEncoded
+    }
+
+    func encode(to path: String) -> String {
+        path
+    }
+}
+
+protocol FixtureProtocol226Default {
+    static var defaultValue: Self { get }
+}
+
+struct FixtureStruct226Held: Encodable, FixtureProtocol226Default {
+    // Encoded as the generic argument of a Box that stores it in an initialized constant.
+    let heldEncoded: Int
+
+    static var defaultValue: FixtureStruct226Held {
+        FixtureStruct226Held(heldEncoded: 1)
+    }
+}
+
+struct FixtureStruct226Box<T: Encodable & FixtureProtocol226Default>: Encodable {
+    let value: T = .defaultValue
+}
+
+struct FixtureStruct226Outer: Encodable {
+    let box: FixtureStruct226Box<FixtureStruct226Held>
+}
+
+struct FixtureStruct226Computed: Encodable {
+    let computedEncoded: Int
+
+    // Computed, so the synthesized encoder never reads it.
+    var computedNotEncoded: Int {
+        7
+    }
+}
+
+struct FixtureStruct226ObservedChild: Encodable {
+    // Held by a stored property with an observer, which is still encoded.
+    let observedChildEncoded: Int
+}
+
+struct FixtureStruct226Observed: Encodable {
+    var observedChild: FixtureStruct226ObservedChild {
+        didSet {}
+    }
+}
+
 struct FixtureStruct226Custom: Encodable {
     // Control: an explicit encode(to:) replaces the synthesized one, so nothing reads it.
     let notEncodedByCustom: Int
@@ -93,6 +156,10 @@ public class FixtureClass226Retainer {
         try [
             JSONEncoder().encode(FixtureStruct226(encoded: 1, nested: FixtureStruct226Nested(nestedValue: 2))),
             JSONEncoder().encode(FixtureStruct226Codable(codableEncoded: 3)),
+            JSONEncoder().encode(FixtureStruct226Observed(observedChild: FixtureStruct226ObservedChild(observedChildEncoded: 15))),
+            JSONEncoder().encode(FixtureStruct226Computed(computedEncoded: 14)),
+            JSONEncoder().encode(FixtureStruct226Outer(box: FixtureStruct226Box())),
+            JSONEncoder().encode(FixtureStruct226Overload(overloadEncoded: 13)),
             JSONEncoder().encode(FixtureStruct226Custom(notEncodedByCustom: 4)),
             encodeGeneric(FixtureStruct226Generic(genericEncoded: 7)),
             encodeExistential(FixtureStruct226Existential(existentialEncoded: 8)),
@@ -105,6 +172,15 @@ public class FixtureClass226Retainer {
 
     func encodeExistential(_ value: any Encodable) throws -> Data {
         try JSONEncoder().encode(value)
+    }
+
+    func send<E: Encodable, U>(_ value: E, metadata _: U.Type) throws -> Data {
+        try JSONEncoder().encode(value)
+    }
+
+    public func sendMetadata() throws {
+        _ = try send(FixtureStruct226Generic(genericEncoded: 11), metadata: FixtureStruct226Metatype.self)
+        _ = FixtureStruct226Metatype(metatypeNotEncoded: 12)
     }
 
     public func hold() {

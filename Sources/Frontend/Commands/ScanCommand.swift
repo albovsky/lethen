@@ -30,7 +30,7 @@ struct ScanCommand: ParsableCommand {
     @Option(help: "Path to your project's .xcodeproj or .xcworkspace")
     var project: FilePath?
 
-    @Option(parsing: .upToNextOption, help: "Schemes to build. All targets built by these schemes will be scanned")
+    @Option(parsing: .upToNextOption, help: "Schemes to build. All targets built by these schemes will be scanned. Defaults to the project's only shared scheme")
     var schemes: [String] = defaultConfiguration.$schemes.defaultValue
 
     @Option(help: "Output format")
@@ -54,7 +54,7 @@ struct ScanCommand: ParsableCommand {
     @Option(parsing: .upToNextOption, help: "Source file globs for which all containing declarations will be retained")
     var retainFiles: [String] = defaultConfiguration.$retainFiles.defaultValue
 
-    @Option(parsing: .upToNextOption, help: "Index store paths. Implies '--skip-build'")
+    @Option(parsing: .upToNextOption, help: "Index store paths. Implies '--skip-build', so not supported for Bazel projects")
     var indexStorePath: [FilePath] = defaultConfiguration.$indexStorePath.defaultValue
 
     @Flag(help: "Retain all public declarations, recommended for framework/library projects")
@@ -120,7 +120,7 @@ struct ScanCommand: ParsableCommand {
     @Flag(help: "Clean existing build artifacts before building")
     var cleanBuild: Bool = defaultConfiguration.$cleanBuild.defaultValue
 
-    @Flag(help: "Skip the project build step")
+    @Flag(help: "Skip the project build step. Not supported for Bazel projects, which must build the generated scan target; use '--generic-project-config' with '--index-store-path' instead")
     var skipBuild: Bool = defaultConfiguration.$skipBuild.defaultValue
 
     @Flag(help: "Skip schemes validation")

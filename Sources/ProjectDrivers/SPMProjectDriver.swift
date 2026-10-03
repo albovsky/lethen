@@ -4,12 +4,15 @@ import Indexer
 import IndexStore
 import Logger
 import Shared
+import SourceGraph
 import SystemPackage
 
 public final class SPMProjectDriver {
     private let pkg: SPM.Package
     private let configuration: Configuration
     private let logger: Logger
+    /// Modules of targets the managed build did not compile, from the last `build()`.
+    private(set) var unbuiltTargets: Set<String> = []
 
     public convenience init(configuration: Configuration, shell: Shell, logger: Logger) throws {
         if !configuration.schemes.isEmpty {
@@ -48,16 +51,18 @@ extension SPMProjectDriver: ProjectDriver {
                 logger.info("\(asterisk) Building...")
             }
 
-            try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
+            unbuiltTargets = try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
+                var unbuilt: Set<String> = []
                 for arguments in buildArgumentSets {
-                    try pkg.build(additionalArguments: arguments, onOutputLine: onOutputLine)
+                    try unbuilt.formUnion(pkg.build(additionalArguments: arguments, onOutputLine: onOutputLine))
                 }
                 // A build that cannot reuse its tree runs `swift package clean`, which also removes the
                 // products of the configurations built before it. Build those again; with their products
                 // gone, they cannot clean in turn.
                 for arguments in buildArgumentSets.dropLast() where try !pkg.hasIndexStore(additionalArguments: arguments) {
-                    try pkg.build(additionalArguments: arguments, onOutputLine: onOutputLine)
+                    try unbuilt.formUnion(pkg.build(additionalArguments: arguments, onOutputLine: onOutputLine))
                 }
+                return unbuilt
             }
         }
     }
@@ -71,7 +76,7 @@ extension SPMProjectDriver: ProjectDriver {
 
         // Load package description once and reuse it
         let description = try pkg.load()
-        if let warning = Self.buildBoundaryWarning(description: description, configuration: configuration) {
+        if let warning = buildBoundaryWarning(description: description) {
             self.logger.warn(warning)
         }
 
@@ -86,36 +91,62 @@ extension SPMProjectDriver: ProjectDriver {
         )
         let sourceFiles = try collector.collect()
         let xibPaths = interfaceBuilderFiles(from: description)
+        let coverage = clangCoverage(
+            description: description,
+            excludedTestTargets: excludedTestTargets,
+            indexedFiles: Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path))
+        )
+        if let warning = coverage.warning {
+            self.logger.warn(warning)
+        }
 
         return IndexPlan(
             sourceFiles: sourceFiles.sourceFiles,
             clangSourceFiles: sourceFiles.clangSourceFiles,
-            xibPaths: xibPaths
+            xibPaths: xibPaths,
+            clangCoverage: coverage
         )
     }
 
-    /// Excluded targets can be the only consumers of a scanned target's public API. Says so, naming
-    /// the modules to pass to `--retain-public-targets`.
-    static func buildBoundaryWarning(description: PackageDescription, configuration: Configuration) -> String? {
+    /// The warning for this driver's configuration and the targets its build did not compile.
+    func buildBoundaryWarning(description: PackageDescription) -> String? {
+        Self.buildBoundaryWarning(description: description, configuration: configuration, unbuiltTargets: unbuiltTargets)
+    }
+
+    /// Excluded targets, and targets the build does not compile, can be the only consumers of a scanned
+    /// target's public API. Says so, naming the modules to pass to `--retain-public-targets`.
+    static func buildBoundaryWarning(description: PackageDescription, configuration: Configuration, unbuiltTargets: Set<String> = []) -> String? {
         guard !configuration.retainPublic else { return nil }
 
         let excluded = description.targets.filter {
             (configuration.excludeTests && $0.isTestTarget) || configuration.excludeTargets.contains($0.name)
         }
-        guard !excluded.isEmpty else { return nil }
+        let unbuilt = description.targets.filter { unbuiltTargets.contains($0.c99name ?? $0.name) }
+        let outside = excluded + unbuilt
+        guard !outside.isEmpty else { return nil }
 
         let targetsByName = Dictionary(description.targets.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let excludedNames = Set(excluded.map(\.name))
+        let outsideNames = Set(outside.map(\.name))
         let retained = Set(configuration.retainPublicTargets)
-        let consumed = Set(excluded.flatMap { $0.targetDependencies ?? [] })
-            .subtracting(excludedNames)
+        let consumed = Set(outside.flatMap { $0.targetDependencies ?? [] })
+            .subtracting(outsideNames)
             .compactMap { targetsByName[$0] }
             .map { $0.c99name ?? $0.name }
             .filter { !retained.contains($0) }
             .sorted()
         guard !consumed.isEmpty else { return nil }
 
-        return "Targets \(excludedNames.sorted().joined(separator: ", ")) are excluded from the scan but depend on \(consumed.joined(separator: ", ")). Public declarations used only from the excluded targets will be reported; pass --retain-public-targets \(consumed.joined(separator: " ")) to keep them."
+        let advice = "Public declarations used only from them will be reported; pass --retain-public-targets \(consumed.joined(separator: " ")) to keep them."
+        // A target both excluded and never built is only excluded.
+        let unbuiltOnlyNames = Set(unbuilt.map(\.name)).subtracting(excluded.map(\.name))
+        guard !unbuiltOnlyNames.isEmpty else {
+            return "Targets \(outsideNames.sorted().joined(separator: ", ")) are excluded from the scan but depend on \(consumed.joined(separator: ", ")). \(advice)"
+        }
+
+        let unbuiltNames = unbuiltOnlyNames.sorted().joined(separator: ", ")
+        let excludedNames = Set(excluded.map(\.name)).sorted().joined(separator: ", ")
+        let excludedClause = excluded.isEmpty ? "" : "Targets \(excludedNames) are excluded from the scan. "
+        return "\(excludedClause)Targets \(unbuiltNames) are not compiled by `swift build --build-tests` (for example executables used only by command plugins), so they are not scanned, but they depend on \(consumed.joined(separator: ", ")). \(advice)"
     }
 
     // MARK: - Private
@@ -125,6 +156,27 @@ extension SPMProjectDriver: ProjectDriver {
         configuration.configurations.isEmpty
             ? [configuration.buildArguments]
             : configuration.configurations.map { configuration.buildArguments + ["-c", $0] }
+    }
+
+    /// Whether the index has a unit for every C and Objective-C file of the targets the scan covers.
+    /// The collector drops files that match an index exclusion or are missing on disk, so they are
+    /// not expected to have a unit.
+    private func clangCoverage(description: PackageDescription, excludedTestTargets: Set<String>, indexedFiles: Set<FilePath>) -> ClangCoverage {
+        let targets = description.targets
+            .filter { $0.type != "plugin" && !excludedTestTargets.contains($0.name) && !configuration.excludeTargets.contains($0.name) }
+            .map { target in
+                let targetPath = pkg.path.appending(target.path)
+                let files = (target.sources ?? []).map { targetPath.appending($0) }.filter {
+                    $0.exists && !configuration.indexExcludeMatchers.anyMatch(filename: $0.string)
+                }
+                return ClangCoverage.Target(sourceFiles: Set(files))
+            }
+        return ClangCoverage.assess(
+            targets: targets,
+            indexedFiles: indexedFiles,
+            // Only a store this scan built says that a target with no units was not compiled.
+            trustsAbsentUnits: !configuration.skipBuild && configuration.indexStorePath.isEmpty
+        )
     }
 
     private func testTargetNames(from description: PackageDescription) -> Set<String> {

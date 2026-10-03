@@ -6,6 +6,10 @@ public final class SourceFile {
     public let modules: Set<String>
     public var importStatements: [ImportStatement] = []
     public var importsSwiftTesting = false
+    /// Qualified names of the modules (and submodules) whose C or Objective-C symbols the file's clang
+    /// units reference, as read from the index; empty for Swift files. Swift declarations referenced
+    /// from Objective-C are references in the graph, like Swift ones.
+    public var clangReferencedModules: Set<String> = []
 
     public init(path: FilePath, modules: Set<String>) {
         self.path = path

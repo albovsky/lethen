@@ -50,6 +50,33 @@ The two test fixture packages, rescanned with nothing changed:
 | `Tests/Fixtures` | 15 s | 4 s | 435, identical |
 | `Tests/SPMTests/SPMProject` (macro target) | 15 s | 5 s | 4, identical |
 
+## Packages with targets the build never compiles
+
+albovsky/lethen#89: a target that `swift build --build-tests` does not compile, such as an
+executable used only by a command plugin, has no index units, so the index could never be
+verified and every scan cleaned. Lethen now records such targets in the build stamp and reuses
+the tree while they still have no objects.
+
+Measured on swift-argument-parser at 1021ac8, whose `generate-docc-reference` and
+`generate-manual` executables are used only by command plugins. Environment for this table:
+Linux x86_64, Swift 6.4 (swift-6.4-RELEASE), the default Swift Build system, debug configuration,
+and `lethen` built with `swift build -c release` from this change on top of d7dec6c. These are
+not the Apple silicon numbers above. The command is `lethen scan --retain-public --format json
+--verbose`, each time from the same checkout.
+
+| Situation | Time | Log |
+|---|---|---|
+| First scan, no `.build` | 38.2 s | no matching build stamp, cleaning |
+| Rescan, nothing changed | 4.6 s | reused; recompiled 0 modules |
+| Rescan with `--clean-build` | 39.1 s | cleaned |
+| After `swift build --product generate-manual` | 38.9 s | `generate-manual` was recorded as not built but now has objects, cleaning |
+| Rescan after that | 4.5 s | reused; recompiled 0 modules |
+
+The findings of the first, reused, and post-build scans are byte-identical; the `--clean-build`
+scan differs only by the `clean_build: true` line the output echoes. Without `--retain-public`,
+the scan warns that the two tools are not scanned and names the modules to pass to
+`--retain-public-targets` (`ArgumentParser`, `ArgumentParserToolInfo`).
+
 ## Where a scan's time goes
 
 `--stats` (albovsky/lethen#40) on an app of 650 Swift files and 101,525 lines of code (blank and
@@ -70,6 +97,30 @@ Indexing and analysis are not where time goes, so the roadmap's candidate optimi
 target and were not built. The largest remaining cost without a build is setup. Project parsing for
 this app took 54 s in a debug build before albovsky/lethen#42 stopped walking its synchronized
 folders once per target and three times over; it takes 25 s in a debug build now.
+
+## Xcode scans: reusing a completed build
+
+Wikipedia iOS (`599e4a6`, `--project Wikipedia.xcodeproj --schemes Wikipedia`, destination
+`generic/platform=iOS Simulator`), Xcode 27.0 (27A266a), Swift 6.4, `lethen` built with
+`swift build -c release`, 1,299 source files and 152,815 lines. Wall clock, one scan per row:
+
+| Scan | Before | After |
+|---|---|---|
+| `--clean-build` | 203.1 s (build 194.0 s) | 204.4 s (build 194.5 s) |
+| Rescan 1 | 143.3 s (build 136.8 s) | 145.7 s (build 139.2 s) |
+| Rescan 2 | 24.2 s (build 17.2 s) | 24.0 s (build 17.5 s) |
+
+Every run's findings are byte-identical to the before run of the same row, and rescans 1 and 2 are
+identical to each other. Reuse did not apply to any row: the Wikipedia build rewrites
+`Localizable.strings` in `Wikipedia/Localizations` and `WMFLocalizations` after it starts, which
+changes those files and their directories, and its `swiftlint --fix` phase edits Swift sources on the
+first rebuild (rescan 1 pays for that). `--verbose` names the first changed path
+(`Wikipedia/Localizations/en.lproj`). Lethen therefore builds every time here, as before.
+
+A project whose builds leave its own folder alone skips `xcodebuild` on a rescan; the
+`XcodeBuildReuseTest` cases check this with real builds: a second build runs no `xcodebuild`, and
+an edit, an added file, a changed project file or a unit older than its file each bring the build
+back. On Wikipedia the most reuse could save is the 17 s of rescan 2.
 
 ## Determinism
 
