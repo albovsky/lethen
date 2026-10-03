@@ -49,6 +49,23 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(statement.location.line, 3)
     }
 
+    /// The column counts from the physical line, not the logical one the splice joined.
+    func testColumnAfterASplicedLine() throws {
+        let statement = try XCTUnwrap(imports("  \\\n\t@import WMF;\n").first)
+
+        XCTAssertEqual(statement.location.line, 2)
+        XCTAssertEqual(statement.location.column, 2)
+    }
+
+    /// Blanks and block comments may stand between `#` and the directive name.
+    func testConditionalDirectiveWithACommentAfterTheHash() {
+        let conditional = imports("# /* guard */ if FLAG\n@import A;\n#\t/* x */ endif\n@import B;\n")
+            .map { ($0.module, $0.isConditional) }
+
+        XCTAssertEqual(conditional.map(\.0), ["A", "B"])
+        XCTAssertEqual(conditional.map(\.1), [true, false])
+    }
+
     func testImportSplitAcrossSplicedLines() throws {
         let statement = try XCTUnwrap(imports("@import WMF.\\\nWMFLogging;\n").first)
 

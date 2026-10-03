@@ -132,11 +132,18 @@ enum ClangImportScanner {
         return nil
     }
 
-    /// The lowercase name after the `#` at `index`, such as `ifdef`, or an empty string.
+    /// The lowercase name after the `#` at `index`, such as `ifdef`, or an empty string. Blanks and
+    /// block comments may stand between them (`# /* guard */ if FLAG`); a newline ends the directive.
     private static func directiveName(after index: Int, in bytes: [UInt8]) -> String {
         var cursor = index + 1
-        while cursor < bytes.count, ClangLiteralScanner.isBlank(bytes[cursor]) {
-            cursor += 1
+        while cursor < bytes.count {
+            if ClangLiteralScanner.isBlank(bytes[cursor]) {
+                cursor += 1
+            } else if bytes[cursor] == ClangLiteralScanner.slash, bytes[safe: cursor + 1] == ClangLiteralScanner.star {
+                cursor = ClangLiteralScanner.endOfBlockComment(from: cursor + 2, in: bytes)
+            } else {
+                break
+            }
         }
 
         let start = cursor
@@ -184,14 +191,17 @@ enum ClangImportScanner {
     }
 
     /// The line and column of the byte at `index`. Lines count the backslash-newline pairs that were
-    /// spliced out, so they match the file as the editor and the index show it.
+    /// spliced out, and the column counts from the last of a newline or a splice, so both match the
+    /// file as the editor and the index show it.
     private static func location(of index: Int, in bytes: [UInt8], splices: [Int], file: SourceFile) -> Location {
-        var line = 1 + splices.prefix(while: { $0 <= index }).count
+        let splicesBefore = splices.prefix(while: { $0 <= index })
+        var line = 1 + splicesBefore.count
         var lineStart = 0
         for position in 0 ..< index where bytes[position] == ClangLiteralScanner.newline {
             line += 1
             lineStart = position + 1
         }
+        lineStart = max(lineStart, splicesBefore.last ?? 0)
         return Location(file: file, line: line, column: index - lineStart + 1)
     }
 
