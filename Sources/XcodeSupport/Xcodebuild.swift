@@ -115,6 +115,8 @@ public final class Xcodebuild {
         }
 
         try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
+        // Written before anything is built, so no file the build reads can change after the mark without being newer.
+        try Data().write(to: directory.appending(Self.startedBuildMarker).url)
     }
 
     /// Marks the store complete once every build this scan started into the directory has succeeded. The caller still
@@ -173,7 +175,34 @@ public final class Xcodebuild {
             == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
     }
 
+    /// When the last completed build of this DerivedData directory started and finished, which its index covers: an
+    /// input older than the start went into every unit, and one changed after the start may have been read either
+    /// side of the change. `nil` unless the build completed for exactly these arguments and left its store and start
+    /// mark, which a directory from an earlier Lethen lacks.
+    public func completedBuildDates(
+        project: XcodeProjectlike,
+        schemes: [String],
+        configuration: String? = nil,
+        buildArguments: [String] = []
+    ) throws -> (started: Date, completed: Date)? {
+        guard try hasCompletedBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments),
+              (try? indexStorePath(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)) != nil
+        else { return nil }
+
+        let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        guard let started = Self.modificationDate(of: directory.appending(Self.startedBuildMarker)),
+              let completed = Self.modificationDate(of: directory.appending(Self.completedBuildMarker))
+        else { return nil }
+
+        return (started, completed)
+    }
+
+    private static func modificationDate(of path: FilePath) -> Date? {
+        try? FileManager.default.attributesOfItem(atPath: path.string)[.modificationDate] as? Date
+    }
+
     static let completedBuildMarker = "lethen-build-completed"
+    static let startedBuildMarker = "lethen-build-started"
 
     /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
     /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can

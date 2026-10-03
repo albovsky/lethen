@@ -225,7 +225,10 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
     /// The warning only reports; the default build still leaves the configuration to the scheme.
     func testMismatchedSchemeStillBuildsWithoutAConfigurationArgument() throws {
         let shell = RecordingShell()
-        let driver = try Self.recordingDriver(Self.configuration([], scheme: "ReleaseTests"), shell: shell)
+        let configuration = Self.configuration([], scheme: "ReleaseTests")
+        // A DerivedData of its own, since another test's real build of this scheme would be reused.
+        configuration.buildArguments = ["LETHEN_TEST_RECORDED=mismatch"]
+        let driver = try Self.recordingDriver(configuration, shell: shell)
 
         try driver.build()
 

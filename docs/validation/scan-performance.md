@@ -98,6 +98,30 @@ target and were not built. The largest remaining cost without a build is setup. 
 this app took 54 s in a debug build before albovsky/lethen#42 stopped walking its synchronized
 folders once per target and three times over; it takes 25 s in a debug build now.
 
+## Xcode scans: reusing a completed build
+
+Wikipedia iOS (`599e4a6`, `--project Wikipedia.xcodeproj --schemes Wikipedia`, destination
+`generic/platform=iOS Simulator`), Xcode 27.0 (27A266a), Swift 6.4, `lethen` built with
+`swift build -c release`, 1,299 source files and 152,815 lines. Wall clock, one scan per row:
+
+| Scan | Before | After |
+|---|---|---|
+| `--clean-build` | 203.1 s (build 194.0 s) | 204.4 s (build 194.5 s) |
+| Rescan 1 | 143.3 s (build 136.8 s) | 145.7 s (build 139.2 s) |
+| Rescan 2 | 24.2 s (build 17.2 s) | 24.0 s (build 17.5 s) |
+
+Every run's findings are byte-identical to the before run of the same row, and rescans 1 and 2 are
+identical to each other. Reuse did not apply to any row: the Wikipedia build rewrites
+`Localizable.strings` in `Wikipedia/Localizations` and `WMFLocalizations` after it starts, which
+changes those files and their directories, and its `swiftlint --fix` phase edits Swift sources on the
+first rebuild (rescan 1 pays for that). `--verbose` names the first changed path
+(`Wikipedia/Localizations/en.lproj`). Lethen therefore builds every time here, as before.
+
+A project whose builds leave its own folder alone skips `xcodebuild` on a rescan; the
+`XcodeBuildReuseTest` cases check this with real builds: a second build runs no `xcodebuild`, and
+an edit, an added file, a changed project file or a unit older than its file each bring the build
+back. On Wikipedia the most reuse could save is the 17 s of rescan 2.
+
 ## Determinism
 
 The same app's index was scanned six times with an explicit `--index-store-path`. Before

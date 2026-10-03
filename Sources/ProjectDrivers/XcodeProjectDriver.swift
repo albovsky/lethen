@@ -18,6 +18,9 @@
         /// The lock on the DerivedData this scan builds into or reads without a build. It is held for the driver's
         /// lifetime, since the index pipeline reads the stores' records long after `plan()` returns.
         private var derivedDataLock: DerivedDataLock?
+        /// Whether a configuration's store is the one an earlier Lethen build left, which `build()` found unchanged
+        /// instead of building again. `plan()` then checks each file against its unit and builds when one is stale.
+        private var reusedBuild = false
 
         public convenience init(
             projectPath: FilePath,
@@ -146,48 +149,10 @@
                 }
             }
 
-            // Every scheme builds into each configuration's one DerivedData directory, so a configuration is complete
-            // only once all of them have built.
-            for buildConfiguration in buildConfigurations {
-                try xcodebuild.beginBuild(
-                    project: project,
-                    schemes: Array(schemes),
-                    configuration: buildConfiguration,
-                    buildArguments: configuration.buildArguments
-                )
-            }
-
-            for scheme in schemes.sorted() {
-                let schemeConfigurations = project.schemeConfigurations(named: scheme)
-                if let warning = Self.configurationMismatchWarning(scheme: scheme, schemeConfigurations: schemeConfigurations, configuration: configuration) {
-                    logger.warn(warning)
-                }
-
-                for buildConfiguration in buildConfigurations {
-                    if configuration.outputFormat.supportsAuxiliaryOutput {
-                        let asterisk = logger.colorize("*", .boldGreen)
-                        logger.info("\(asterisk) \(Self.buildDescription(scheme: scheme, listedConfiguration: buildConfiguration, schemeConfigurations: schemeConfigurations, buildArguments: configuration.buildArguments))...")
-                    }
-
-                    try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
-                        try xcodebuild.build(project: project,
-                                             scheme: scheme,
-                                             allSchemes: Array(schemes),
-                                             configuration: buildConfiguration,
-                                             additionalArguments: configuration.buildArguments,
-                                             onOutputLine: onOutputLine)
-                    }
-                }
-            }
-
-            for buildConfiguration in buildConfigurations {
-                try xcodebuild.completeBuild(
-                    project: project,
-                    schemes: Array(schemes),
-                    configuration: buildConfiguration,
-                    buildArguments: configuration.buildArguments
-                )
-            }
+            reusedBuild = false
+            let reusable = reusableConfigurations()
+            reusedBuild = !reusable.isEmpty
+            try runBuilds(for: buildConfigurations.filter { !reusable.contains($0) })
             succeeded = true
         }
 
@@ -222,15 +187,35 @@
             let targets = project.targets
             try targets.forEach { try $0.identifyFiles() }
             let excludedTestTargets = configuration.excludeTests ? project.targets.filter(\.isTestTarget).mapSet(\.name) : []
-            let collector = SourceFileCollector(
-                indexStorePaths: indexStorePaths,
-                excludedTestTargets: excludedTestTargets,
-                // A store lethen did not just build may predate edits; an explicit path stays authoritative.
-                requireFreshUnits: configuration.skipBuild && configuration.indexStorePath.isEmpty,
-                logger: logger,
-                configuration: configuration
-            )
-            let sourceFiles = try collector.collect()
+            func collector(requireFreshUnits: Bool) -> SourceFileCollector {
+                SourceFileCollector(
+                    indexStorePaths: indexStorePaths,
+                    excludedTestTargets: excludedTestTargets,
+                    requireFreshUnits: requireFreshUnits,
+                    logger: logger,
+                    configuration: configuration
+                )
+            }
+
+            // A store lethen did not just build may predate edits; an explicit path stays authoritative. A reused
+            // build is checked the same way, and gives way to a build when a unit predates its file.
+            let sourceFiles: CollectedSourceFiles
+            do {
+                sourceFiles = try collector(requireFreshUnits: (configuration.skipBuild && configuration.indexStorePath.isEmpty) || reusedBuild).collect()
+            } catch let error as LethenError where reusedBuild {
+                switch error {
+                case let .staleIndexStore(_, staleFiles):
+                    self.logger.info("The index from the last build is stale (\(staleFiles.count) \(staleFiles.count == 1 ? "file" : "files")); building.")
+                case .indexStoreNotFound:
+                    self.logger.info("The index from the last build is missing; building.")
+                default:
+                    throw error
+                }
+
+                try runBuilds(for: buildConfigurations)
+                reusedBuild = false
+                sourceFiles = try collector(requireFreshUnits: false).collect()
+            }
             let infoPlistPaths = targets.flatMapSet { $0.files(kind: .infoPlist) }
             let xibPaths = targets.flatMapSet { $0.files(kind: .interfaceBuilder) }
             let xcDataModelPaths = targets.flatMapSet { $0.files(kind: .xcDataModel) }
@@ -277,6 +262,54 @@
         }
 
         // MARK: - Private
+
+        /// Builds every scheme into each of `configurations`, which are marked complete once all their builds succeed.
+        private func runBuilds(for configurations: [String?]) throws {
+            guard !configurations.isEmpty else { return }
+
+            // Every scheme builds into each configuration's one DerivedData directory, so a configuration is complete
+            // only once all of them have built.
+            for buildConfiguration in configurations {
+                try xcodebuild.beginBuild(
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                )
+            }
+
+            for scheme in schemes.sorted() {
+                let schemeConfigurations = project.schemeConfigurations(named: scheme)
+                if let warning = Self.configurationMismatchWarning(scheme: scheme, schemeConfigurations: schemeConfigurations, configuration: configuration) {
+                    logger.warn(warning)
+                }
+
+                for buildConfiguration in configurations {
+                    if configuration.outputFormat.supportsAuxiliaryOutput {
+                        let asterisk = logger.colorize("*", .boldGreen)
+                        logger.info("\(asterisk) \(Self.buildDescription(scheme: scheme, listedConfiguration: buildConfiguration, schemeConfigurations: schemeConfigurations, buildArguments: configuration.buildArguments))...")
+                    }
+
+                    try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
+                        try xcodebuild.build(project: project,
+                                             scheme: scheme,
+                                             allSchemes: Array(schemes),
+                                             configuration: buildConfiguration,
+                                             additionalArguments: configuration.buildArguments,
+                                             onOutputLine: onOutputLine)
+                    }
+                }
+            }
+
+            for buildConfiguration in configurations {
+                try xcodebuild.completeBuild(
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                )
+            }
+        }
 
         /// Whether the collector can read a unit for the file: it drops the files that match an index
         /// exclusion and the ones missing on disk.
@@ -331,6 +364,44 @@
                 dependencies[target.name] = Self.scannedDependencies(of: target.name, dependencies: dependencyNames, scanned: scannedNames)
             }
             return (unscanned.sorted { $0.name < $1.name }, dependencies)
+        }
+
+        /// The configurations whose last completed Lethen build is still valid: nothing it compiled, and nothing that
+        /// says what it compiles, changed since it started. Never with a clean build, which exists to discard them, or
+        /// without a build, which has its own checks.
+        private func reusableConfigurations() -> [String?] {
+            guard !configuration.cleanBuild, !configuration.skipBuild, configuration.indexStorePath.isEmpty else { return [] }
+            guard !project.hasUnenumerableBuildInputs else {
+                logger.debug("Building: a Run Script input cannot be resolved to a path")
+                return []
+            }
+            guard (try? project.targets.forEach { try $0.identifyFiles() }) != nil else { return [] }
+
+            let kinds = ProjectFileKind.allCases
+            let roots = ([project.sourceRoot] + project.projectSourceRoots).map { $0.lexicallyNormalized() }.removingDuplicates()
+            // Declared files are compared themselves, inside the roots or not: the walk does not follow symlinks, so
+            // a file behind a symlinked directory, or outside every root like an external .xcconfig, is not reached by it.
+            let files = project.targets.flatMapSet { target in kinds.flatMapSet { target.files(kind: $0) } }.union(project.declaredInputFiles)
+            return buildConfigurations.filter { buildConfiguration in
+                guard let dates = try? xcodebuild.completedBuildDates(
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                ) else { return false }
+
+                if let change = XcodeBuildInputs.firstChange(roots: roots, files: files, started: dates.started, completed: dates.completed) {
+                    logger.debug("Building: \(change) changed after the last build")
+                    return false
+                }
+
+                if configuration.outputFormat.supportsAuxiliaryOutput {
+                    let names = schemes.sorted().map(Self.shellWord).joined(separator: ", ")
+                    let described = buildConfiguration.map { " with configuration \($0)" } ?? ""
+                    logger.info("Reusing the build of \(names)\(described) from \(dates.completed.formatted(.iso8601)); nothing it compiled has changed.")
+                }
+                return true
+            }
         }
 
         /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.

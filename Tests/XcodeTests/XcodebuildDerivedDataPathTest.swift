@@ -114,4 +114,47 @@ final class XcodebuildDerivedDataPathTest: XCTestCase {
         XCTAssertEqual(shell.streamed.first?.contains("build-for-testing"), true)
         XCTAssertEqual(lines.withLock { $0 }, ["note: Building targets in dependency order"])
     }
+
+    // MARK: - Completed builds
+
+    func testBeginBuildMarksWhenTheBuildStarted() throws {
+        let arguments = ["LETHEN_TEST_STARTED=\(UUID().uuidString)"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: ["A"], buildArguments: arguments)
+        defer { removeDerivedData(directory) }
+
+        try xcodebuild.beginBuild(project: project, schemes: ["A"], buildArguments: arguments)
+
+        XCTAssertTrue(directory.appending(Xcodebuild.startedBuildMarker).exists)
+    }
+
+    func testCompletedBuildDatesNeedTheMarkTheStartAndTheStore() throws {
+        let arguments = ["LETHEN_TEST_DATES=\(UUID().uuidString)"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: ["A"], buildArguments: arguments)
+        defer { removeDerivedData(directory) }
+        func dates(schemes: [String] = ["A"]) throws -> (started: Date, completed: Date)? {
+            try xcodebuild.completedBuildDates(project: project, schemes: schemes, buildArguments: arguments)
+        }
+
+        try xcodebuild.beginBuild(project: project, schemes: ["A"], buildArguments: arguments)
+        try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        XCTAssertNil(try dates(), "an unmarked build is not complete")
+
+        try xcodebuild.completeBuild(project: project, schemes: ["A"], buildArguments: arguments)
+        let both = try XCTUnwrap(dates())
+        XCTAssertLessThanOrEqual(both.started, both.completed)
+        XCTAssertNil(try dates(schemes: ["B"]), "the mark names another scheme set")
+
+        try directory.appending(Xcodebuild.startedBuildMarker).removeIfPresent()
+        XCTAssertNil(try dates(), "a directory without a start mark predates this check")
+
+        try Data().write(to: directory.appending(Xcodebuild.startedBuildMarker).url)
+        XCTAssertNotNil(try dates())
+        try directory.appending("Index.noindex").removeIfPresent()
+        XCTAssertNil(try dates(), "a build without its store has nothing to read")
+    }
+
+    private func removeDerivedData(_ directory: FilePath) {
+        try? FileManager.default.removeItem(atPath: directory.string)
+        try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+    }
 }

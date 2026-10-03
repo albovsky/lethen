@@ -8,6 +8,7 @@ public final class XcodeTarget {
 
     private let target: PBXTarget
     private var files: [ProjectFileKind: Set<FilePath>] = [:]
+    private var identifiedFiles = false
 
     required init(project: XcodeProject, target: PBXTarget) {
         self.project = project
@@ -61,6 +62,8 @@ public final class XcodeTarget {
     }
 
     public func identifyFiles() throws {
+        guard !identifiedFiles else { return }
+
         // A synchronized folder contributes compiled sources only to the targets that own it; resources
         // keep the project-wide behavior.
         try identifyFiles(in: project.fileSystemSynchronizedFiles(), kinds: ProjectFileKind.allCases.filter { !Self.compiledSourceKinds.contains($0) })
@@ -75,6 +78,7 @@ public final class XcodeTarget {
         try identifyFiles(kind: .clangSource, in: sourcesBuildPhases)
         try identifyFiles(kind: .interfaceBuilder, in: resourcesBuildPhases)
         try identifyInfoPlistFiles()
+        identifiedFiles = true
     }
 
     public func files(kind: ProjectFileKind) -> Set<FilePath> {
