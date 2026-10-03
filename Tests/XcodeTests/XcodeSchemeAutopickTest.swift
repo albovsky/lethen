@@ -126,6 +126,9 @@ final class XcodeSchemeAutopickTest: XCTestCase {
         let configuration = Configuration()
         configuration.quiet = true
         configuration.schemes = schemes
+        // A DerivedData of its own, since a real build of the same project elsewhere would be reused and these
+        // drivers record the builds they run.
+        configuration.buildArguments = ["LETHEN_TEST_RECORDED=autopick"]
         adjust(configuration)
         return try XcodeProjectDriver(projectPath: path, configuration: configuration, shell: shell, logger: logger)
     }

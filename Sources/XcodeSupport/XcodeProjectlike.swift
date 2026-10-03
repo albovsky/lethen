@@ -7,6 +7,8 @@ public protocol XcodeProjectlike: AnyObject {
     var type: String { get }
     var name: String { get }
     var sourceRoot: FilePath { get }
+    /// The source roots of every project this container loads.
+    var projectSourceRoots: [FilePath] { get }
     /// The project-level build configurations of every project this one loads, such as Debug and Release.
     var buildConfigurationNames: Set<String> { get }
 
@@ -19,6 +21,10 @@ public protocol XcodeProjectlike: AnyObject {
 }
 
 public extension XcodeProjectlike {
+    var projectSourceRoots: [FilePath] {
+        [sourceRoot]
+    }
+
     var name: String {
         path.lastComponent?.stem ?? ""
     }

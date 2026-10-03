@@ -1,4 +1,5 @@
 import Foundation
+import Logger
 import Shared
 import Synchronization
 
@@ -66,5 +67,33 @@ final class RecordingShell: Shell {
 
     func execStatus(_: [String]) throws -> Int32 {
         0
+    }
+}
+
+/// Records every command like `RecordingShell`, and runs it. A build that reuses an earlier one needs the real
+/// `xcodebuild -version`, since DerivedData's name is a hash of it.
+final class ForwardingRecordingShell: Shell {
+    private let streamedCommands = Mutex<[[String]]>([])
+    private let shell: ShellImpl
+
+    init(logger: Logger) {
+        shell = ShellImpl(logger: logger)
+    }
+
+    var streamed: [[String]] {
+        streamedCommands.withLock { $0 }
+    }
+
+    func exec(_ args: [String]) throws -> String {
+        try shell.exec(args)
+    }
+
+    func exec(_ args: [String], onOutputLine: @escaping @Sendable (String) -> Void) throws -> String {
+        streamedCommands.withLock { $0.append(args) }
+        return try shell.exec(args, onOutputLine: onOutputLine)
+    }
+
+    func execStatus(_ args: [String]) throws -> Int32 {
+        try shell.execStatus(args)
     }
 }

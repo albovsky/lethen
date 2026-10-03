@@ -1,0 +1,298 @@
+import Configuration
+import Foundation
+import Logger
+@testable import ProjectDrivers
+import Shared
+import SystemPackage
+@testable import TestShared
+@testable import XcodeSupport
+import XCTest
+
+/// A scan reuses Lethen's own completed build when nothing it compiled changed, so a rescan runs no xcodebuild; it
+/// builds when anything changed, and `plan()` builds when a unit predates its file after all. Results are the same
+/// either way.
+final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
+    private var root: FilePath!
+    private var project: FilePath!
+    private var buildArguments: [String] = []
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        root = FilePath(NSTemporaryDirectory()).appending("lethen reuse \(UUID().uuidString)")
+        let copy = root.appending("ConfigurationsProject")
+        try FileManager.default.createDirectory(atPath: root.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: ConfigurationsProjectPath.removingLastComponent().string, toPath: copy.string)
+        project = copy.appending("ConfigurationsProject.xcodeproj")
+        // A build setting of its own keys this copy's DerivedData apart from every other test's.
+        buildArguments = ["LETHEN_TEST_REUSE=\(UUID().uuidString)"]
+    }
+
+    override func tearDownWithError() throws {
+        let xcodebuild = Xcodebuild(shell: Self.shell, logger: Self.logger)
+        if let project, let loaded = try? Self.load(project, shell: Self.shell) {
+            for name in [nil, "Debug", "Release"] {
+                try? xcodebuild.removeDerivedData(for: loaded, allSchemes: ["ConfigurationsProject"], configuration: name, buildArguments: buildArguments)
+            }
+        }
+        if let root {
+            try? FileManager.default.removeItem(atPath: root.string)
+        }
+        try super.tearDownWithError()
+    }
+
+    // MARK: - Reuse
+
+    func testRescanOfAnUnchangedProjectRunsNoBuild() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        let first = try scan(shell: shell)
+        XCTAssertEqual(first.builds, 1)
+        assertReferenced(.functionFree("calledOnlyInDebug()"))
+        assertNotReferenced(.functionFree("calledOnlyInRelease()"))
+        let firstFiles = try Set(XCTUnwrap(Self.plan).sourceFiles.keys.map(\.path))
+
+        let second = try scan(shell: shell)
+
+        XCTAssertEqual(second.builds, 0, "\(shell.streamed)")
+        XCTAssertEqual(second.buildsInPlan, 0)
+        XCTAssertEqual(try Set(XCTUnwrap(Self.plan).sourceFiles.keys.map(\.path)), firstFiles)
+        assertReferenced(.functionFree("calledOnlyInDebug()"))
+        assertNotReferenced(.functionFree("calledOnlyInRelease()"))
+    }
+
+    func testEditedSourceBuildsAndIndexesTheEdit() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+
+        Thread.sleep(forTimeInterval: 1.1)
+        try addCalledFunction("addedAfterTheFirstScan")
+        let second = try scan(shell: shell)
+
+        XCTAssertEqual(second.builds, 1, "\(shell.streamed)")
+        assertReferenced(.functionFree("addedAfterTheFirstScan()"))
+        assertReferenced(.functionFree("calledOnlyInDebug()"))
+    }
+
+    func testStructuralChangeBuilds() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+
+        Thread.sleep(forTimeInterval: 1.1)
+        try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: project.appending("project.pbxproj").string)
+        let second = try scan(shell: shell)
+
+        XCTAssertEqual(second.builds, 1, "\(shell.streamed)")
+        assertReferenced(.functionFree("calledOnlyInDebug()"))
+    }
+
+    func testFileAddedToTheProjectDirectoryBuilds() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+
+        Thread.sleep(forTimeInterval: 1.1)
+        try "func unlisted() {}\n".write(to: project.removingLastComponent().appending("ConfigurationsProject/Unlisted.swift").url, atomically: true, encoding: .utf8)
+        let second = try scan(shell: shell)
+
+        XCTAssertEqual(second.builds, 1, "\(shell.streamed)")
+    }
+
+    /// Dates that the walk cannot tell apart from an unchanged project still end in a build, because the collector
+    /// compares each indexed file with its own unit.
+    func testPlanBuildsWhenAUnitPredatesItsFileThatTheWalkMissed() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+
+        Thread.sleep(forTimeInterval: 1.1)
+        try addCalledFunction("addedBehindTheWalk")
+        // The build now appears to have started and completed after the edit.
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let loaded = try Self.load(project, shell: shell)
+        let directory = try xcodebuild.derivedDataPath(for: loaded, schemes: ["ConfigurationsProject"], buildArguments: buildArguments)
+        let now = Date()
+        for marker in [Xcodebuild.startedBuildMarker, Xcodebuild.completedBuildMarker] {
+            try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: directory.appending(marker).string)
+        }
+
+        let second = try scan(shell: shell)
+
+        XCTAssertEqual(second.builds, 0, "\(shell.streamed)")
+        XCTAssertEqual(second.buildsInPlan, 1, "\(shell.streamed)")
+        assertReferenced(.functionFree("addedBehindTheWalk()"))
+    }
+
+    // MARK: - Never reused
+
+    func testCleanBuildNeverReuses() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+
+        let second = try scan(shell: shell) { $0.cleanBuild = true }
+
+        XCTAssertEqual(second.builds, 1, "\(shell.streamed)")
+    }
+
+    func testSkipBuildStillRefusesAStaleIndexWithoutBuilding() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+        let builds = shell.streamed.count
+
+        Thread.sleep(forTimeInterval: 1.1)
+        try editConditional { $0 + "\n// edited after the build\n" }
+
+        XCTAssertThrowsError(try scan(shell: shell) { $0.skipBuild = true }) { error in
+            guard case LethenError.staleIndexStore = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(shell.streamed.count, builds)
+    }
+
+    func testExplicitIndexStorePathNeverReuses() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+        let loaded = try Self.load(project, shell: shell)
+        let store = try Xcodebuild(shell: shell, logger: Self.logger)
+            .indexStorePath(project: loaded, schemes: ["ConfigurationsProject"], buildArguments: buildArguments)
+
+        let second = try scan(shell: shell) { $0.indexStorePath = [store] }
+
+        XCTAssertEqual(second.builds, 1, "\(shell.streamed)")
+    }
+
+    // MARK: - Configurations
+
+    /// Only the configurations whose builds cannot be reused are built.
+    func testOnlyAConfigurationWithoutACompletedBuildIsBuilt() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let loaded = try Self.load(project, shell: shell)
+        let schemes = ["ConfigurationsProject"]
+        let directory = try xcodebuild.derivedDataPath(for: loaded, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        defer {
+            for name in ["Debug", "Release"] {
+                if let path = try? xcodebuild.derivedDataPath(for: loaded, schemes: schemes, configuration: name, buildArguments: buildArguments) {
+                    try? FileManager.default.removeItem(atPath: path.string)
+                    try? FileManager.default.removeItem(atPath: path.string + ".lock")
+                }
+            }
+        }
+
+        try xcodebuild.beginBuild(project: loaded, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try xcodebuild.completeBuild(project: loaded, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        // The project's files predate the planted build.
+        let old = Date(timeIntervalSinceNow: -3600)
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(atPath: root.string))
+        for case let relative as String in enumerator {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: root.appending(relative).string)
+        }
+
+        let configuration = Self.configuration(["Debug", "Release"], buildArguments: buildArguments)
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: loaded, schemes: Set(schemes))
+        try driver.build()
+
+        let configurations = try shell.streamed.map { command in
+            let index = try XCTUnwrap(command.firstIndex(of: "-configuration"))
+            return command[index + 1]
+        }
+        XCTAssertEqual(configurations, ["Release"], "\(shell.streamed)")
+    }
+
+    /// A workspace's member project can live outside the workspace's directory; a file added there changes what the
+    /// build compiles, so the completed build is not reused.
+    func testFileAddedToAMemberProjectOutsideTheWorkspaceDirectoryBuilds() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let workspacePath = root.appending("Workspace/App.xcworkspace")
+        try FileManager.default.createDirectory(atPath: workspacePath.string, withIntermediateDirectories: true)
+        try """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Workspace version = "1.0">
+           <FileRef location = "group:../ConfigurationsProject/ConfigurationsProject.xcodeproj"></FileRef>
+        </Workspace>
+        """.write(to: workspacePath.appending("contents.xcworkspacedata").url, atomically: true, encoding: .utf8)
+        let configuration = Self.configuration(["Debug"], buildArguments: buildArguments)
+        let workspace = try XcodeWorkspace(path: workspacePath, xcodebuild: xcodebuild, configuration: configuration, logger: Self.logger, shell: shell)
+        let schemes = ["ConfigurationsProject"]
+        let directory = try xcodebuild.derivedDataPath(for: workspace, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: directory.string)
+            try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+        }
+
+        try xcodebuild.beginBuild(project: workspace, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try xcodebuild.completeBuild(project: workspace, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        // Everything predates the planted build, then a new file appears in the member project.
+        let old = Date(timeIntervalSinceNow: -3600)
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(atPath: root.string))
+        for case let relative as String in enumerator {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: root.appending(relative).string)
+        }
+        let memberDirectory = project.removingLastComponent()
+        try "func unlisted() {}\n".write(to: memberDirectory.appending("ConfigurationsProject/Unlisted.swift").url, atomically: true, encoding: .utf8)
+
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: workspace, schemes: Set(schemes))
+        try driver.build()
+
+        XCTAssertEqual(shell.streamed.count, 1, "\(shell.streamed)")
+    }
+
+    // MARK: - Private
+
+    private struct Builds {
+        /// The build commands `build()` ran.
+        let builds: Int
+        /// The ones `plan()` ran when a reused build proved stale.
+        let buildsInPlan: Int
+    }
+
+    private static func configuration(_ configurations: [String], buildArguments: [String]) -> Configuration {
+        let configuration = Configuration()
+        configuration.quiet = true
+        configuration.schemes = ["ConfigurationsProject"]
+        configuration.configurations = configurations
+        configuration.buildArguments = buildArguments
+        return configuration
+    }
+
+    private static func load(_ path: FilePath, shell: Shell) throws -> XcodeProject {
+        var loaded: Set<FilePath> = []
+        return try XcodeProject(
+            path: path,
+            loadedProjectPaths: &loaded,
+            xcodebuild: Xcodebuild(shell: shell, logger: logger),
+            shell: shell,
+            logger: logger
+        )
+    }
+
+    /// Builds, plans and indexes a new driver's scan of the copy, as a repeated scan does. The driver is released
+    /// before the next scan, which would otherwise wait for its lock.
+    private func scan(shell: ForwardingRecordingShell, configure: (Configuration) -> Void = { _ in }) throws -> Builds {
+        let configuration = Self.configuration([], buildArguments: buildArguments)
+        configure(configuration)
+        var result: Builds?
+        try project.chdir {
+            let driver = try XcodeProjectDriver(projectPath: project, configuration: configuration, shell: shell, logger: Self.logger)
+            let before = shell.streamed.count
+            try driver.build()
+            let afterBuild = shell.streamed.count
+            Self.plan = try driver.plan(logger: Self.logger.contextualized(with: "index"))
+            result = Builds(builds: afterBuild - before, buildsInPlan: shell.streamed.count - afterBuild)
+        }
+        try Self.index(configuration: configuration)
+        return try XCTUnwrap(result)
+    }
+
+    /// Declares `name` and calls it from `conditionalEntry()`, which the project's entry point calls.
+    private func addCalledFunction(_ name: String) throws {
+        try editConditional { text in
+            text.replacingOccurrences(of: "    #if DEBUG\n", with: "    \(name)()\n    #if DEBUG\n") + "\nfunc \(name)() {}\n"
+        }
+    }
+
+    /// Edits in place, which leaves the directory's own date alone.
+    private func editConditional(_ edit: (String) -> String) throws {
+        let conditional = project.removingLastComponent().appending("ConfigurationsProject/Conditional.swift")
+        let text = try String(contentsOf: conditional.url, encoding: .utf8)
+        try edit(text).write(to: conditional.url, atomically: false, encoding: .utf8)
+    }
+}

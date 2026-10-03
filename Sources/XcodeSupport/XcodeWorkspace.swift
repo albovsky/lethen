@@ -44,6 +44,10 @@ public final class XcodeWorkspace: XcodeProjectlike {
         buildConfigurationNames = projects.flatMapSet { $0.buildConfigurationNames }
     }
 
+    public var projectSourceRoots: [FilePath] {
+        projects.map(\.sourceRoot)
+    }
+
     public func schemes(additionalArguments: [String]) throws -> Set<String> {
         try xcodebuild.schemes(project: self, additionalArguments: additionalArguments)
     }

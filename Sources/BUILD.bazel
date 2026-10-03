@@ -24,6 +24,7 @@ optimized_swift_binary(
 swift_library(
     name = "XcodeSupport",
     srcs = [
+        "XcodeSupport/XcodeBuildInputs.swift",
         "XcodeSupport/XcodeDerivedDataLocator.swift",
         "XcodeSupport/XcodeProject.swift",
         "XcodeSupport/XcodeProjectSetupGuide.swift",
