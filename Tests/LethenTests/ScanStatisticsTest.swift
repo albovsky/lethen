@@ -163,7 +163,7 @@ final class ScanStatisticsTest: FixtureSourceGraphTestCase {
             logger: Self.logger.contextualized(with: "index"),
             configuration: configuration,
             swiftVersion: Self.swiftVersion
-        ).perform()
+        ).perform().scannedLOC
     }
 
     private func value(of label: String, in report: [String]) throws -> Int {

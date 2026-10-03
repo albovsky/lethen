@@ -17,17 +17,20 @@ import SystemPackage
 final class ObjCReferenceIndexer: Indexer {
     private let sourceFiles: [SourceFile: [IndexUnit]]
     private let graph: SourceGraphMutex
+    private let evidence: ConfidenceEvidenceCollector
     private let logger: ContextualLogger
     private let configuration: Configuration
 
     required init(
         sourceFiles: [SourceFile: [IndexUnit]],
         graph: SourceGraphMutex,
+        evidence: ConfidenceEvidenceCollector,
         logger: ContextualLogger,
         configuration: Configuration
     ) {
         self.sourceFiles = sourceFiles
         self.graph = graph
+        self.evidence = evidence
         self.logger = logger.contextualized(with: "objc")
         self.configuration = configuration
         super.init(configuration: configuration)
@@ -139,7 +142,7 @@ final class ObjCReferenceIndexer: Indexer {
             }
 
             graph.add(references)
-            graph.addLiteralTokens(literals.tokens)
+            evidence.add { $0.addLiteralTokens(literals.tokens) }
 
             // Not `addIndexedModules`: the app target's clang units name no module, and a module written
             // in Objective-C must not become one the Swift imports of are checked.

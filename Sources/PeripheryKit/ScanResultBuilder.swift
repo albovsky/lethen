@@ -3,7 +3,7 @@ import Foundation
 import SourceGraph
 
 public enum ScanResultBuilder {
-    public static func build(for graph: SourceGraph, configuration: Configuration) -> [ScanResult] {
+    public static func build(for graph: SourceGraph, configuration: Configuration, confidence: ConfidenceAssessor) -> [ScanResult] {
         let assignOnlyProperties = graph.assignOnlyProperties
         let removableDeclarations = graph.unusedDeclarations
             .subtracting(assignOnlyProperties)
@@ -90,7 +90,7 @@ public enum ScanResultBuilder {
                 return !graph.retainedDeclarations.contains(result.declaration)
             }
             .map { result in
-                let assessment = graph.assessConfidence(of: result.declaration)
+                let assessment = confidence.assess(result.declaration)
                 return ScanResult(
                     declaration: result.declaration,
                     annotation: result.annotation,

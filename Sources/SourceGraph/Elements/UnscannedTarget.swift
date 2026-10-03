@@ -20,26 +20,8 @@ public struct UnscannedTarget: Equatable {
     #endif
 }
 
-/// Names used by some code, in the three tiers `NameUseCollector` distinguishes, each mapped to the
-/// lexicographically smallest site that uses it, such as `Widgets/Extension/Widgets.swift:15`.
-public struct NameSites {
-    public var names: [String: String] = [:]
-    /// The subset of `names` used as a member access or a call.
-    public var memberNames: [String: String] = [:]
-    /// The subset of `memberNames` used outside a pattern, which is all that can construct an enum case.
-    public var constructionNames: [String: String] = [:]
-
-    public init() {}
-
-    mutating func merge(names: [String: String], members: [String: String], construction: [String: String]) {
-        self.names.merge(names) { min($0, $1) }
-        memberNames.merge(members) { min($0, $1) }
-        constructionNames.merge(construction) { min($0, $1) }
-    }
-}
-
 /// The names the Swift files of one unscanned target use.
-public struct UnscannedTargetNames {
+public struct UnscannedTargetNames: Equatable {
     /// The names of every file of the target.
     public var all = NameSites()
     /// The names of the files that import a module with `@testable`, by module: only those files can use the

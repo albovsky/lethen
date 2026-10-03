@@ -15,6 +15,7 @@ public struct IndexUnit {
 final class SwiftIndexer: Indexer {
     private let sourceFiles: [SourceFile: [IndexUnit]]
     private let graph: SourceGraphMutex
+    private let evidence: ConfidenceEvidenceCollector
     private let logger: ContextualLogger
     private let configuration: Configuration
     private let swiftVersion: SwiftVersion
@@ -22,12 +23,14 @@ final class SwiftIndexer: Indexer {
     required init(
         sourceFiles: [SourceFile: [IndexUnit]],
         graph: SourceGraphMutex,
+        evidence: ConfidenceEvidenceCollector,
         logger: ContextualLogger,
         configuration: Configuration,
         swiftVersion: SwiftVersion
     ) {
         self.sourceFiles = sourceFiles
         self.graph = graph
+        self.evidence = evidence
         self.logger = logger.contextualized(with: "swift")
         self.configuration = configuration
         self.swiftVersion = swiftVersion
@@ -43,6 +46,7 @@ final class SwiftIndexer: Indexer {
                 units: units,
                 retainAllDeclarations: isRetained(file),
                 graph: graph,
+                evidence: evidence,
                 logger: logger,
                 configuration: configuration,
                 swiftVersion: swiftVersion
@@ -97,6 +101,7 @@ final class SwiftIndexer: Indexer {
 
         private let units: [IndexUnit]
         private let graph: SourceGraphMutex
+        private let evidence: ConfidenceEvidenceCollector
         private let logger: ContextualLogger
         private let configuration: Configuration
         private var retainAllDeclarations: Bool
@@ -107,6 +112,7 @@ final class SwiftIndexer: Indexer {
             units: [IndexUnit],
             retainAllDeclarations: Bool,
             graph: SourceGraphMutex,
+            evidence: ConfidenceEvidenceCollector,
             logger: ContextualLogger,
             configuration: Configuration,
             swiftVersion: SwiftVersion
@@ -115,6 +121,7 @@ final class SwiftIndexer: Indexer {
             self.units = units
             self.retainAllDeclarations = retainAllDeclarations
             self.graph = graph
+            self.evidence = evidence
             self.logger = logger
             self.configuration = configuration
             self.swiftVersion = swiftVersion
@@ -328,18 +335,20 @@ final class SwiftIndexer: Indexer {
             valueUses.walk(multiplexingSyntaxVisitor.syntax)
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
-            graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
+            evidence.add { $0.addLiteralTokens(literalTokens.tokens) }
             // A module with no occurrence in the file, such as a file conditionally compiled out entirely,
             // has no evidence for any clause.
             for module in sourceFile.modules.sorted() {
-                let evidence = occurrenceLocations[module] ?? []
-                let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: evidence)
+                let occurrences = occurrenceLocations[module] ?? []
+                let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: occurrences)
                 skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
-                graph.withLock {
+                evidence.add {
                     $0.addSkippedBranchNames(
-                        skippedBranches.names,
-                        members: skippedBranches.memberNames,
-                        construction: skippedBranches.constructionNames,
+                        NameSites(
+                            names: skippedBranches.names,
+                            memberNames: skippedBranches.memberNames,
+                            constructionNames: skippedBranches.constructionNames
+                        ),
                         modules: [module]
                     )
                 }
