@@ -236,7 +236,9 @@ public final class SourceGraph {
             }
             guard let site = names[baseName],
                   best.map({ site < $0.site }) ?? true,
-                  uses.sharedSourceFiles.contains(file) || isVisibleOutsideItsModule(declaration),
+                  // The shared file itself is not read, so the name comes from another file of the target, where a
+                  // file-scoped declaration is out of reach.
+                  (uses.sharedSourceFiles.contains(file) && isVisibleOutsideItsFile(declaration)) || isVisibleOutsideItsModule(declaration),
                   // A member, initializer or operator of a type is reached through the type, so a target that
                   // never names the type uses another `init` or `shared`.
                   enclosingType.map { uses.names[$0] != nil } ?? true
@@ -263,6 +265,17 @@ public final class SourceGraph {
     }
 
     private static let typeKinds: Set<Declaration.Kind> = [.class, .struct, .enum, .protocol, .typealias]
+
+    /// Whether the declaration and everything enclosing it is at least internal.
+    private func isVisibleOutsideItsFile(_ declaration: Declaration) -> Bool {
+        var current: Declaration? = declaration
+        while let declaration = current {
+            if !declaration.kind.isExtensionKind, [.private, .fileprivate].contains(declaration.accessibility.value) { return false }
+
+            current = declaration.parent
+        }
+        return true
+    }
 
     /// Whether the declaration and everything enclosing it is public or open.
     private func isVisibleOutsideItsModule(_ declaration: Declaration) -> Bool {

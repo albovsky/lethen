@@ -163,6 +163,8 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         let targets = try XCTUnwrap(Self.plan?.unscannedTargets)
 
         XCTAssertEqual(targets.map(\.name), ["UnscannedTool"])
+        // The target sets PRODUCT_MODULE_NAME, which is what its units would carry.
+        XCTAssertEqual(try XCTUnwrap(Self.plan?.unscannedTargets.first?.name), "UnscannedTool")
         let target = try XCTUnwrap(targets.first)
         XCTAssertEqual(target.sharedSourceFiles.compactMap { $0.lastComponent?.string }, ["SharedBetweenTargets.swift"])
         XCTAssertEqual(target.swiftSourceFiles.compactMap { $0.lastComponent?.string }.sorted(), ["SharedBetweenTargets.swift", "UnscannedMain.swift"])
@@ -211,6 +213,9 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         // Internal and not in a file the target compiles; the target's own function of that name is another one.
         assertNotReferenced(.functionFree("internalNamedFromUnscannedTarget()"))
         assertConfidence(.functionFree("internalNamedFromUnscannedTarget()"), .certain)
+        // Private in the shared file; the tool's `SharedPrivate()` is its own type of that name.
+        assertNotReferenced(.struct("SharedPrivate", line: 17))
+        assertConfidence(.struct("SharedPrivate", line: 17), .certain)
         // Spelled as a member call on the tool's own type; `UnnamedStore` itself is never named.
         assertReferenced(.class("UnnamedStore")) {
             self.assertNotReferenced(.functionMethodInstance("memberNamedWithoutItsType()"))

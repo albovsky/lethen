@@ -12,6 +12,7 @@ enum UnscannedMain {
         _ = SharedWidget()
         internalNamedFromUnscannedTarget()
         Self.memberNamedWithoutItsType()
+        _ = SharedPrivate()
         // Declaring a local of the framework function's name is not a use of it.
         let notCalledFromUnscannedTarget = 1
         if case .matchedOnly = PublicMode.constructed {}
@@ -23,3 +24,6 @@ enum UnscannedMain {
     /// Shares its name with a member of the framework's `UnnamedStore`, which the tool never names.
     private static func memberNamedWithoutItsType() {}
 }
+
+/// The tool's own type of the name a private struct in `SharedBetweenTargets.swift` has.
+private struct SharedPrivate {}

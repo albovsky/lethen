@@ -3,6 +3,7 @@ import Logger
 import Shared
 import SystemPackage
 @testable import TestShared
+import XcodeProj
 @testable import XcodeSupport
 import XCTest
 
@@ -81,5 +82,36 @@ final class XcodeTargetTest: XCTestCase {
 
         XCTAssertFalse(projectTarget.isTestTarget)
         XCTAssertTrue(testTarget.isTestTarget)
+    }
+
+    func testDependencyNamesIncludeTargetsOfOtherProjectsThroughTheirProxy() throws {
+        let local = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "UIKitProject" })
+        let proxy = PBXContainerItemProxy(containerPortal: .project(project.xcodeProject.pbxproj.rootObject!), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: "RemoteFramework")
+        let dependencies = [
+            PBXTargetDependency(name: nil, target: local, targetProxy: nil),
+            PBXTargetDependency(name: nil, target: nil, targetProxy: proxy),
+        ]
+        let pbxTarget = PBXNativeTarget(name: "Consumer", dependencies: dependencies)
+        // References resolve through the project's object graph, as they do for a parsed project.
+        let pbxproj = project.xcodeProject.pbxproj
+        pbxproj.add(object: proxy)
+        dependencies.forEach { pbxproj.add(object: $0) }
+        pbxproj.add(object: pbxTarget)
+        let target = XcodeTarget(project: project, target: pbxTarget)
+
+        XCTAssertEqual(target.dependencyNames, ["UIKitProject", "RemoteFramework"])
+    }
+
+    func testModuleNameIsTheConfiguredProductModuleNameOrTheDefault() throws {
+        let configured = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("CoreKit")])
+        let list = XCConfigurationList(buildConfigurations: [configured])
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Core", buildConfigurationList: list)).moduleName, "CoreKit")
+
+        let variable = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("$(TARGET_NAME:c99extidentifier)")])
+        let variableList = XCConfigurationList(buildConfigurations: [variable])
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Target With Spaces", buildConfigurationList: variableList)).moduleName, "Target_With_Spaces")
+
+        XCTAssertEqual(XcodeTarget.defaultModuleName(forTarget: "3D-Kit"), "_3D_Kit")
+        XCTAssertEqual(try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" }).moduleName, "Target_With_Spaces")
     }
 }

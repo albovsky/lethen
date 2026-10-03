@@ -10,11 +10,14 @@ public struct UnscannedTarget: Equatable {
     /// copy of what they declare, which the rest of its files use without any access modifier.
     public let sharedSourceFiles: Set<FilePath>
 
-    public init(name: String, swiftSourceFiles: Set<FilePath>, sharedSourceFiles: Set<FilePath>) {
-        self.name = name
-        self.swiftSourceFiles = swiftSourceFiles
-        self.sharedSourceFiles = sharedSourceFiles
-    }
+    // Only the Xcode driver, which exists on macOS alone, finds such targets, so on Linux nothing builds one.
+    #if os(macOS)
+        public init(name: String, swiftSourceFiles: Set<FilePath>, sharedSourceFiles: Set<FilePath>) {
+            self.name = name
+            self.swiftSourceFiles = swiftSourceFiles
+            self.sharedSourceFiles = sharedSourceFiles
+        }
+    #endif
 }
 
 /// The names the Swift files of one unscanned target use, in the three tiers `NameUseCollector`

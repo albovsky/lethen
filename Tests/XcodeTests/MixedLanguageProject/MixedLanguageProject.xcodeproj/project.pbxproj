@@ -601,6 +601,7 @@
 		9C3E2A7D4F615B8E0A1C2D0D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				PRODUCT_MODULE_NAME = UnscannedToolModule;
 				COMBINE_HIDPI_IMAGES = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -613,6 +614,7 @@
 		9C3E2A7D4F615B8E0A1C2D0E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				PRODUCT_MODULE_NAME = UnscannedToolModule;
 				COMBINE_HIDPI_IMAGES = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

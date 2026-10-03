@@ -23,9 +23,25 @@ public final class XcodeTarget {
     }
 
     /// The names of the targets this one depends on, which Xcode builds before it. A dependency on a target
-    /// of another project is a proxy without a target here and is left out.
+    /// of another project of the workspace is a proxy whose `remoteInfo` is that target's name.
     public var dependencyNames: Set<String> {
-        target.dependencies.compactMapSet { $0.target?.name }
+        target.dependencies.compactMapSet { $0.target?.name ?? $0.targetProxy?.remoteInfo }
+    }
+
+    /// The name of the target's Swift module, which its index units carry: `PRODUCT_MODULE_NAME` when a
+    /// configuration sets it to a plain name, otherwise Xcode's default, the target name as a C identifier.
+    public var moduleName: String {
+        let configured = target.buildConfigurationList?.buildConfigurations.compactMap {
+            $0.buildSettings["PRODUCT_MODULE_NAME"]?.stringValue
+        }.first { !$0.contains("$(") }
+        return configured ?? Self.defaultModuleName(forTarget: name)
+    }
+
+    /// The module Xcode names a target by default: its name with every character that is not an ASCII
+    /// letter or digit replaced by `_`, and a `_` ahead of a leading digit.
+    public static func defaultModuleName(forTarget name: String) -> String {
+        let identifier = String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" })
+        return identifier.first?.isNumber == true ? "_" + identifier : identifier
     }
 
     public func identifyFiles() throws {

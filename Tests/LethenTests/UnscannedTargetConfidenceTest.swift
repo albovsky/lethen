@@ -102,6 +102,17 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(graph.assessConfidence(of: member).confidence, .likely)
     }
 
+    /// The shared file is not read, so a matching name is in another file, which cannot reach a private or
+    /// fileprivate declaration.
+    func testFileScopedDeclarationsInASharedFileStayCertain() {
+        let graph = makeGraph()
+        use(graph, ["Widget", "Helper"])
+
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget", accessibility: .private)).confidence, .certain)
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget", accessibility: .fileprivate)).confidence, .certain)
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", accessibility: .internal)).confidence, .likely)
+    }
+
     func testMembersAndEnumCasesNeedTheirOwnTiers() {
         let graph = makeGraph()
         use(graph, ["field", "matched"], members: ["matched"])

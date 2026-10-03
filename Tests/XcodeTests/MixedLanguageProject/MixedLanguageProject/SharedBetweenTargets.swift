@@ -12,3 +12,6 @@ struct SharedEntry {}
 
 /// Named by neither target.
 struct SharedUnused {}
+
+/// `UnscannedTool` declares and uses its own `SharedPrivate`; this one is out of its other files' reach.
+private struct SharedPrivate {}

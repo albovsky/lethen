@@ -304,12 +304,10 @@
             let compiled = Dictionary(uniqueKeysWithValues: projectTargets.map { ($0.name, compiledFiles($0)) })
             func isIndexed(_ file: FilePath, for target: XcodeTarget) -> Bool {
                 guard let fileModules = modules[file] else { return false }
-
-                let ownModule = Self.moduleName(forTarget: target.name)
-                guard !fileModules.contains(ownModule) else { return true }
+                guard !fileModules.contains(target.moduleName) else { return true }
 
                 let builtByAnother = projectTargets.contains {
-                    $0.name != target.name && fileModules.contains(Self.moduleName(forTarget: $0.name)) && compiled[$0.name]?.contains(file) == true
+                    $0.name != target.name && fileModules.contains($0.moduleName) && compiled[$0.name]?.contains(file) == true
                 }
                 return !builtByAnother
             }
@@ -329,13 +327,6 @@
                 dependencies[target.name] = target.dependencyNames.intersection(scannedNames).sorted()
             }
             return (unscanned.sorted { $0.name < $1.name }, dependencies)
-        }
-
-        /// The module Xcode names a target's Swift module by default: its name with every character that is not
-        /// an ASCII letter or digit replaced by `_`, and a `_` ahead of a leading digit.
-        static func moduleName(forTarget name: String) -> String {
-            let identifier = String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" })
-            return identifier.first?.isNumber == true ? "_" + identifier : identifier
         }
 
         /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.
