@@ -207,11 +207,45 @@ final class ScanCommandPipelineTest: XCTestCase {
             try run(["--disable-update-check", "--verbose"])
         }
 
-        XCTAssertTrue(standardOutput.contains("""
+        XCTAssertEqual(standardOutput, """
+
         \(projectRoot.appending("Sources/A.swift").string):1:1: warning: Unused class 'Foo'
             reason: no references in the scanned modules
 
-        """), standardOutput)
+        """)
+    }
+
+    /// `--verbose` log lines belong on standard error, so machine-readable results stay parseable (#95).
+    func testVerboseJsonScanWritesValidJsonToStandardOutput() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 2)]
+        var standardOutput = ""
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            standardOutput = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--format", "json", "--verbose", "--disable-update-check"])
+            }
+        }
+
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(standardOutput.utf8)) as? [[String: Any]], standardOutput)
+        XCTAssertEqual(decoded.compactMap { $0["name"] as? String }, ["Foo"])
+        XCTAssertTrue(standardError.contains("[version] "), standardError)
+    }
+
+    func testQuietVerboseJsonScanWritesOnlyJsonToStandardOutput() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 2)]
+        var standardOutput = ""
+
+        _ = try captureOutput(of: STDERR_FILENO) {
+            standardOutput = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--format", "json", "--quiet", "--verbose", "--disable-update-check"])
+            }
+        }
+
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(standardOutput.utf8)) as? [[String: Any]], standardOutput)
+        XCTAssertEqual(decoded.compactMap { $0["name"] as? String }, ["Foo"])
+        XCTAssertFalse(standardOutput.contains("[version]"), standardOutput)
     }
 
     // MARK: - Working directory

@@ -153,6 +153,10 @@ def _scan_inputs_aspect_impl(target, ctx):
         ),
     ]
 
+def _shell_quote(value):
+    """`value` as one single-quoted shell word."""
+    return "'" + value.replace("'", "'\\''") + "'"
+
 # buildifier: disable=function-docstring
 def scan_impl(ctx):
     swift_srcs_set = sets.make()
@@ -202,10 +206,12 @@ def scan_impl(ctx):
     ctx.actions.expand_template(
         template = ctx.file._template,
         output = ctx.outputs.scan,
+        # Each value is one shell word, whatever the paths contain: the output base that holds the
+        # config path may have spaces, quotes, `$` or backticks.
         substitutions = {
-            "%periphery_path%": periphery.short_path,
-            "%config_path%": ctx.attr.config,
-            "%project_config_path%": project_config_file.path,
+            "%periphery_path%": _shell_quote(periphery.short_path),
+            "%config_path%": _shell_quote(ctx.attr.config),
+            "%project_config_path%": _shell_quote(project_config_file.path),
         },
     )
 

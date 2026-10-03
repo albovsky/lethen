@@ -14,6 +14,8 @@ public final class XcodeWorkspace: XcodeProjectlike {
     private let configuration: Configuration
     private let xcworkspace: XCWorkspace
     private var projects: [XcodeProject] = []
+    /// Where each project the workspace lists is, including one that was missing when it loaded.
+    private var declaredProjectPaths: [FilePath] = []
 
     public private(set) var targets: Set<XcodeTarget> = []
     public private(set) var buildConfigurationNames: Set<String> = []
@@ -33,15 +35,30 @@ public final class XcodeWorkspace: XcodeProjectlike {
         }
 
         let projectPaths = collectProjectPaths(in: xcworkspace.data.children)
+        declaredProjectPaths = projectPaths.map { sourceRoot.pushing($0) }
         var loadedProjectPaths: Set<FilePath> = []
-        projects = try projectPaths.compactMap {
-            try XcodeProject(path: sourceRoot.pushing($0), loadedProjectPaths: &loadedProjectPaths, referencedBy: self.path, shell: shell, logger: logger)
+        projects = try declaredProjectPaths.compactMap {
+            try XcodeProject(path: $0, loadedProjectPaths: &loadedProjectPaths, referencedBy: self.path, shell: shell, logger: logger)
         }
 
         targets = projects.reduce(into: .init()) { result, project in
             result.formUnion(project.targets)
         }
         buildConfigurationNames = projects.flatMapSet { $0.buildConfigurationNames }
+    }
+
+    /// The roots of the projects the workspace lists. A listed project that no longer exists keeps its directory
+    /// here, so its removal counts as a change.
+    public var projectSourceRoots: [FilePath] {
+        declaredProjectPaths.map { $0.removingLastComponent() } + projects.flatMap(\.projectSourceRoots)
+    }
+
+    public var declaredInputFiles: Set<FilePath> {
+        projects.flatMapSet(\.declaredInputFiles)
+    }
+
+    public var hasUnenumerableBuildInputs: Bool {
+        projects.contains(where: \.hasUnenumerableBuildInputs)
     }
 
     public func schemes(additionalArguments: [String]) throws -> Set<String> {
@@ -51,6 +68,11 @@ public final class XcodeWorkspace: XcodeProjectlike {
     /// Workspace schemes come first, then those of each project in the order the workspace lists them.
     public func schemeConfigurations(named scheme: String) -> XcodeSchemeConfigurations? {
         XcodeSchemeConfigurations.read(scheme: scheme, in: [path] + projects.flatMap(\.schemeContainerPaths))
+    }
+
+    /// The workspace's own and those of each project it lists, as `xcodebuild -list -workspace` lists.
+    public var sharedSchemes: [String] {
+        XcodeSharedSchemes.names(in: [path] + projects.map(\.path))
     }
 
     // MARK: - Private

@@ -20,7 +20,9 @@ final class UnusedImportTest: SPMSourceGraphTestCase {
         // - C provides acceptConformingType function
         //
         // Module B's import should NOT be flagged as unused since it provides the conformance.
-        module("UnusedImportFixtureD") {
+        file("testUnusedImportFalsePositiveForConformanceProvider.swift") {
+            self.assertImport("UnusedImportFixtureA", inFile: "testUnusedImportFalsePositiveForConformanceProvider.swift")
+            self.assertImport("UnusedImportFixtureB", inFile: "testUnusedImportFalsePositiveForConformanceProvider.swift")
             self.assertReferenced(.module("UnusedImportFixtureA"))
             self.assertReferenced(.module("UnusedImportFixtureB"))
             self.assertReferenced(.module("UnusedImportFixtureC"))

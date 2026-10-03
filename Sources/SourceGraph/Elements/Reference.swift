@@ -43,6 +43,13 @@ public final class Reference {
     public var role: Role = .unknown
     public var hasGenericValueArguments = false
     public var valueArgumentReferences: Set<Reference> = []
+    /// The explicit arguments of the call in source order, each with its label and the references that supplied its value.
+    public var valueArguments: [ValueArgument] = []
+    /// For a type named in a specialized metatype such as `Page<Model>.self`, the references each generic argument names.
+    public var genericArguments: [Set<Reference>] = []
+    /// True for a type named as a generic argument of a stored property's declared type, such as `Model` in
+    /// `let value: Phantom<Model>`, which the generic type may or may not decode.
+    public var isGenericSpecializationArgument = false
     /// False only when the index shows a function referenced without being called, such as one passed or assigned as
     /// a value, whose signature is then fixed by the function type it converts to. References built from anything
     /// other than index evidence keep the default.
@@ -100,5 +107,15 @@ extension Reference: CustomStringConvertible {
 extension Reference: Comparable {
     public static func < (lhs: Reference, rhs: Reference) -> Bool {
         (lhs.location, lhs.usr) < (rhs.location, rhs.usr)
+    }
+}
+
+public struct ValueArgument {
+    public let label: String?
+    public let references: Set<Reference>
+
+    public init(label: String?, references: Set<Reference>) {
+        self.label = label
+        self.references = references
     }
 }

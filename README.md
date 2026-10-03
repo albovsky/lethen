@@ -4,15 +4,15 @@ A community-maintained tool to identify unused code in Swift projects.
 
 Lethen is an independent fork of the MIT-licensed [Periphery](https://github.com/peripheryapp/periphery), originally created by Ian Leitch. It is not affiliated with or endorsed by the commercial Periphery product.
 
-Intended website: **lethen.sh**. This repository is the project home while the website is being prepared.
+Website: **[lethen.dev](https://lethen.dev)**, whose source is [albovsky/lethen-web](https://github.com/albovsky/lethen-web). This repository is the project home.
 
 ## Status
 
-[3.9.0](https://github.com/albovsky/lethen/releases/tag/3.9.0) is the current Lethen release and requires Swift 6.3 (Xcode 26.4) or later. Apple silicon Macs can install it with Homebrew, Linux x86_64 and aarch64 can install a release tarball, and Intel Macs build it from source. It fixes the Linux update-check crash on Swift 6.4, keeps one DerivedData directory for multi-scheme Xcode scans, and makes `csv` and `json` output well-formed and stable. [3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1), the first Lethen release, is the last that supports Swift 6.1 and 6.2.
+[3.10.0](https://github.com/albovsky/lethen/releases/tag/3.10.0) is the current Lethen release and requires Swift 6.3 (Xcode 26.4) or later. Apple silicon Macs can install it with Homebrew, Linux x86_64 and aarch64 can install a release tarball, and Intel Macs build it from source. It gives every result a confidence and a reason, adds `lethen explain`, `--min-confidence`, `--configurations`, a GitHub Action, and a SwiftPM command plugin, counts uses from Objective-C, reuses verified SwiftPM builds instead of cleaning, and fixes false positives measured on a precision corpus. It runs build tools without a shell, so build arguments are no longer interpreted by one; the [release notes](docs/releases/3.10.0.md) list this and the other breaking changes. [3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1), the first Lethen release, is the last that supports Swift 6.1 and 6.2.
 
 Managed SwiftPM scans reuse the previous build only when Lethen can verify its index. SwiftPM does not treat `--enable-index-store` as a change that invalidates already-compiled tasks, and incremental builds do not always recompile a module's importers, so a build tree can hold a stale or partial index that gives silently wrong results. Lethen recompiles every module that another build or an edit touched, together with the modules that import it, checks the index afterwards, and cleans and rebuilds when anything cannot be verified. The first scan, and any scan with different build arguments, is a full rebuild; a rescan with nothing changed rebuilds nothing. `--clean-build` always cleans. The [scan performance report](docs/validation/scan-performance.md) records the timings.
 
-The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. The [precision scorecard](docs/validation/precision-corpus.md) measures sampled precision on pinned open-source projects, which every analysis change re-scans. The first measurement, on 2026-09-27, was 73 %; on the current findings it is <!-- precision-figure:begin -->84.0 % over 81 sampled findings<!-- precision-figure:end -->, against a target of 95 %. A hosted installer is separate work.
+The [validation report](docs/validation/swift-6.4-xcode-27.md) records 322 passing tests, matching clean/warm/native scans, and strict self-scan results. The [audit](docs/validation/pett-audit.md) explains its 30-item sample, seven fixed false positives, 11 retained controls, and limitations. The [precision scorecard](docs/validation/precision-corpus.md) measures sampled precision on pinned open-source projects, which every analysis change re-scans. The first measurement, on 2026-09-27, was 73 %; on the current findings it is <!-- precision-figure:begin -->86.1 % over 79 sampled findings<!-- precision-figure:end -->, against a target of 95 %. A hosted installer is separate work.
 
 ## Install
 
@@ -27,17 +27,17 @@ lethen version
 
 Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. The same binary is attached to each [release](https://github.com/albovsky/lethen/releases) as `lethen-<version>-macos-arm64.zip`, with a `SHA256SUMS` file.
 
-[Mint](https://github.com/yonaskolb/Mint) builds it from source: `mint install albovsky/lethen@3.9.0`. To run Lethen from a package or an Xcode project, add this package with a branch or commit rule and use its `LethenPlugin` command plugin; the [guide](docs/guide.md#swift-package-plugin-and-xcode-command) shows how.
+[Mint](https://github.com/yonaskolb/Mint) builds it from source: `mint install albovsky/lethen@3.10.0`. To run Lethen from a package or an Xcode project, add this package with a branch or commit rule and use its `LethenPlugin` command plugin; the [guide](docs/guide.md#swift-package-plugin-and-xcode-command) shows how.
 
 ### Download the macOS zip
 
-Download [lethen-3.9.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.9.0/lethen-3.9.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.9.0/SHA256SUMS) into the same directory, then run there:
+Download [lethen-3.10.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.10.0/lethen-3.10.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.10.0/SHA256SUMS) into the same directory, then run there:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
-ditto -x -k lethen-3.9.0-macos-arm64.zip lethen-3.9.0
+ditto -x -k lethen-3.10.0-macos-arm64.zip lethen-3.10.0
 mkdir -p "$HOME/.local/bin"
-install -m 755 lethen-3.9.0/lethen "$HOME/.local/bin/lethen"
+install -m 755 lethen-3.10.0/lethen "$HOME/.local/bin/lethen"
 export PATH="$HOME/.local/bin:$PATH"
 lethen version
 ```
@@ -68,7 +68,7 @@ Add the `export PATH` line to your shell profile if `~/.local/bin` is not alread
 Intel Macs build Lethen from source, and so can any Linux system with a supported toolchain. On macOS, select a full Xcode installation, for example with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. The local source-install baseline is Xcode 27.0 with Apple Swift 6.4 on arm64 macOS 27.
 
 ```sh
-git clone --branch 3.9.0 --depth 1 https://github.com/albovsky/lethen.git
+git clone --branch 3.10.0 --depth 1 https://github.com/albovsky/lethen.git
 cd lethen
 swift build -c release --product lethen
 lethen_bin_dir="$(swift build -c release --show-bin-path)"
@@ -107,7 +107,7 @@ bazel_dep(name = "periphery", dev_dependency = True)
 git_override(
     module_name = "periphery",
     remote = "https://github.com/albovsky/lethen.git",
-    tag = "3.9.0",
+    tag = "3.10.0",
 )
 use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphery_generated")
 ```
@@ -116,7 +116,7 @@ use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphe
 
 ### Continuous integration
 
-In a GitHub Actions workflow, the repository itself is the action. From the first release after 3.9.0, `uses: albovsky/lethen@<version>` installs that release's verified binary and annotates unused code on the pull request; `baseline:` limits failures to new results. On Linux the job needs a Swift 6.3 or later toolchain, for example the `swift:6.4-noble` container. The [guide](docs/guide.md#github-actions) lists the inputs and the equivalent `lethen scan` command for other CI systems.
+In a GitHub Actions workflow, the repository itself is the action. From 3.10.0, `uses: albovsky/lethen@<version>` installs that release's verified binary and annotates unused code on the pull request; `baseline:` limits failures to new results. On Linux the job needs a Swift 6.3 or later toolchain, for example the `swift:6.4-noble` container. The [guide](docs/guide.md#github-actions) lists the inputs and the equivalent `lethen scan` command for other CI systems.
 
 See the [user guide](docs/guide.md) for scanning each project type, what every result means and why declarations are retained, comment commands, baselines, output formats, and continuous integration. The [historical upstream guide](docs/UPSTREAM-README.md) is kept for reference.
 

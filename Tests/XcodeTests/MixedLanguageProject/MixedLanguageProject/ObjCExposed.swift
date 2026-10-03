@@ -8,6 +8,11 @@ final class CalledFromObjC: NSObject {
     @objc var readByMessage: Int { 1 }
     @objc static var staticReadByMessage: Int { 1 }
     @objc(renamedForObjC) func renamedInSwift() {}
+    @objc func namedInSelector() {}
+    @objc(renamedSelectorOnly) func renamedSelectorInSwift() {}
+    @objc var writtenBySetterSelector: Int = 0
+    @objc(initWithObjCName:) convenience init(objcName _: Int) { self.init() }
+    @objc var kvcRead: Int { 1 }
     func notExposed() {}
 }
 
@@ -42,3 +47,7 @@ final class OnlyInExposedSignature: NSObject {}
 final class OnlyForwardDeclared: NSObject {}
 
 final class NotReferencedFromObjC: NSObject {}
+
+final class NamedInObjCString: NSObject {}
+
+@objc(RenamedStringClassForObjC) final class RenamedStringClass: NSObject {}

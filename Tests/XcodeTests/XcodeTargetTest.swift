@@ -3,6 +3,7 @@ import Logger
 import Shared
 import SystemPackage
 @testable import TestShared
+import XcodeProj
 @testable import XcodeSupport
 import XCTest
 
@@ -38,11 +39,97 @@ final class XcodeTargetTest: XCTestCase {
         })
     }
 
+    func testIdentifiesSwiftAndClangSourceFiles() throws {
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+        let shell = ShellImpl(logger: logger)
+        var loadedProjectPaths: Set<FilePath> = []
+        let mixed = try XcodeProject(
+            path: MixedLanguageProjectPath,
+            loadedProjectPaths: &loadedProjectPaths,
+            xcodebuild: Xcodebuild(shell: shell, logger: logger),
+            shell: shell,
+            logger: logger
+        )
+        let target = try XCTUnwrap(mixed.targets.first { $0.name == "MixedLanguageProject" })
+        try target.identifyFiles()
+
+        let clangNames = target.files(kind: .clangSource).compactMap { $0.lastComponent?.string }
+        let swiftNames = target.files(kind: .swiftSource).compactMap { $0.lastComponent?.string }
+        XCTAssertTrue(clangNames.contains("ObjCCaller.m"), "\(clangNames.sorted())")
+        XCTAssertFalse(clangNames.contains("ObjCCaller.h"), "Headers are not compiled into a unit")
+        XCTAssertTrue(swiftNames.contains("ObjCExposed.swift"), "\(swiftNames.sorted())")
+        XCTAssertFalse(swiftNames.contains("ObjCCaller.m"))
+    }
+
+    /// A synchronized folder compiles its sources only into the targets that own it.
+    func testSynchronizedFolderSourcesBelongToTheirOwningTarget() throws {
+        let owner = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        let other = try XCTUnwrap(project.targets.first { $0.name == "UIKitProjectTests" })
+        try owner.identifyFiles()
+        try other.identifyFiles()
+
+        let folder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/FileSystemFolder")
+        let synchronized = folder.appending("SynchronizedFolderSource.swift")
+        XCTAssertTrue(owner.files(kind: .swiftSource).contains(synchronized), "\(owner.files(kind: .swiftSource).sorted())")
+        XCTAssertFalse(other.files(kind: .swiftSource).contains(synchronized))
+        // Resources keep the project-wide behavior.
+        XCTAssertTrue(owner.files(kind: .interfaceBuilder).contains(folder.appending("XibViewController3.xib")))
+    }
+
     func testIsTestTarget() throws {
         let projectTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
         let testTarget = try XCTUnwrap(project.targets.first { $0.name == "UIKitProjectTests" })
 
         XCTAssertFalse(projectTarget.isTestTarget)
         XCTAssertTrue(testTarget.isTestTarget)
+    }
+
+    func testDependencyNamesIncludeTargetsOfOtherProjectsThroughTheirProxy() throws {
+        let local = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "UIKitProject" })
+        let proxy = PBXContainerItemProxy(containerPortal: .project(project.xcodeProject.pbxproj.rootObject!), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: "RemoteFramework")
+        let dependencies = [
+            PBXTargetDependency(name: nil, target: local, targetProxy: nil),
+            PBXTargetDependency(name: nil, target: nil, targetProxy: proxy),
+        ]
+        let pbxTarget = PBXNativeTarget(name: "Consumer", dependencies: dependencies)
+        // References resolve through the project's object graph, as they do for a parsed project.
+        let pbxproj = project.xcodeProject.pbxproj
+        pbxproj.add(object: proxy)
+        dependencies.forEach { pbxproj.add(object: $0) }
+        pbxproj.add(object: pbxTarget)
+        let target = XcodeTarget(project: project, target: pbxTarget)
+
+        XCTAssertEqual(target.dependencyNames, ["UIKitProject", "RemoteFramework"])
+    }
+
+    /// Linking a project target's product is an implicit dependency, which Xcode honors without a
+    /// `PBXTargetDependency`.
+    func testDependencyNamesIncludeLinkedProductsOfProjectTargets() throws {
+        let framework = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "Target With Spaces" })
+        let product = try XCTUnwrap(framework.product)
+        let buildFile = PBXBuildFile(file: product)
+        let phase = PBXFrameworksBuildPhase(files: [buildFile])
+        let pbxTarget = PBXNativeTarget(name: "Linker", buildPhases: [phase])
+        let pbxproj = project.xcodeProject.pbxproj
+        pbxproj.add(object: buildFile)
+        pbxproj.add(object: phase)
+        pbxproj.add(object: pbxTarget)
+
+        XCTAssertEqual(XcodeTarget(project: project, target: pbxTarget).dependencyNames, ["Target With Spaces"])
+    }
+
+    func testModuleNamesAreTheConfiguredProductModuleNamesOrTheDefault() throws {
+        // Each configuration may name the module differently; a unit could come from any of them.
+        let debug = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("DebugCore")])
+        let release = XCBuildConfiguration(name: "Release", buildSettings: ["PRODUCT_MODULE_NAME": .string("ReleaseCore")])
+        let list = XCConfigurationList(buildConfigurations: [debug, release])
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Core", buildConfigurationList: list)).moduleNames, ["DebugCore", "ReleaseCore"])
+
+        let variable = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("$(TARGET_NAME:c99extidentifier)")])
+        let variableList = XCConfigurationList(buildConfigurations: [variable])
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Target With Spaces", buildConfigurationList: variableList)).moduleNames, ["Target_With_Spaces"])
+
+        XCTAssertEqual(XcodeTarget.defaultModuleName(forTarget: "3D-Kit"), "_3D_Kit")
+        XCTAssertEqual(try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" }).moduleNames, ["Target_With_Spaces"])
     }
 }

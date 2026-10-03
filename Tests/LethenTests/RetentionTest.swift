@@ -1,3 +1,4 @@
+@testable import PeripheryKit
 import SystemPackage
 @testable import TestShared
 import XCTest
@@ -6,6 +7,21 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     func testNonReferencedClass() throws {
         try analyze {
             assertNotReferenced(.class("FixtureClass1"))
+        }
+    }
+
+    /// `lethen explain` reads the assessor the report was built from, so the two cannot disagree.
+    func testResultsAndExplainShareOneConfidenceAssessment() throws {
+        try analyze {
+            assertNotReferenced(.class("FixtureConfidenceNamedInLiteral"))
+            assertConfidence(.class("FixtureConfidenceNamedInLiteral"), .likely)
+            assertNotReferenced(.class("FixtureConfidenceNamedNowhere"))
+            assertConfidence(.class("FixtureConfidenceNamedNowhere"), .certain)
+            XCTAssertFalse(Self.results.isEmpty)
+            for result in Self.results {
+                XCTAssertEqual(Self.confidence.assess(result.declaration).confidence, result.confidence, "\(result.declaration)")
+                XCTAssertEqual(Self.confidence.assess(result.declaration).reason, result.confidenceReason, "\(result.declaration)")
+            }
         }
     }
 
@@ -2118,6 +2134,96 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testConfidenceLikelyForSkippedBranches() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.enum("FixtureEnum312")) {
+                self.assertNotUnconstructedEnumCase(.enumelement("constructed"))
+                self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
+                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
+                // Used-but-not-compared control: named in the branch this build compiled, so it is
+                // used and not reported.
+                self.assertNotUnconstructedEnumCase(.enumelement("comparedInTakenBranch"))
+                self.assertUnconstructedEnumCase(.enumelement("matchedOnly"))
+                self.assertConfidence(.enumelement("matchedOnly"), .certain)
+                // A bare local named like the case is not a use, nor is a `for case` pattern.
+                self.assertUnconstructedEnumCase(.enumelement("idle"))
+                self.assertConfidence(.enumelement("idle"), .certain)
+                self.assertUnconstructedEnumCase(.enumelement("windowsLoopOnly"))
+                self.assertConfidence(.enumelement("windowsLoopOnly"), .certain)
+            }
+            assertReferenced(.enum("FixtureEnum312Other")) {
+                // A name collision with a skipped branch is accepted as likely.
+                self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
+                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
+            }
+            assertNotReferenced(.typealias("FixtureTypealias312"))
+            assertConfidence(.typealias("FixtureTypealias312"), .likely)
+            assertNotReferenced(.typealias("FixtureTypealiasUnnamed312"))
+            assertConfidence(.typealias("FixtureTypealiasUnnamed312"), .certain)
+            assertReferenced(.class("FixtureClass312Pattern")) {
+                self.assertNotReferenced(.varStatic("patternWindowsValue"))
+                self.assertConfidence(.varStatic("patternWindowsValue"), .likely)
+                self.assertNotReferenced(.varStatic("neverMatched"))
+                self.assertConfidence(.varStatic("neverMatched"), .certain)
+            }
+            assertNotReferenced(.struct("FixtureWindowsType312"))
+            assertConfidence(.struct("FixtureWindowsType312"), .likely)
+            assertReferenced(.enum("FixtureNamespace312")) {
+                self.assertNotReferenced(.struct("FixtureTakenType312"))
+                self.assertConfidence(.struct("FixtureTakenType312"), .certain)
+            }
+            assertReferenced(.class("FixtureGeneric312")) {
+                self.assertNotReferenced(.functionMethodInstance("windowsGeneric()"))
+                self.assertConfidence(.functionMethodInstance("windowsGeneric()"), .likely)
+                self.assertReferenced(.functionMethodInstance("takenGeneric()"))
+            }
+            assertReferenced(.class("FixtureKeyPath312")) {
+                self.assertNotReferenced(.varInstance("windowsKeyPathValue"))
+                self.assertConfidence(.varInstance("windowsKeyPathValue"), .likely)
+                self.assertReferenced(.varInstance("takenKeyPathValue"))
+                self.assertNotReferenced(.varInstance("neverKeyPath"))
+                self.assertConfidence(.varInstance("neverKeyPath"), .certain)
+            }
+            assertReferenced(.class("FixtureClass312Taken")) {
+                // The taken clause only calls a parameter, which the analysis drops, but the index still
+                // shows the clause was compiled, so `handler()` is not named in a skipped branch.
+                self.assertNotReferenced(.functionMethodInstance("handler()"))
+                self.assertConfidence(.functionMethodInstance("handler()"), .certain)
+            }
+            assertReferenced(.class("FixtureClass312")) {
+                self.assertNotReferenced(.functionMethodInstance("calledOnlyOnWindows()"))
+                self.assertConfidence(.functionMethodInstance("calledOnlyOnWindows()"), .likely)
+                self.assertReferenced(.functionMethodInstance("calledInTakenBranch()"))
+                self.assertNotReferenced(.functionMethodInstance("neverNamed()"))
+                self.assertConfidence(.functionMethodInstance("neverNamed()"), .certain)
+                self.assertNotReferenced(.functionMethodInstance("WinSDK()"))
+                self.assertConfidence(.functionMethodInstance("WinSDK()"), .certain)
+                // Declaring a name in a skipped branch is not using it.
+                self.assertNotReferenced(.functionMethodInstance("redeclaredOnlyOnWindows()"))
+                self.assertConfidence(.functionMethodInstance("redeclaredOnlyOnWindows()"), .certain)
+                self.assertNotReferenced(.varInstance("overriddenLabel"))
+                self.assertConfidence(.varInstance("overriddenLabel"), .certain)
+                // A bare identifier is not a use of a member.
+                self.assertNotReferenced(.varInstance("shadowedByLocal"))
+                self.assertConfidence(.varInstance("shadowedByLocal"), .certain)
+            }
+        }
+    }
+
+    func testConfidenceLikelyForOperatorsUsedInSkippedBranches() throws {
+        try analyze(retainPublic: true) {
+            assertNotReferenced(.functionOperatorInfix("<~~>(_:_:)"))
+            assertConfidence(.functionOperatorInfix("<~~>(_:_:)"), .likely)
+            assertNotReferenced(.functionOperatorPrefix("^^^(_:)"))
+            assertConfidence(.functionOperatorPrefix("^^^(_:)"), .likely)
+            // Never named: stays certain.
+            assertNotReferenced(.functionOperatorInfix("<!!>(_:_:)"))
+            assertConfidence(.functionOperatorInfix("<!!>(_:_:)"), .certain)
+            // Used in the branch this build compiled: not reported.
+            assertReferenced(.functionOperatorInfix("<??>(_:_:)"))
+        }
+    }
+
     func testRetainsResultBuilderPartialBlockAndArity() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct225")) {
@@ -2171,8 +2277,269 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct226Appended")) {
                 self.assertAssignOnlyProperty(.varInstance("appendedButNotEncoded"))
             }
+            assertReferenced(.struct("FixtureStruct226Metatype")) {
+                self.assertAssignOnlyProperty(.varInstance("metatypeNotEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Overload")) {
+                self.assertNotAssignOnlyProperty(.varInstance("overloadEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Held")) {
+                self.assertNotAssignOnlyProperty(.varInstance("heldEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Computed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("computedEncoded"))
+                self.assertNotReferenced(.varInstance("computedNotEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226ObservedChild")) {
+                self.assertNotAssignOnlyProperty(.varInstance("observedChildEncoded"))
+            }
             assertReferenced(.struct("FixtureStruct226Custom")) {
                 self.assertAssignOnlyProperty(.varInstance("notEncodedByCustom"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedDecodeReads() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct312")) {
+                self.assertNotAssignOnlyProperty(.varInstance("decoded"))
+                self.assertNotAssignOnlyProperty(.varInstance("nested"))
+                self.assertNotAssignOnlyProperty(.varInstance("withDefault"))
+                self.assertNotReferenced(.varInstance("fixed"))
+            }
+            assertReferenced(.struct("FixtureStruct312Nested")) {
+                self.assertNotAssignOnlyProperty(.varInstance("nestedValue"))
+            }
+            assertReferenced(.struct("FixtureStruct312Codable")) {
+                self.assertNotAssignOnlyProperty(.varInstance("codableDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Generic")) {
+                self.assertNotAssignOnlyProperty(.varInstance("genericDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Extension")) {
+                self.assertNotAssignOnlyProperty(.varInstance("extensionDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Keyed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("kept"))
+                self.assertAssignOnlyProperty(.varInstance("skipped"))
+            }
+            assertReferenced(.struct("FixtureStruct312Undecoded")) {
+                self.assertAssignOnlyProperty(.varInstance("neverDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Optional")) {
+                self.assertAssignOnlyProperty(.varInstance("optionalDecoded"))
+                self.assertAssignOnlyProperty(.varInstance("spelledOutOptional"))
+                self.assertAssignOnlyProperty(.varInstance("implicitlyUnwrapped"))
+            }
+            assertReferenced(.struct("FixtureStruct312Passed")) {
+                self.assertAssignOnlyProperty(.varInstance("passedButNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Printed")) {
+                self.assertAssignOnlyProperty(.varInstance("printedButNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Metadata")) {
+                self.assertAssignOnlyProperty(.varInstance("metadataNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Placeholder")) {
+                self.assertNotAssignOnlyProperty(.varInstance("placeholderDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Where")) {
+                self.assertNotAssignOnlyProperty(.varInstance("whereDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Initializer")) {
+                self.assertNotAssignOnlyProperty(.varInstance("initializerDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Variadic")) {
+                self.assertNotAssignOnlyProperty(.varInstance("variadicDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312VariadicOther")) {
+                self.assertNotAssignOnlyProperty(.varInstance("variadicOtherDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Dependent")) {
+                self.assertAssignOnlyProperty(.varInstance("dependentNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Boxed")) {
+                self.assertAssignOnlyProperty(.varInstance("boxedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ValueOnly")) {
+                self.assertAssignOnlyProperty(.varInstance("valueNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Composed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("composedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Aliased")) {
+                self.assertAssignOnlyProperty(.varInstance("aliasedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Key")) {
+                self.assertAssignOnlyProperty(.varInstance("keyNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Lazy")) {
+                self.assertNotAssignOnlyProperty(.varInstance("lazyAnchor"))
+            }
+            assertReferenced(.struct("FixtureStruct312Holder")) {
+                self.assertAssignOnlyProperty(.varInstance("child"))
+            }
+            assertReferenced(.struct("FixtureStruct312Child")) {
+                self.assertNotAssignOnlyProperty(.varInstance("childRequired"))
+            }
+            assertReferenced(.struct("FixtureStruct312Page")) {
+                self.assertNotAssignOnlyProperty(.varInstance("items"))
+                self.assertNotAssignOnlyProperty(.varInstance("total"))
+            }
+            assertReferenced(.struct("FixtureStruct312Item")) {
+                self.assertNotAssignOnlyProperty(.varInstance("itemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Phantom")) {
+                self.assertNotAssignOnlyProperty(.varInstance("count"))
+            }
+            assertReferenced(.struct("FixtureStruct312Tag")) {
+                self.assertAssignOnlyProperty(.varInstance("tagNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Nested2")) {
+                self.assertAssignOnlyProperty(.varInstance("nested2NotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Entry")) {
+                self.assertNotAssignOnlyProperty(.varInstance("entryDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Overload")) {
+                self.assertNotAssignOnlyProperty(.varInstance("overloadDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312AliasInit")) {
+                self.assertAssignOnlyProperty(.varInstance("aliasInitNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Fake")) {
+                self.assertAssignOnlyProperty(.varInstance("fakeNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312SharedKeys")) {
+                self.assertNotAssignOnlyProperty(.varInstance("sharedKept"))
+                self.assertAssignOnlyProperty(.varInstance("sharedSkipped"))
+            }
+            assertReferenced(.struct("FixtureStruct312ChainInit")) {
+                self.assertAssignOnlyProperty(.varInstance("chainInitNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312NumberOverload")) {
+                self.assertNotAssignOnlyProperty(.varInstance("numberOverloadDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ChainKeys")) {
+                self.assertNotAssignOnlyProperty(.varInstance("sharedKept"))
+                self.assertAssignOnlyProperty(.varInstance("sharedSkipped"))
+            }
+            assertReferenced(.struct("FixtureStruct312Unkeyed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("unkeyedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Single")) {
+                self.assertNotAssignOnlyProperty(.varInstance("singleDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Protocol")) {
+                self.assertNotAssignOnlyProperty(.varInstance("protocolDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Shadowing")) {
+                self.assertNotAssignOnlyProperty(.varInstance("shadowingDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Qualified")) {
+                self.assertAssignOnlyProperty(.varInstance("qualifiedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312QualifiedPlain")) {
+                self.assertNotAssignOnlyProperty(.varInstance("qualifiedPlainDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Concrete")) {
+                self.assertAssignOnlyProperty(.varInstance("concreteNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Wrapped")) {
+                self.assertNotAssignOnlyProperty(.varInstance("wrappedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312OptionalModel")) {
+                self.assertNotAssignOnlyProperty(.varInstance("optionalModelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ArrayModel")) {
+                self.assertNotAssignOnlyProperty(.varInstance("arrayModelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312OptionalItem")) {
+                self.assertNotAssignOnlyProperty(.varInstance("optionalItemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312TableItem")) {
+                self.assertNotAssignOnlyProperty(.varInstance("tableItemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312DictModel")) {
+                self.assertNotAssignOnlyProperty(.varInstance("dictModelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Computed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("computedAnchor"))
+                self.assertNotReferenced(.varInstance("computedConstant"))
+            }
+            assertReferenced(.enum("FixtureQualifiedHolder312")) {
+                self.assertReferenced(.struct("Model")) {
+                    self.assertNotAssignOnlyProperty(.varInstance("qualifiedModelDecoded"))
+                }
+            }
+            assertReferenced(.struct("FixtureStruct312Aliased1")) {
+                self.assertNotAssignOnlyProperty(.varInstance("aliased1Decoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Aliased2")) {
+                self.assertNotAssignOnlyProperty(.varInstance("aliased2Decoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312AliasedCustom")) {
+                self.assertAssignOnlyProperty(.varInstance("aliasedCustomNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312QualifiedConcrete")) {
+                self.assertAssignOnlyProperty(.varInstance("qualifiedConcreteNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ObservedChild")) {
+                self.assertNotAssignOnlyProperty(.varInstance("observedChildDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312AliasPageItem")) {
+                self.assertNotAssignOnlyProperty(.varInstance("aliasPageItemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312ExternalKeys")) {
+                self.assertNotAssignOnlyProperty(.varInstance("externalKept"))
+            }
+            assertReferenced(.struct("FixtureStruct312NestedItem")) {
+                self.assertNotAssignOnlyProperty(.varInstance("nestedItemDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312LabeledA")) {
+                self.assertNotAssignOnlyProperty(.varInstance("labeledADecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312LabeledB")) {
+                self.assertNotAssignOnlyProperty(.varInstance("labeledBDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct312Custom")) {
+                self.assertAssignOnlyProperty(.varInstance("notDecodedByCustom"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedDecodeTopLevel() throws {
+        let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
+
+        try analyze(retainPublic: true, additionalFilesToIndex: [main]) {
+            assertReferenced(.struct("FixtureStruct314")) {
+                self.assertNotAssignOnlyProperty(.varInstance("topLevelDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct314Undecoded")) {
+                self.assertAssignOnlyProperty(.varInstance("topLevelNotDecoded"))
+            }
+        }
+
+        // Without the top-level file nothing decodes FixtureStruct314.
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct314")) {
+                self.assertAssignOnlyProperty(.varInstance("topLevelDecoded"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedDecodeExternalProtocol() throws {
+        // CustomStringConvertible doesn't actually inherit Decodable, we're just using it because we don't have an
+        // external module in which to declare our own type.
+        try analyze(retainPublic: true, externalCodableProtocols: ["CustomStringConvertible"]) {
+            assertReferenced(.struct("FixtureStruct313")) {
+                self.assertNotAssignOnlyProperty(.varInstance("externallyDecoded"))
+            }
+        }
+
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct313")) {
+                self.assertAssignOnlyProperty(.varInstance("externallyDecoded"))
             }
         }
     }

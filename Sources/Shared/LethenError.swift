@@ -20,15 +20,14 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
     case indexStoreNotFound(derivedDataPath: String)
     case staleIndexStore(path: String, staleFiles: [String])
     case changeCurrentDirectoryFailed(FilePath)
+    case unsafeDirectory(path: FilePath, reason: String)
 
     public var errorDescription: String? {
         switch self {
         case let .shellCommandFailed(cmd, status, output):
-            let joinedCmd = cmd.joined(separator: " ")
-            return "Shell command '\(joinedCmd)' returned exit status '\(status)':\n\(output)"
+            return "Shell command '\(cmd.shellRendered)' returned exit status '\(status)':\n\(output)"
         case let .shellOutputEncodingFailed(cmd, encoding):
-            let joinedCmd = cmd.joined(separator: " ")
-            return "Shell command '\(joinedCmd)' output encoding to \(encoding) failed."
+            return "Shell command '\(cmd.shellRendered)' output encoding to \(encoding) failed."
         case let .usageError(message):
             return message
         case let .underlyingError(error):
@@ -62,6 +61,8 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
             return "The index store at \(path) is stale: \(staleFiles.count) source files are newer than every index unit for them (\(examples)). Build the project again, or scan without --skip-build."
         case let .changeCurrentDirectoryFailed(path):
             return "Failed to change current directory to: \(path)"
+        case let .unsafeDirectory(path, reason):
+            return "Refusing to write to \(path): \(reason). Remove it and scan again."
         }
     }
 

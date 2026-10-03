@@ -663,7 +663,8 @@
       "verdict": "FP",
       "note": "`TestResponse: Decodable` is decoded via synthesized `init(from:)`, which reads the required (non-optional) `origin` key; ~170 `serializingDecodable(TestResponse.self)` call sites (e.g. ConcurrencyTests.swift:55) rely on it, and removing the property relaxes that response-shape validation.",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "No longer reported after #104"
     },
     {
       "path": "Tests/WebSocketTests.swift",

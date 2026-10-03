@@ -15,6 +15,7 @@ public struct IndexUnit {
 final class SwiftIndexer: Indexer {
     private let sourceFiles: [SourceFile: [IndexUnit]]
     private let graph: SourceGraphMutex
+    private let evidence: ConfidenceEvidenceCollector
     private let logger: ContextualLogger
     private let configuration: Configuration
     private let swiftVersion: SwiftVersion
@@ -22,12 +23,14 @@ final class SwiftIndexer: Indexer {
     required init(
         sourceFiles: [SourceFile: [IndexUnit]],
         graph: SourceGraphMutex,
+        evidence: ConfidenceEvidenceCollector,
         logger: ContextualLogger,
         configuration: Configuration,
         swiftVersion: SwiftVersion
     ) {
         self.sourceFiles = sourceFiles
         self.graph = graph
+        self.evidence = evidence
         self.logger = logger.contextualized(with: "swift")
         self.configuration = configuration
         self.swiftVersion = swiftVersion
@@ -43,6 +46,7 @@ final class SwiftIndexer: Indexer {
                 units: units,
                 retainAllDeclarations: isRetained(file),
                 graph: graph,
+                evidence: evidence,
                 logger: logger,
                 configuration: configuration,
                 swiftVersion: swiftVersion
@@ -97,6 +101,7 @@ final class SwiftIndexer: Indexer {
 
         private let units: [IndexUnit]
         private let graph: SourceGraphMutex
+        private let evidence: ConfidenceEvidenceCollector
         private let logger: ContextualLogger
         private let configuration: Configuration
         private var retainAllDeclarations: Bool
@@ -107,6 +112,7 @@ final class SwiftIndexer: Indexer {
             units: [IndexUnit],
             retainAllDeclarations: Bool,
             graph: SourceGraphMutex,
+            evidence: ConfidenceEvidenceCollector,
             logger: ContextualLogger,
             configuration: Configuration,
             swiftVersion: SwiftVersion
@@ -115,6 +121,7 @@ final class SwiftIndexer: Indexer {
             self.units = units
             self.retainAllDeclarations = retainAllDeclarations
             self.graph = graph
+            self.evidence = evidence
             self.logger = logger
             self.configuration = configuration
             self.swiftVersion = swiftVersion
@@ -148,6 +155,8 @@ final class SwiftIndexer: Indexer {
             let isImplicit: Bool
             let isObjcAccessible: Bool
             let location: Location
+            /// The module of the index unit that recorded the declaration.
+            var module = ""
 
             var key: Key {
                 Key(kind: kind, name: name, isImplicit: isImplicit, isObjcAccessible: isObjcAccessible, location: location)
@@ -169,9 +178,13 @@ final class SwiftIndexer: Indexer {
 
                     record.forEach(occurrence: { occurrence in
                         let usr = occurrence.symbol.usr
-                        guard Self.shouldProcessOccurrence(occurrence),
-                              let location = self.transformLocation(occurrence.location)
-                        else { return }
+                        guard let location = self.transformLocation(occurrence.location) else { return }
+
+                        // Every occurrence is evidence that its line was compiled, including the parameters and
+                        // locals that analysis drops and symbols of any language.
+                        occurrenceLocations[unit.unit.moduleName, default: []].insert(location)
+
+                        guard Self.shouldProcessOccurrence(occurrence) else { return }
 
                         var relations: [RawRelation] = []
                         occurrence.forEach(relation: { relSymbol, relRoles in
@@ -193,6 +206,8 @@ final class SwiftIndexer: Indexer {
                                 location,
                                 relations
                             ) {
+                                var decl = decl
+                                decl.module = unit.unit.moduleName
                                 rawDeclsByKey[decl.key, default: []].append((decl, relations))
                             }
                         }
@@ -232,6 +247,7 @@ final class SwiftIndexer: Indexer {
                 let decl = Declaration(name: key.name, kind: key.kind, usrs: usrs, location: key.location)
 
                 decl.isImplicit = key.isImplicit
+                decl.indexedModules = values.mapSet { $0.0.module }
                 decl.isObjcAccessible = key.isObjcAccessible
 
                 if decl.isObjcAccessible, configuration.retainObjcAccessible {
@@ -312,14 +328,33 @@ final class SwiftIndexer: Indexer {
             let file = IndexedFile(
                 syntax: multiplexingSyntaxVisitor.syntax,
                 locationBuilder: locationBuilder,
-                referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init)
+                declarations: declarations,
+                referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init),
+                graph: graph
             )
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
             }
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
-            graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
+            evidence.add { $0.addLiteralTokens(literalTokens.tokens) }
+            // A module with no occurrence in the file, such as a file conditionally compiled out entirely,
+            // has no evidence for any clause.
+            for module in sourceFile.modules.sorted() {
+                let occurrences = occurrenceLocations[module] ?? []
+                let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: occurrences)
+                skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
+                evidence.add {
+                    $0.addSkippedBranchNames(
+                        NameSites(
+                            names: skippedBranches.names,
+                            memberNames: skippedBranches.memberNames,
+                            constructionNames: skippedBranches.constructionNames
+                        ),
+                        modules: [module]
+                    )
+                }
+            }
             identifyUnusedParameters(using: multiplexingSyntaxVisitor)
             applyCommentCommands(using: multiplexingSyntaxVisitor)
         }
@@ -328,6 +363,9 @@ final class SwiftIndexer: Indexer {
 
         private var declarations: [Declaration] = []
         private var indexedReferences: Set<Reference> = []
+        /// Locations of every index occurrence, by the module whose unit recorded them. A file built into
+        /// several modules can compile different clauses in each.
+        private var occurrenceLocations: [String: Set<Location>] = [:]
         private var childDeclsByParentUsr: [String: Set<Declaration>] = [:]
         private var referencesByUsr: [String: Set<Reference>] = [:]
         private var danglingReferences: [Reference] = []

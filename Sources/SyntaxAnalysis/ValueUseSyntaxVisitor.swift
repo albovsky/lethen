@@ -5,10 +5,21 @@ import SwiftSyntax
 /// Local variables are absent from the index, so resolve their lexical bindings here.
 public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var arguments: [Location: Set<Location>] = [:]
+    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>)]] = [:]
+    public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
+    /// Keyed by the specialized type's own location: what each of its generic arguments names.
+    public private(set) var specializationArguments: [Location: [Set<Location>]] = [:]
+    /// Every type named inside the generic arguments of a stored property's declared type.
+    public private(set) var specializationArgumentLocations: Set<Location> = []
+    public private(set) var accessorBodyLocations: Set<Location> = []
+    public private(set) var initializedConstantLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
     private var scopes: [[String: Set<Location>]] = [[:]]
+    /// Whether `Type.self` resolves to the type's own reference. Only the per-argument lists want that; the unioned
+    /// value uses that equality and encoding rules read treat a metatype as no value.
+    private var resolvesMetatypes = false
 
     public init(locations: SourceLocationBuilder) {
         self.locations = locations
@@ -46,6 +57,12 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             let name = parameter.secondName ?? parameter.firstName
             scopes[scopes.count - 1][name.text] = tokens(in: parameter.type)
         }
+        recordParameterTypeNames(
+            of: node.signature,
+            genericParameterClause: node.genericParameterClause,
+            genericWhereClause: node.genericWhereClause,
+            at: node.name.positionAfterSkippingLeadingTrivia
+        )
         return .visitChildren
     }
 
@@ -54,9 +71,31 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         genericNames.removeLast()
     }
 
+    override public func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        recordParameterTypeNames(
+            of: node.signature,
+            genericParameterClause: node.genericParameterClause,
+            genericWhereClause: node.genericWhereClause,
+            at: node.initKeyword.positionAfterSkippingLeadingTrivia
+        )
+        return .visitChildren
+    }
+
     override public func visit(_ node: VariableDeclSyntax) -> SyntaxVisitorContinueKind {
         for binding in node.bindings {
             guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else { continue }
+
+            if node.bindingSpecifier.tokenKind == .keyword(.let), binding.initializer != nil {
+                initializedConstantLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
+            }
+
+            if let type = binding.typeAnnotation?.type {
+                recordSpecializations(in: type)
+            }
+
+            if let block = binding.accessorBlock, Self.isComputed(block) {
+                accessorBodyLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
+            }
 
             let annotation = binding.typeAnnotation.map { tokens(in: $0.type) } ?? []
             let initial = binding.initializer.map { origins(of: $0.value) } ?? []
@@ -70,7 +109,11 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let member = node.calledExpression.as(MemberAccessExprSyntax.self), let base = member.base {
             values.formUnion(origins(of: base))
         }
-        arguments[calleeLocation(node.calledExpression), default: []].formUnion(values)
+        let callee = calleeLocation(node.calledExpression)
+        arguments[callee, default: []].formUnion(values)
+        resolvesMetatypes = true
+        argumentLists[callee] = node.arguments.map { (label: $0.label?.text, origins: origins(of: $0.expression)) }
+        resolvesMetatypes = false
         return .visitChildren
     }
 
@@ -106,11 +149,24 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return [calleeLocation(call.calledExpression)]
         }
         if let member = expression.as(MemberAccessExprSyntax.self) {
+            // `Type.self` names no declaration of its own; the metatype carries the type reference.
+            if member.declName.baseName.tokenKind == .keyword(.self), let base = member.base {
+                guard resolvesMetatypes else { return [] }
+
+                // `Page<Model>.self` resolves to `Page`, with its arguments recorded for the decoding rule.
+                if let specialized = base.as(GenericSpecializationExprSyntax.self) {
+                    return specializedOrigins(of: specialized)
+                }
+                return origins(of: base)
+            }
             // Passing value.field passes the field, not the containing value.
             return [locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)]
         }
         if let array = expression.as(ArrayExprSyntax.self) {
             return array.elements.reduce(into: []) { $0.formUnion(origins(of: $1.expression)) }
+        }
+        if let dictionary = expression.as(DictionaryExprSyntax.self), case let .elements(elements) = dictionary.content {
+            return elements.reduce(into: []) { $0.formUnion(origins(of: $1.key).union(origins(of: $1.value))) }
         }
         if let tuple = expression.as(TupleExprSyntax.self) {
             return tuple.elements.reduce(into: []) { $0.formUnion(origins(of: $1.expression)) }
@@ -130,6 +186,150 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         return []
     }
 
+    /// A shorthand getter, or an accessor list with a getter, setter, `_read` or `_modify`; `willSet` and `didSet`
+    /// observe a stored property.
+    private static func isComputed(_ block: AccessorBlockSyntax) -> Bool {
+        switch block.accessors {
+        case .getter:
+            true
+        case let .accessors(list):
+            list.contains { ["get", "set", "_read", "_modify", "unsafeAddress", "unsafeMutableAddress"].contains($0.accessorSpecifier.text) }
+        }
+    }
+
+    /// Records the generic specializations in a stored property's declared type, apart from the standard containers,
+    /// which pass their arguments through.
+    private func recordSpecializations(in type: TypeSyntax) {
+        let collector = SpecializationCollector(viewMode: .sourceAccurate)
+        collector.walk(type)
+        for node in collector.specializations {
+            let base = locations.location(at: node.name.positionAfterSkippingLeadingTrivia)
+            var arguments: [Set<Location>] = []
+            for argument in node.clause.arguments {
+                guard case let .type(argumentType) = argument.argument else {
+                    arguments.append([])
+                    continue
+                }
+
+                let named = TypeSyntaxInspector(sourceLocationBuilder: locations).types(for: argumentType)
+                specializationArgumentLocations.formUnion(named.map { locations.location(at: $0.positionAfterSkippingLeadingTrivia) })
+                arguments.append(Self.simpleTypeTokens(in: argumentType).reduce(into: Set<Location>()) {
+                    $0.insert(locations.location(at: $1.positionAfterSkippingLeadingTrivia))
+                })
+            }
+            specializationArguments[base] = arguments
+        }
+    }
+
+    /// The specialized type itself. Its generic arguments are recorded apart, because whether they are decoded
+    /// depends on how the type stores them.
+    private func specializedOrigins(of specialized: GenericSpecializationExprSyntax) -> Set<Location> {
+        let base = origins(of: specialized.expression)
+        let arguments = specialized.genericArgumentClause.arguments.map { argument -> Set<Location> in
+            guard case let .type(type) = argument.argument else { return [] }
+
+            return Self.simpleTypeTokens(in: type).reduce(into: Set<Location>()) {
+                $0.insert(locations.location(at: $1.positionAfterSkippingLeadingTrivia))
+            }
+        }
+        for location in base {
+            specializationArguments[location] = arguments
+        }
+        return base
+    }
+
+    /// The name token of a plain, array or optional type. A nested generic such as `Box<Model>` names nothing here,
+    /// since the box may not decode its argument.
+    private static func simpleTypeTokens(in type: TypeSyntax) -> [TokenSyntax] {
+        if let identifier = type.as(IdentifierTypeSyntax.self), identifier.genericArgumentClause == nil {
+            return [identifier.name]
+        }
+        if let array = type.as(ArrayTypeSyntax.self) {
+            return simpleTypeTokens(in: array.element)
+        }
+        if let member = type.as(MemberTypeSyntax.self), member.genericArgumentClause == nil {
+            // `Namespace.Model` is indexed at its last component.
+            return [member.name]
+        }
+        if let dictionary = type.as(DictionaryTypeSyntax.self) {
+            return simpleTypeTokens(in: dictionary.key) + simpleTypeTokens(in: dictionary.value)
+        }
+        if let optional = type.as(OptionalTypeSyntax.self) {
+            return simpleTypeTokens(in: optional.wrappedType)
+        }
+        return []
+    }
+
+    private func recordParameterTypeNames(
+        of signature: FunctionSignatureSyntax,
+        genericParameterClause: GenericParameterClauseSyntax?,
+        genericWhereClause: GenericWhereClauseSyntax?,
+        at position: AbsolutePosition
+    ) {
+        var constraints: [String: Set<String>] = [:]
+        for parameter in genericParameterClause?.parameters ?? [] {
+            if let inherited = parameter.inheritedType {
+                constraints[parameter.name.text, default: []].formUnion(Self.typeNames(in: inherited))
+            }
+        }
+        for requirement in genericWhereClause?.requirements ?? [] {
+            // Only a requirement on the generic parameter itself constrains it; `T.Payload: Decodable` does not.
+            guard case let .conformanceRequirement(conformance) = requirement.requirement,
+                  let parameter = conformance.leftType.as(IdentifierTypeSyntax.self) else { continue }
+
+            constraints[parameter.name.text, default: []].formUnion(Self.typeNames(in: conformance.rightType))
+        }
+
+        parameterTypeNames[locations.location(at: position)] =
+            signature.parameterClause.parameters.map { parameter in
+                let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
+                let names = Self.decodedMetatypeNames(of: parameter.type, constraints: constraints)
+                return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil, typeName: parameter.type.trimmedDescription)
+            }
+    }
+
+    /// The names a parameter's type may decode through: only a parameter that takes the metatype of a type, or of an
+    /// array of it, can decode it. A generic parameter's constraints apply when the metatype's element is exactly that
+    /// parameter, so `Box<T>`, `T?`, an `inout` or function-typed parameter, a plain value and the like contribute
+    /// nothing a decoding rule could match.
+    private static func decodedMetatypeNames(of type: TypeSyntax, constraints: [String: Set<String>]) -> Set<String> {
+        var current = type
+        if let attributed = current.as(AttributedTypeSyntax.self) {
+            guard !attributed.specifiers.trimmedDescription.contains("inout") else { return [] }
+
+            current = attributed.baseType
+        }
+
+        var element: TypeSyntax
+        if let metatype = current.as(MetatypeTypeSyntax.self), metatype.metatypeSpecifier.text == "Type" {
+            element = metatype.baseType
+        } else if let existential = current.as(SomeOrAnyTypeSyntax.self), existential.someOrAnySpecifier.text == "any",
+                  let metatype = existential.constraint.as(MetatypeTypeSyntax.self), metatype.metatypeSpecifier.text == "Type"
+        {
+            // `any Decodable.Type` is the metatype of an existential.
+            return typeNames(in: metatype.baseType)
+        } else {
+            return []
+        }
+
+        if let array = element.as(ArrayTypeSyntax.self) {
+            element = array.element
+        }
+        if let identifier = element.as(IdentifierTypeSyntax.self), identifier.genericArgumentClause == nil {
+            return Set([identifier.name.text]).union(constraints[identifier.name.text] ?? [])
+        }
+        if element.is(SomeOrAnyTypeSyntax.self) || element.is(CompositionTypeSyntax.self) {
+            return typeNames(in: element)
+        }
+        return []
+    }
+
+    private static func typeNames(in syntax: some SyntaxProtocol) -> Set<String> {
+        let collector = TypeNameCollector(viewMode: .sourceAccurate)
+        collector.walk(syntax)
+        return collector.names
+    }
+
     private func calleeLocation(_ expression: ExprSyntax) -> Location {
         if let member = expression.as(MemberAccessExprSyntax.self) {
             return locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)
@@ -146,5 +346,46 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             genericTypeLocations.insert(locations.location(at: token.positionAfterSkippingLeadingTrivia))
         }
         return Set(tokens.map { locations.location(at: $0.positionAfterSkippingLeadingTrivia) })
+    }
+}
+
+private final class TypeNameCollector: SyntaxVisitor {
+    var names: Set<String> = []
+
+    override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
+        names.insert(node.name.text)
+        return .visitChildren
+    }
+
+    /// A qualified name such as `T.Payload` is a different type from `T`: keep it whole and do not
+    /// collect its base. `Swift.Decodable` also counts as `Decodable`.
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+        names.insert(node.trimmedDescription)
+        if node.baseType.trimmedDescription == "Swift" {
+            names.insert(node.name.text)
+        }
+        return .skipChildren
+    }
+}
+
+private final class SpecializationCollector: SyntaxVisitor {
+    private static let transparent: Set<String> = ["Array", "Optional", "Set", "Dictionary", "ContiguousArray"]
+    var specializations: [(name: TokenSyntax, clause: GenericArgumentClauseSyntax)] = []
+
+    override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
+        record(node.name, node.genericArgumentClause)
+        return .visitChildren
+    }
+
+    /// A qualified type such as `Namespace.Phantom<Model>` is specialized at its last component.
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+        record(node.name, node.genericArgumentClause)
+        return .visitChildren
+    }
+
+    private func record(_ name: TokenSyntax, _ clause: GenericArgumentClauseSyntax?) {
+        if let clause, !Self.transparent.contains(name.text) {
+            specializations.append((name, clause))
+        }
     }
 }

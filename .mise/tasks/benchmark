@@ -8,7 +8,8 @@ cmd=""
 if [ "$usage_bazel" = "true" ]; then
     echo "INFO: Using Bazel"
     bazel build //:periphery
-    cmd='bazel-bin/Sources/LethenCLI_opt scan --config /var/tmp/periphery_bazel/periphery.yml --generic-project-config bazel-bin/external/+generated+periphery_generated/rule/project_config.json'
+    config="$(bazel info output_base)/lethen_generated/periphery.yml"
+    printf -v cmd 'bazel-bin/Sources/LethenCLI_opt scan --config %q --generic-project-config bazel-bin/external/+generated+periphery_generated/lethen_scan/project_config.json' "$config"
 else
     executable="$(mise r build --arch arm64)"
     printf -v cmd '%q scan --quiet --skip-build' "$executable"
