@@ -45,7 +45,7 @@ public final class XcodeWorkspace: XcodeProjectlike {
     }
 
     public var projectSourceRoots: [FilePath] {
-        projects.map(\.sourceRoot)
+        projects.flatMap(\.projectSourceRoots)
     }
 
     public func schemes(additionalArguments: [String]) throws -> Set<String> {

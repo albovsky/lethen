@@ -235,6 +235,53 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         XCTAssertEqual(shell.streamed.count, 1, "\(shell.streamed)")
     }
 
+    func testFileAddedToAProjectReferencedFromOutsideTheScannedDirectoryBuilds() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        // A second project beside the scanned one's directory, which the scanned project references as a file.
+        let referenced = root.appending("Referenced")
+        try FileManager.default.copyItem(atPath: ConfigurationsProjectPath.removingLastComponent().string, toPath: referenced.string)
+        let pbxproj = project.appending("project.pbxproj")
+        var text = try String(contentsOf: pbxproj.url, encoding: .utf8)
+        text = text.replacingOccurrences(
+            of: "/* Begin PBXFileReference section */\n",
+            with: "/* Begin PBXFileReference section */\n\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* Referenced.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = \"wrapper.pb-project\"; name = Referenced.xcodeproj; path = ../Referenced/ConfigurationsProject.xcodeproj; sourceTree = \"<group>\"; };\n"
+        )
+        text = text.replacingOccurrences(
+            of: "\t\t\t\t3C57B168ABF45A4AEDE2A1AB /* Products */,\n\t\t\t);\n\t\t\tsourceTree",
+            with: "\t\t\t\t3C57B168ABF45A4AEDE2A1AB /* Products */,\n\t\t\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* Referenced.xcodeproj */,\n\t\t\t);\n\t\t\tsourceTree"
+        )
+        try text.write(to: pbxproj.url, atomically: true, encoding: .utf8)
+        let configuration = Self.configuration(["Debug"], buildArguments: buildArguments)
+        let scanned = try Self.load(project, shell: shell)
+        XCTAssertTrue(
+            scanned.projectSourceRoots.contains { $0.lexicallyNormalized() == referenced.lexicallyNormalized() },
+            "\(scanned.projectSourceRoots)"
+        )
+        let schemes = ["ConfigurationsProject"]
+        let directory = try xcodebuild.derivedDataPath(for: scanned, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: directory.string)
+            try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+        }
+
+        try xcodebuild.beginBuild(project: scanned, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try xcodebuild.completeBuild(project: scanned, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        // Everything predates the planted build, then a new file appears in the referenced project.
+        let old = Date(timeIntervalSinceNow: -3600)
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(atPath: root.string))
+        for case let relative as String in enumerator {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: root.appending(relative).string)
+        }
+        try "func unlisted() {}\n".write(to: referenced.appending("ConfigurationsProject/Unlisted.swift").url, atomically: true, encoding: .utf8)
+
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: scanned, schemes: Set(schemes))
+        try driver.build()
+
+        XCTAssertEqual(shell.streamed.count, 1, "\(shell.streamed)")
+    }
+
     // MARK: - Private
 
     private struct Builds {

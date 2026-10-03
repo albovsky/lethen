@@ -123,6 +123,11 @@ public final class XcodeProject: XcodeProjectlike {
         XcodeSharedSchemes.names(in: [path])
     }
 
+    /// This project's source root followed by those of every project it references, depth first.
+    public var projectSourceRoots: [FilePath] {
+        [sourceRoot] + subProjects.flatMap(\.projectSourceRoots)
+    }
+
     /// This project followed by every project it references, depth first.
     var schemeContainerPaths: [FilePath] {
         [path] + subProjects.flatMap(\.schemeContainerPaths)
