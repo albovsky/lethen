@@ -167,6 +167,35 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(graph.assessConfidence(of: other).confidence, .certain, "The control: not named")
     }
 
+    /// `typealias Store = AppStore` lets a file name `AppStore`'s members as `Store.shared`.
+    func testTypeAliasesNameTheTypeForItsMembers() {
+        let graph = makeGraph()
+        let type = declaration("AppStore", kind: .class, in: otherFile, accessibility: .public)
+        let member = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: type)
+        let alias = declaration("Store", kind: .typealias, in: otherFile, accessibility: .public)
+        let reference = Reference(name: "AppStore", kind: .normal, declarationKind: .class, usr: "s:class:AppStore", location: alias.location)
+        alias.references.insert(reference)
+        graph.add([type, member, alias])
+        use(graph, ["Store", "shared"], members: ["shared"])
+
+        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .likely)
+    }
+
+    /// An extension is reported only with its unused type, so it is as sure as the type.
+    func testExtensionsFollowTheirType() {
+        let graph = makeGraph()
+        let type = declaration("Widget", kind: .struct, in: otherFile, accessibility: .public)
+        let ext = declaration("Widget", kind: .extensionStruct, in: otherFile, accessibility: .public)
+        let reference = Reference(name: "Widget", kind: .normal, declarationKind: .struct, usr: "s:struct:Widget", location: ext.location)
+        ext.references.insert(reference)
+        graph.add([type, ext])
+        use(graph, ["Widget"])
+
+        let assessment = graph.assessConfidence(of: ext)
+        XCTAssertEqual(assessment.confidence, .likely)
+        XCTAssertEqual(assessment.reason, "it extends Widget, and its name appears in \(place)")
+    }
+
     func testMacrosAreMatchedByName() {
         let graph = makeGraph()
         use(graph, ["makeWidget"])

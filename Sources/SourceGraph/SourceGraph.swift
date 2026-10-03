@@ -124,6 +124,15 @@ public final class SourceGraph {
     ]
 
     public func assessConfidence(of declaration: Declaration) -> ConfidenceAssessment {
+        // An extension is reported only with its unused type, so it is as sure as the type.
+        if declaration.kind.isExtensionKind, let extended = try? extendedDeclaration(forExtension: declaration), extended !== declaration {
+            let assessment = assessConfidence(of: extended)
+            if let reason = assessment.reason {
+                return .init(confidence: assessment.confidence, reason: "it extends \(Self.baseName(of: extended.name)), and \(reason)")
+            }
+            return assessment
+        }
+
         let objcAttributes: Set<String> = ["objc", "objc.name", "objcMembers"]
         let isObjcExposed = declaration.isObjcAccessible
             || declaration.attributes.contains { objcAttributes.contains($0.name) }
@@ -264,13 +273,14 @@ public final class SourceGraph {
                     pool.names
                 }
                 // A use spelled through the type, `Store.shared` or `Store(...)`, places the match at this type's
-                // member rather than at the first use of any `shared` or `init`.
-                let qualifiedSite = enclosingType.flatMap { names["\($0).\(baseName)"] }
+                // member rather than at the first use of any `shared` or `init`. A type alias names the type too.
+                let typeNames = enclosingType.map { [$0] + typeAliasNames[$0, default: []].sorted() } ?? []
+                let qualifiedSite = typeNames.compactMap { names["\($0).\(baseName)"] }.min()
                 guard let site = qualifiedSite ?? names[baseName],
                       best.map({ site < $0.site }) ?? true,
                       // A member, initializer or operator of a type is reached through the type, so a target
-                      // that never names the type uses another `init` or `shared`.
-                      enclosingType.map { pool.names[$0] != nil } ?? true
+                      // that never names the type, nor an alias of it, uses another `init` or `shared`.
+                      enclosingType == nil || typeNames.contains(where: { pool.names[$0] != nil })
                 else { continue }
 
                 best = (site, target)
@@ -284,6 +294,18 @@ public final class SourceGraph {
             )
         }
     }
+
+    /// The names of the type aliases of each type, by the type's base name: `typealias Store = AppStore`
+    /// lets a file name `AppStore`'s members as `Store.shared`. Built on first use, after indexing.
+    private lazy var typeAliasNames: [String: Set<String>] = {
+        var names: [String: Set<String>] = [:]
+        for alias in allDeclarationsByKind[.typealias] ?? [] {
+            for reference in alias.references where Self.typeKinds.contains(reference.declarationKind) {
+                names[Self.baseName(of: reference.name), default: []].insert(Self.baseName(of: alias.name))
+            }
+        }
+        return names
+    }()
 
     /// The base name of the type that declares the declaration, through any extension, or `nil` for a
     /// top-level one.
