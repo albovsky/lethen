@@ -15,7 +15,7 @@ public enum XcodeBuildInputs {
     private static let compiledExtensions: Set<String> = ["swift", "m", "mm", "c", "cc", "cpp", "cxx"]
     /// Files that decide how sources are compiled, which the build can read without compiling them.
     private static let buildShapingExtensions: Set<String> = [
-        "h", "hh", "hpp", "pch", "modulemap", "def", "xcconfig", "xcscheme", "pbxproj", "xcworkspacedata", "entitlements",
+        "h", "hh", "hpp", "hxx", "pch", "modulemap", "def", "inc", "inl", "ipp", "tpp", "tcc", "xcconfig", "xcscheme", "pbxproj", "xcworkspacedata", "entitlements",
     ]
     private static let buildShapingNames: Set<String> = ["Package.swift", "Package.resolved"]
     /// Files Lethen reads itself while scanning.

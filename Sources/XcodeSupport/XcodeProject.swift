@@ -308,7 +308,7 @@ private struct ScriptInputs {
         outputs.insert(path)
     }
 
-    /// An output file list is read like an input one, but is not itself an input: a build may write it.
+    /// An output file list is read like an input one, and is tracked like one, since it says what the phase writes.
     mutating func addOutputList(_ entry: String, root: FilePath) {
         guard let list = Self.resolve(entry, root: root),
               let text = try? String(contentsOfFile: list.string, encoding: .utf8)
@@ -317,6 +317,8 @@ private struct ScriptInputs {
             return
         }
 
+        // Xcode reads the list to learn the outputs, so an edit to it changes them.
+        files.insert(list)
         for line in text.split(whereSeparator: \.isNewline) {
             addOutput(String(line), root: root)
         }

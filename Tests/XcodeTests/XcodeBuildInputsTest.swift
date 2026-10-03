@@ -100,7 +100,7 @@ final class XcodeBuildInputsTest: XCTestCase {
 
     func testEveryTrackedKindIsReportedWhenEditedDuringTheBuild() throws {
         let paths = [
-            "A.h", "A.hh", "A.hpp", "A.pch", "A.modulemap", "A.def", "A.xcconfig", "A.xcscheme", "A.entitlements",
+            "A.h", "A.hh", "A.hpp", "A.inc", "A.inl", "A.pch", "A.modulemap", "A.def", "A.xcconfig", "A.xcscheme", "A.entitlements",
             "App.xcworkspace/contents.xcworkspacedata", "Info.plist", "Main.storyboard", "View.xib",
             "Model.xcdatamodeld/Model.xcdatamodel/contents", "Model.xcdatamodeld/.xccurrentversion", "Map.xcmappingmodel/xcmapping.xml",
         ]

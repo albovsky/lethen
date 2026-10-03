@@ -395,6 +395,15 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         try assertReuses()
     }
 
+    func testEditedRunScriptOutputFileListBuilds() throws {
+        _ = try externalFile("Outputs.xcfilelist", contents: "${PROJECT_DIR}/ConfigurationsProject/Gen.swift\n")
+        try addScriptPhase(outputFileListPaths: ["$(SRCROOT)/../External/Outputs.xcfilelist"])
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "${PROJECT_DIR}/ConfigurationsProject/Other.swift\n".write(to: root.appending("External/Outputs.xcfilelist").url, atomically: false, encoding: .utf8)
+        })
+    }
+
     /// An output outside every checked directory that is a source, though a path Lethen resolves, is out of reach too.
     func testRunScriptSourceOutputOutsideEveryCheckedDirectoryNeverReuses() throws {
         try addScriptPhase(outputPaths: ["$(SRCROOT)/../External/Gen.swift"], alwaysOutOfDate: true)
@@ -550,7 +559,7 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
     }
 
     /// Adds a Run Script phase with these inputs to the copy's first target.
-    private func addScriptPhase(inputPaths: [String] = [], inputFileListPaths: [String] = [], outputPaths: [String] = [], alwaysOutOfDate: Bool = false) throws {
+    private func addScriptPhase(inputPaths: [String] = [], inputFileListPaths: [String] = [], outputPaths: [String] = [], outputFileListPaths: [String] = [], alwaysOutOfDate: Bool = false) throws {
         func list(_ paths: [String]) -> String {
             paths.map { "\t\t\t\t\"\($0)\",\n" }.joined()
         }
@@ -575,7 +584,7 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
                     \t\t\tinputPaths = (
                     \(list(inputPaths))\t\t\t);
                     \t\t\toutputFileListPaths = (
-                    \t\t\t);
+                    \(list(outputFileListPaths))\t\t\t);
                     \t\t\toutputPaths = (
                     \(list(outputPaths))\t\t\t);
                     \t\t\trunOnlyForDeploymentPostprocessing = 0;
