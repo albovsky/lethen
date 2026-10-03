@@ -220,6 +220,11 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         // Internal and not in a file the target compiles; the target's own function of that name is another one.
         assertNotReferenced(.functionFree("internalNamedFromUnscannedTarget()"))
         assertConfidence(.functionFree("internalNamedFromUnscannedTarget()"), .certain)
+        // The tool names `PublicStore`, which says nothing about a member it never names.
+        assertReferenced(.class("PublicStore")) {
+            self.assertNotReferenced(.functionMethodInstance("neverNamed()"))
+            self.assertConfidence(.functionMethodInstance("neverNamed()"), .certain)
+        }
         // Private in the shared file; the tool's `SharedPrivate()` is its own type of that name.
         assertNotReferenced(.struct("SharedPrivate", line: 17))
         assertConfidence(.struct("SharedPrivate", line: 17), .certain)

@@ -195,19 +195,24 @@ public final class SourceGraph {
         if let cached = nameEvidenceOrigins[declaration] { return cached }
 
         var visited: Set<Declaration> = [declaration]
-        let origin = nameEvidenceOrigin(of: declaration, visited: &visited)
+        let origin = nameEvidenceOrigin(of: declaration, reachedThroughReferencer: false, visited: &visited)
         nameEvidenceOrigins[declaration] = .some(origin)
         return origin
     }
 
-    private func nameEvidenceOrigin(of declaration: Declaration, visited: inout Set<Declaration>) -> NameEvidenceOrigin? {
+    /// The step from a declaration to the one that encloses it is taken only for a declaration reached
+    /// through a referencer: `SharedEntry` is used by `SharedWidget.entry`, so `SharedWidget` being named
+    /// says the chain is live. For the declaration being assessed itself, its type being named says
+    /// nothing about this member, which scanned code may well have left unused.
+    private func nameEvidenceOrigin(of declaration: Declaration, reachedThroughReferencer: Bool, visited: inout Set<Declaration>) -> NameEvidenceOrigin? {
         if let origin = directNameEvidence(of: declaration) { return origin }
 
         // Only unused declarations pass the name on: a used one is used by scanned code, whatever else names it.
-        var next = graphReferencers(of: declaration)
-        if let parent = declaration.parent { next.append(parent) }
-        for candidate in next where !usedDeclarations.contains(candidate) && visited.insert(candidate).inserted {
-            if let origin = nameEvidenceOrigin(of: candidate, visited: &visited) { return origin }
+        for referencer in graphReferencers(of: declaration) where !usedDeclarations.contains(referencer) && visited.insert(referencer).inserted {
+            if let origin = nameEvidenceOrigin(of: referencer, reachedThroughReferencer: true, visited: &visited) { return origin }
+        }
+        if reachedThroughReferencer, let parent = declaration.parent, !usedDeclarations.contains(parent), visited.insert(parent).inserted {
+            return nameEvidenceOrigin(of: parent, reachedThroughReferencer: true, visited: &visited)
         }
         return nil
     }
@@ -331,9 +336,9 @@ public final class SourceGraph {
         .typealias, .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
     ])
 
-    /// Kinds a file of an unscanned target can name: the skipped-branch kinds and subscripts, which such a
-    /// file spells as `store[key]`.
-    private static let nameEvidenceKinds = skippedBranchKinds.union([.functionSubscript])
+    /// Kinds a file of an unscanned target can name: the skipped-branch kinds, subscripts, which such a file
+    /// spells as `store[key]`, and macros, spelled `#makeWidget()`.
+    private static let nameEvidenceKinds = skippedBranchKinds.union([.functionSubscript, .macro])
 
     /// The names a runtime lookup can spell for the declaration: its Swift base name, the Objective-C
     /// name of an exposed declaration when `@objc(name)` differs from it, and the setter selector of an

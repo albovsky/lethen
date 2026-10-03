@@ -126,6 +126,11 @@ public struct NameUseCollector {
         } else if node.is(SubscriptCallExprSyntax.self) {
             // `store[key]` is a use of a subscript, which the index records under that name.
             record("subscript", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
+        } else if let macro = node.as(MacroExpansionExprSyntax.self) {
+            // `#makeWidget()` names the macro in its own token, not in a reference.
+            record(macro.macroName.text, isMember: false, isConstruction: false, at: node, forFileReaderOnly: true)
+        } else if let macro = node.as(MacroExpansionDeclSyntax.self) {
+            record(macro.macroName.text, isMember: false, isConstruction: false, at: node, forFileReaderOnly: true)
         }
         for child in node.children(viewMode: .sourceAccurate) {
             collect(child, inPattern: inPattern)

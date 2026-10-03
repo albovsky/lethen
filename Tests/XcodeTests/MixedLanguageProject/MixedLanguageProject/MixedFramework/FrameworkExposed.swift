@@ -24,6 +24,9 @@ public class PublicStore {
     /// Used only from `UnscannedTool`, as `store[0]`.
     public subscript(index: Int) -> Int { index }
 
+    /// Named nowhere; the tool naming `PublicStore` says nothing about it.
+    public func neverNamed() {}
+
     /// Read from `UnscannedTool` only.
     public var memberReadFromUnscannedTarget = 0
 

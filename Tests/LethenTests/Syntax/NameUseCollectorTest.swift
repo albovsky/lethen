@@ -39,6 +39,10 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertTrue(seen.contains("Widget.init"))
         XCTAssertTrue(seen.contains("Button.init"), "A module-qualified construction is a constructor call too")
         XCTAssertTrue(seen.contains("Box.init"), "So is a generic one")
+
+        var macros: [String] = []
+        _ = NameUseCollector(Syntax(Parser.parse(source: "let w = #makeWidget()\n#warning(\"x\")\n"))) { macros.append($0.name) }
+        XCTAssertTrue(macros.contains("makeWidget"), "A freestanding macro is named by its own token")
         XCTAssertTrue(seen.contains("subscript"))
         XCTAssertFalse(seen.contains("makeWidget.init"))
 

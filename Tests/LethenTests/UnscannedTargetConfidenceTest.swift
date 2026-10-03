@@ -140,6 +140,26 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(graph.assessConfidence(of: subscriptDeclaration).confidence, .likely)
     }
 
+    /// Naming a type says nothing about a member of it that nothing references; the type being used by the
+    /// unscanned target is why the member is reported at all.
+    func testNamingATypeDoesNotDowngradeItsUnreferencedMembers() {
+        let graph = makeGraph()
+        let type = declaration("Store", kind: .class, in: otherFile, accessibility: .public)
+        let member = declaration("deleteAll()", kind: .functionMethodInstance, in: otherFile, accessibility: .public, parent: type)
+        graph.add([type, member])
+        use(graph, ["Store"])
+
+        XCTAssertEqual(graph.assessConfidence(of: type).confidence, .likely)
+        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .certain)
+    }
+
+    func testMacrosAreMatchedByName() {
+        let graph = makeGraph()
+        use(graph, ["makeWidget"])
+
+        XCTAssertEqual(graph.assessConfidence(of: declaration("makeWidget()", kind: .macro, in: otherFile, accessibility: .public)).confidence, .likely)
+    }
+
     func testMembersAndEnumCasesNeedTheirOwnTiers() {
         let graph = makeGraph()
         use(graph, ["field", "matched"], members: ["matched"])
