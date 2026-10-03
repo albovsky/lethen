@@ -22,6 +22,12 @@ public final class XcodeTarget {
         target.name
     }
 
+    /// The names of the targets this one depends on, which Xcode builds before it. A dependency on a target
+    /// of another project is a proxy without a target here and is left out.
+    public var dependencyNames: Set<String> {
+        target.dependencies.compactMapSet { $0.target?.name }
+    }
+
     public func identifyFiles() throws {
         // A synchronized folder contributes compiled sources only to the targets that own it; resources
         // keep the project-wide behavior.

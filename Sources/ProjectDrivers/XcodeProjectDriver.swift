@@ -236,18 +236,31 @@
             let xcDataModelPaths = targets.flatMapSet { $0.files(kind: .xcDataModel) }
             let xcMappingModelPaths = targets.flatMapSet { $0.files(kind: .xcMappingModel) }
 
+            // Only a store this scan built says that a target with no units was not compiled.
+            let trustsAbsentUnits = !configuration.skipBuild && configuration.indexStorePath.isEmpty
+            let projectTargets = targets
+                .filter { !excludedTestTargets.contains($0.name) && !configuration.excludeTargets.contains($0.name) }
+            let indexedFiles = Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path))
             let coverage = ClangCoverage.assess(
-                targets: targets
-                    .filter { !excludedTestTargets.contains($0.name) && !configuration.excludeTargets.contains($0.name) }
-                    .map { target in
-                        let files = target.files(kind: .swiftSource).union(target.files(kind: .clangSource))
-                        return ClangCoverage.Target(sourceFiles: files.filter(isCollectable))
-                    },
-                indexedFiles: Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path)),
-                // Only a store this scan built says that a target with no units was not compiled.
-                trustsAbsentUnits: !configuration.skipBuild && configuration.indexStorePath.isEmpty
+                targets: projectTargets.map { target in
+                    let files = target.files(kind: .swiftSource).union(target.files(kind: .clangSource))
+                    return ClangCoverage.Target(sourceFiles: files.filter(isCollectable))
+                },
+                indexedFiles: indexedFiles,
+                trustsAbsentUnits: trustsAbsentUnits
             )
             if let warning = coverage.warning {
+                self.logger.warn(warning)
+            }
+
+            let indexedModules = Dictionary(
+                (sourceFiles.sourceFiles.keys.map { ($0.path, $0.modules) } + sourceFiles.clangSourceFiles.keys.map { ($0.path, $0.modules) }),
+                uniquingKeysWith: { $0.union($1) }
+            )
+            let (unscannedTargets, unscannedDependencies) = trustsAbsentUnits
+                ? self.unscannedTargets(among: projectTargets, indexedModules: indexedModules)
+                : ([], [:])
+            for warning in Self.unscannedTargetWarnings(for: unscannedTargets, scannedDependencies: unscannedDependencies) {
                 self.logger.warn(warning)
             }
 
@@ -258,7 +271,8 @@
                 xibPaths: xibPaths,
                 xcDataModelPaths: xcDataModelPaths,
                 xcMappingModelPaths: xcMappingModelPaths,
-                clangCoverage: coverage
+                clangCoverage: coverage,
+                unscannedTargets: unscannedTargets.filter { Self.unscannedTargetWarning(for: $0, scannedDependencies: unscannedDependencies[$0.name] ?? []) != nil }
             )
         }
 
@@ -268,6 +282,60 @@
         /// exclusion and the ones missing on disk.
         private func isCollectable(_ file: FilePath) -> Bool {
             file.exists && !configuration.indexExcludeMatchers.anyMatch(filename: file.string)
+        }
+
+        /// The targets of the project that no scanned scheme built: they compile Swift files, and no index unit
+        /// belongs to any of them. Targets without a Swift file are left out, since only Swift files are read for the
+        /// names they use. Also returns, by target name, the scanned targets each depends on.
+        ///
+        /// A file compiled into several targets has a unit for each target that built it, named by module, so a
+        /// unit counts for a target unless the file's modules show another target of the project compiled it
+        /// instead. A unit whose module matches no target, such as a clang one, counts for every target that
+        /// compiles the file, which errs toward scanned.
+        private func unscannedTargets(
+            among projectTargets: Set<XcodeTarget>,
+            indexedModules: [FilePath: Set<String>]
+        ) -> ([UnscannedTarget], [String: [String]]) {
+            let modules = Dictionary(indexedModules.map { ($0.key.lexicallyNormalized(), $0.value) }, uniquingKeysWith: { $0.union($1) })
+            func compiledFiles(_ target: XcodeTarget) -> Set<FilePath> {
+                target.files(kind: .swiftSource).union(target.files(kind: .clangSource)).filter(isCollectable).mapSet { $0.lexicallyNormalized() }
+            }
+
+            let compiled = Dictionary(uniqueKeysWithValues: projectTargets.map { ($0.name, compiledFiles($0)) })
+            func isIndexed(_ file: FilePath, for target: XcodeTarget) -> Bool {
+                guard let fileModules = modules[file] else { return false }
+
+                let ownModule = Self.moduleName(forTarget: target.name)
+                guard !fileModules.contains(ownModule) else { return true }
+
+                let builtByAnother = projectTargets.contains {
+                    $0.name != target.name && fileModules.contains(Self.moduleName(forTarget: $0.name)) && compiled[$0.name]?.contains(file) == true
+                }
+                return !builtByAnother
+            }
+
+            let scanned = projectTargets.filter { target in compiled[target.name, default: []].contains { isIndexed($0, for: target) } }
+            let scannedNames = scanned.mapSet(\.name)
+            let scannedSwiftFiles = scanned.flatMapSet { $0.files(kind: .swiftSource).filter(isCollectable).mapSet { $0.lexicallyNormalized() } }
+            var unscanned: [UnscannedTarget] = []
+            var dependencies: [String: [String]] = [:]
+            for target in projectTargets where !scannedNames.contains(target.name) {
+                guard compiled[target.name, default: []].isEmpty == false else { continue }
+
+                let swiftFiles = target.files(kind: .swiftSource).filter(isCollectable).mapSet { $0.lexicallyNormalized() }
+                guard !swiftFiles.isEmpty else { continue }
+
+                unscanned.append(UnscannedTarget(name: target.name, swiftSourceFiles: swiftFiles, sharedSourceFiles: swiftFiles.intersection(scannedSwiftFiles)))
+                dependencies[target.name] = target.dependencyNames.intersection(scannedNames).sorted()
+            }
+            return (unscanned.sorted { $0.name < $1.name }, dependencies)
+        }
+
+        /// The module Xcode names a target's Swift module by default: its name with every character that is not
+        /// an ASCII letter or digit replaced by `_`, and a `_` ahead of a leading digit.
+        static func moduleName(forTarget name: String) -> String {
+            let identifier = String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" })
+            return identifier.first?.isNumber == true ? "_" + identifier : identifier
         }
 
         /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.
@@ -335,6 +403,32 @@
             }
 
             return stores.mapSet(\.path)
+        }
+    }
+
+    extension XcodeProjectDriver {
+        /// The warnings for the unscanned targets that use scanned code, sorted by target name.
+        static func unscannedTargetWarnings(for targets: [UnscannedTarget], scannedDependencies: [String: [String]]) -> [String] {
+            targets.sorted { $0.name < $1.name }.compactMap {
+                unscannedTargetWarning(for: $0, scannedDependencies: scannedDependencies[$0.name] ?? [])
+            }
+        }
+
+        /// A target no scanned scheme builds has no index unit, so what it uses of scanned code is invisible. That
+        /// matters when it depends on a scanned target, or compiles a file a scanned target compiles too; says so,
+        /// and what happens to the declarations its files name. `nil` for a target with neither tie.
+        static func unscannedTargetWarning(for target: UnscannedTarget, scannedDependencies: [String]) -> String? {
+            var ties: [String] = []
+            if !scannedDependencies.isEmpty {
+                ties.append("depends on \(scannedDependencies.joined(separator: ", "))")
+            }
+            if !target.sharedSourceFiles.isEmpty {
+                let count = target.sharedSourceFiles.count
+                ties.append("compiles \(count) \(count == 1 ? "file" : "files") the scanned targets compile")
+            }
+            guard !ties.isEmpty else { return nil }
+
+            return "Target \(target.name) is in the project but not built by the scanned schemes, and it \(ties.joined(separator: " and ")), so its uses of scanned code are invisible; declarations it names are reported as likely rather than certain. Add a scheme that builds it to --schemes to scan it, or pass --exclude-targets \(shellWord(target.name)) to silence this."
         }
     }
 

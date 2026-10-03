@@ -2,10 +2,14 @@ import Configuration
 import Foundation
 import Logger
 import Shared
+import SystemPackage
 
 public final class SourceGraph {
     public private(set) var allDeclarations: Set<Declaration> = []
-    public private(set) var usedDeclarations: Set<Declaration> = []
+    public private(set) var usedDeclarations: Set<Declaration> = [] {
+        didSet { nameEvidenceOrigins.removeAll() }
+    }
+
     public private(set) var redundantProtocols: [Declaration: (references: Set<Reference>, inherited: Set<Reference>)] = [:]
     public private(set) var rootDeclarations: Set<Declaration> = []
     public private(set) var redundantPublicAccessibility: [Declaration: Set<String>] = [:]
@@ -42,7 +46,11 @@ public final class SourceGraph {
     /// The subset of `skippedBranchMemberNames` used outside a pattern, which is all that can construct
     /// an enum case.
     public private(set) var skippedBranchConstructionNames: [String: [String: String]] = [:]
+    /// Names used by the Swift files of targets the scanned schemes do not build, by target name.
+    public private(set) var unscannedTargetNames: [String: UnscannedTargetNames] = [:]
 
+    /// The memoized answer of `nameEvidenceOrigin(of:)`; `nil` is a declaration with no origin.
+    private var nameEvidenceOrigins: [Declaration: NameEvidenceOrigin?] = [:]
     private var indexedModules: Set<String> = []
     private var unindexedExportedModules: Set<String> = []
     private var allDeclarationsByKind: [Declaration.Kind: Set<Declaration>] = [:]
@@ -70,7 +78,26 @@ public final class SourceGraph {
             skippedBranchNames[module, default: [:]].merge(names) { min($0, $1) }
             skippedBranchMemberNames[module, default: [:]].merge(members) { min($0, $1) }
             skippedBranchConstructionNames[module, default: [:]].merge(construction) { min($0, $1) }
+            nameEvidenceOrigins.removeAll()
         }
+    }
+
+    /// Records the names an unscanned target's files use, keeping the smallest site for each name, and the
+    /// files it shares with scanned targets.
+    public func addUnscannedTargetNames(
+        names: [String: String],
+        members: [String: String],
+        construction: [String: String],
+        target: String,
+        sharedSourceFiles: Set<FilePath> = []
+    ) {
+        var entry = unscannedTargetNames[target] ?? UnscannedTargetNames()
+        entry.names.merge(names) { min($0, $1) }
+        entry.memberNames.merge(members) { min($0, $1) }
+        entry.constructionNames.merge(construction) { min($0, $1) }
+        entry.sharedSourceFiles.formUnion(sharedSourceFiles.map { $0.lexicallyNormalized() })
+        unscannedTargetNames[target] = entry
+        nameEvidenceOrigins.removeAll()
     }
 
     /// The skipped clause, in a module the declaration belongs to, that uses its name. A member or
@@ -123,7 +150,130 @@ public final class SourceGraph {
             return .init(confidence: .likely, reason: "its name appears in \(site), a branch this build did not compile")
         }
 
+        if Self.skippedBranchKinds.contains(declaration.kind),
+           !unscannedTargetNames.isEmpty || !skippedBranchNames.isEmpty,
+           let origin = nameEvidenceOrigin(of: declaration)
+        {
+            return .init(confidence: .likely, reason: origin.reason(isDirect: origin.declaration == declaration))
+        }
+
         return .init(confidence: .certain, reason: nil)
+    }
+
+    /// A declaration whose name appears in code the index has no references for (a skipped `#if` clause,
+    /// or a file of a target the scanned schemes do not build), or the declaration through which the
+    /// reported one is reached from such a name.
+    private struct NameEvidenceOrigin {
+        let declaration: Declaration
+        /// Where the name appears, with what that place is: `#if DEBUG at Widgets.swift:15, a branch this
+        /// build did not compile`.
+        let place: String
+
+        func reason(isDirect: Bool) -> String {
+            isDirect
+                ? "its name appears in \(place)"
+                : "it is used by \(SourceGraph.baseName(of: declaration.name)), whose name appears in \(place)"
+        }
+    }
+
+    /// The origin that makes `declaration` likely: code the index has no references for names it, or,
+    /// failing that, an unused declaration that refers to it (or encloses one that does) has such an origin
+    /// itself. The uses that code makes of what it names are not in the graph either, so a declaration
+    /// only a named one uses may be used from there too.
+    private func nameEvidenceOrigin(of declaration: Declaration) -> NameEvidenceOrigin? {
+        if let cached = nameEvidenceOrigins[declaration] { return cached }
+
+        var visited: Set<Declaration> = [declaration]
+        let origin = nameEvidenceOrigin(of: declaration, visited: &visited)
+        nameEvidenceOrigins[declaration] = .some(origin)
+        return origin
+    }
+
+    private func nameEvidenceOrigin(of declaration: Declaration, visited: inout Set<Declaration>) -> NameEvidenceOrigin? {
+        if let origin = directNameEvidence(of: declaration) { return origin }
+
+        // Only unused declarations pass the name on: a used one is used by scanned code, whatever else names it.
+        var next = graphReferencers(of: declaration)
+        if let parent = declaration.parent { next.append(parent) }
+        for candidate in next where !usedDeclarations.contains(candidate) && visited.insert(candidate).inserted {
+            if let origin = nameEvidenceOrigin(of: candidate, visited: &visited) { return origin }
+        }
+        return nil
+    }
+
+    /// The place that names the declaration itself: a skipped `#if` clause of its module first, then a
+    /// file of an unscanned target.
+    private func directNameEvidence(of declaration: Declaration) -> NameEvidenceOrigin? {
+        guard Self.skippedBranchKinds.contains(declaration.kind) else { return nil }
+
+        if let site = skippedBranchSite(of: declaration) {
+            return NameEvidenceOrigin(declaration: declaration, place: "\(site), a branch this build did not compile")
+        }
+        return unscannedTargetUse(of: declaration)
+    }
+
+    private func graphReferencers(of declaration: Declaration) -> [Declaration] {
+        references(to: declaration).compactMap(\.parent).sorted { $0.location < $1.location }
+    }
+
+    /// The smallest site of an unscanned target that names the declaration and can see it: the
+    /// declaration is public or open, or sits in a file the target compiles too. An internal declaration
+    /// elsewhere is not visible to the target, so a use of its name there is another declaration's.
+    private func unscannedTargetUse(of declaration: Declaration) -> NameEvidenceOrigin? {
+        guard Self.skippedBranchKinds.contains(declaration.kind) else { return nil }
+
+        let baseName = Self.baseName(of: declaration.name)
+        let file = declaration.location.file.path.lexicallyNormalized()
+        let enclosingType = enclosingTypeName(of: declaration)
+        var best: (site: String, target: String)?
+        for (target, uses) in unscannedTargetNames.sorted(by: { $0.key < $1.key }) {
+            let names = if declaration.kind == .enumelement {
+                uses.constructionNames
+            } else if Self.memberKinds.contains(declaration.kind) {
+                uses.memberNames
+            } else {
+                uses.names
+            }
+            guard let site = names[baseName],
+                  best.map({ site < $0.site }) ?? true,
+                  uses.sharedSourceFiles.contains(file) || isVisibleOutsideItsModule(declaration),
+                  // A member, initializer or operator of a type is reached through the type, so a target that
+                  // never names the type uses another `init` or `shared`.
+                  enclosingType.map { uses.names[$0] != nil } ?? true
+            else { continue }
+
+            best = (site, target)
+        }
+        return best.map {
+            NameEvidenceOrigin(declaration: declaration, place: "\($0.site), a file of target \($0.target), which the scanned schemes do not build")
+        }
+    }
+
+    /// The base name of the type that declares the declaration, through any extension, or `nil` for a
+    /// top-level one.
+    private func enclosingTypeName(of declaration: Declaration) -> String? {
+        var current = declaration.parent
+        while let parent = current {
+            if parent.kind.isExtensionKind || Self.typeKinds.contains(parent.kind) {
+                return Self.baseName(of: parent.name)
+            }
+            current = parent.parent
+        }
+        return nil
+    }
+
+    private static let typeKinds: Set<Declaration.Kind> = [.class, .struct, .enum, .protocol, .typealias]
+
+    /// Whether the declaration and everything enclosing it is public or open.
+    private func isVisibleOutsideItsModule(_ declaration: Declaration) -> Bool {
+        var current: Declaration? = declaration
+        while let declaration = current {
+            // An extension's own access level is only the default of its members.
+            if !declaration.kind.isExtensionKind, ![.public, .open].contains(declaration.accessibility.value) { return false }
+
+            current = declaration.parent
+        }
+        return true
     }
 
     /// Kinds a runtime lookup by name can reach: types, methods, properties, and enum cases. Not

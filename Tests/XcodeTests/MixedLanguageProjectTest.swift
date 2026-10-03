@@ -1,4 +1,5 @@
 import Configuration
+@testable import PeripheryKit
 @testable import TestShared
 import XCTest
 
@@ -148,6 +149,89 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
 
         let header = try XCTUnwrap(explanation(of: .class("NamedInObjCHeader")))
         XCTAssertTrue(header.contains("ObjCCaller.h:6:28 references class NamedInObjCHeader"), header)
+    }
+
+    // MARK: - Targets the scheme does not build
+
+    private static let unscannedPlace = "UnscannedTool/UnscannedMain.swift:%d, a file of target UnscannedTool, which the scanned schemes do not build"
+
+    private func confidenceReason(ofDeclarationNamed name: String) -> String? {
+        Self.results.first { $0.declaration.name == name }?.confidenceReason
+    }
+
+    func testPlanNamesTheUnscannedToolAndTheFileItSharesWithAScannedTarget() throws {
+        let targets = try XCTUnwrap(Self.plan?.unscannedTargets)
+
+        XCTAssertEqual(targets.map(\.name), ["UnscannedTool"])
+        let target = try XCTUnwrap(targets.first)
+        XCTAssertEqual(target.sharedSourceFiles.compactMap { $0.lastComponent?.string }, ["SharedBetweenTargets.swift"])
+        XCTAssertEqual(target.swiftSourceFiles.compactMap { $0.lastComponent?.string }.sorted(), ["SharedBetweenTargets.swift", "UnscannedMain.swift"])
+    }
+
+    /// Public API used only by a target no scheme builds is likely, not certainly, unused.
+    func testPublicDeclarationsNamedByTheUnscannedTargetAreLikely() {
+        assertReferenced(.class("FrameworkSwiftClass")) {
+            self.assertNotReferenced(.functionMethodInstance("onlyCalledFromUnscannedTarget()"))
+            self.assertConfidence(.functionMethodInstance("onlyCalledFromUnscannedTarget()"), .likely)
+        }
+        assertReferenced(.class("PublicStore")) {
+            self.assertNotReferenced(.varInstance("memberReadFromUnscannedTarget"))
+            self.assertConfidence(.varInstance("memberReadFromUnscannedTarget"), .likely)
+        }
+        let reason = confidenceReason(ofDeclarationNamed: "onlyCalledFromUnscannedTarget()")
+        XCTAssertEqual(reason.map { $0.components(separatedBy: " appears in ").first }, "its name")
+        XCTAssertTrue(reason?.hasSuffix(String(format: Self.unscannedPlace, 8)) == true, reason ?? "nil")
+        XCTAssertTrue(confidenceReason(ofDeclarationNamed: "memberReadFromUnscannedTarget")?.hasSuffix(String(format: Self.unscannedPlace, 11)) == true)
+    }
+
+    /// An internal declaration of a file the target compiles has its own copy there, which the target's
+    /// other files use; `SharedEntry` is named nowhere and reached only through `SharedWidget`.
+    func testDeclarationsOfASharedFileAreLikelyDirectlyAndThroughTheChain() {
+        assertNotReferenced(.struct("SharedWidget"))
+        assertConfidence(.struct("SharedWidget"), .likely)
+        XCTAssertTrue(confidenceReason(ofDeclarationNamed: "SharedWidget")?.hasSuffix(String(format: Self.unscannedPlace, 12)) == true)
+
+        assertNotReferenced(.struct("SharedEntry"))
+        assertConfidence(.struct("SharedEntry"), .likely)
+        XCTAssertEqual(
+            confidenceReason(ofDeclarationNamed: "SharedEntry")?.hasPrefix("it is used by SharedWidget, whose name appears in "),
+            true,
+            confidenceReason(ofDeclarationNamed: "SharedEntry") ?? "nil"
+        )
+        XCTAssertTrue(confidenceReason(ofDeclarationNamed: "SharedEntry")?.hasSuffix(String(format: Self.unscannedPlace, 12)) == true)
+    }
+
+    /// Retained controls: nothing names these in the unscanned target in a way that can use them.
+    func testDeclarationsTheUnscannedTargetCannotUseStayCertain() {
+        assertNotReferenced(.struct("SharedUnused"))
+        assertConfidence(.struct("SharedUnused"), .certain)
+        // The name is only a local variable there.
+        assertNotReferenced(.functionFree("notCalledFromUnscannedTarget()"))
+        assertConfidence(.functionFree("notCalledFromUnscannedTarget()"), .certain)
+        // Internal and not in a file the target compiles; the target's own function of that name is another one.
+        assertNotReferenced(.functionFree("internalNamedFromUnscannedTarget()"))
+        assertConfidence(.functionFree("internalNamedFromUnscannedTarget()"), .certain)
+        // Spelled as a member call on the tool's own type; `UnnamedStore` itself is never named.
+        assertReferenced(.class("UnnamedStore")) {
+            self.assertNotReferenced(.functionMethodInstance("memberNamedWithoutItsType()"))
+            self.assertConfidence(.functionMethodInstance("memberNamedWithoutItsType()"), .certain)
+        }
+        // Matched in a pattern, which does not construct a case.
+        assertReferenced(.enum("PublicMode")) {
+            self.assertNotReferenced(.enumelement("matchedOnly"))
+            self.assertConfidence(.enumelement("matchedOnly"), .certain)
+        }
+    }
+
+    /// The control: used by the scanned tool, so it is referenced, not compared, even though the unscanned
+    /// target names it too.
+    func testDeclarationUsedByTheScannedTargetIsReferencedNotCompared() {
+        assertReferenced(.class("PublicStore")) {
+            self.assertReferenced(.functionMethodInstance("usedFromScannedTarget()"))
+        }
+        assertReferenced(.enum("PublicMode")) {
+            self.assertReferenced(.enumelement("constructed"))
+        }
     }
 
     // MARK: - Unused `@import`

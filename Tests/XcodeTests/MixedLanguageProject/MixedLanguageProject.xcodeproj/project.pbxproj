@@ -27,10 +27,21 @@
 		8B2D1F6C3E505B7C9DAE1F5A /* ImportsForwardDeclaration.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F54 /* ImportsForwardDeclaration.m */; };
 		8B2D1F6C3E505B7C9DAE1F1B /* ImportsIgnored.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F15 /* ImportsIgnored.m */; };
 		8B2D1F6C3E505B7C9DAE1F1C /* ImportsUsedByHeader.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F16 /* ImportsUsedByHeader.m */; };
+		9C3E2A7D4F615B8E0A1C2D04 /* UnscannedMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C3E2A7D4F615B8E0A1C2D01 /* UnscannedMain.swift */; };
+		9C3E2A7D4F615B8E0A1C2D05 /* SharedBetweenTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C3E2A7D4F615B8E0A1C2D02 /* SharedBetweenTargets.swift */; };
+		9C3E2A7D4F615B8E0A1C2D06 /* SharedBetweenTargets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C3E2A7D4F615B8E0A1C2D02 /* SharedBetweenTargets.swift */; };
+		9C3E2A7D4F615B8E0A1C2D07 /* MixedFramework.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F07 /* MixedFramework.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
 		8B2D1F6C3E505B7C9DAE1F25 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 80338C7C3D47845267D8C355 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8B2D1F6C3E505B7C9DAE1F1D;
+			remoteInfo = MixedFramework;
+		};
+		9C3E2A7D4F615B8E0A1C2D0F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 80338C7C3D47845267D8C355 /* Project object */;
 			proxyType = 1;
@@ -65,6 +76,9 @@
 		8B2D1F6C3E505B7C9DAE1F54 /* ImportsForwardDeclaration.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsForwardDeclaration.m; sourceTree = "<group>"; };
 		8B2D1F6C3E505B7C9DAE1F15 /* ImportsIgnored.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsIgnored.m; sourceTree = "<group>"; };
 		8B2D1F6C3E505B7C9DAE1F16 /* ImportsUsedByHeader.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsUsedByHeader.m; sourceTree = "<group>"; };
+		9C3E2A7D4F615B8E0A1C2D01 /* UnscannedMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnscannedMain.swift; sourceTree = "<group>"; };
+		9C3E2A7D4F615B8E0A1C2D02 /* SharedBetweenTargets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedBetweenTargets.swift; sourceTree = "<group>"; };
+		9C3E2A7D4F615B8E0A1C2D03 /* UnscannedTool */ = {isa = PBXFileReference; includeInIndex = 0; path = UnscannedTool; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -74,6 +88,7 @@
 				1F12F5507E8715ADCA9215B5 /* MixedLanguageProject */,
 				AC4D03EF097F3F98084F1A08 /* MixedLanguageProjectTests.xctest */,
 				8B2D1F6C3E505B7C9DAE1F07 /* MixedFramework.framework */,
+				9C3E2A7D4F615B8E0A1C2D03 /* UnscannedTool */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -82,6 +97,8 @@
 			isa = PBXGroup;
 			children = (
 				8B2D1F6C3E505B7C9DAE1F10 /* MixedFramework */,
+				9C3E2A7D4F615B8E0A1C2D08 /* UnscannedTool */,
+				9C3E2A7D4F615B8E0A1C2D02 /* SharedBetweenTargets.swift */,
 				0309825AF95471F9EF88FD8A /* ObjCExposed.swift */,
 				8B2D1F6C3E505B7C9DAE1F11 /* ImportsUsedMacro.m */,
 				8B2D1F6C3E505B7C9DAE1F12 /* ImportsUsedFunction.m */,
@@ -112,6 +129,14 @@
 				8B2D1F6C3E505B7C9DAE1F01 /* MixedFramework.h */,
 			);
 			path = MixedFramework;
+			sourceTree = "<group>";
+		};
+		9C3E2A7D4F615B8E0A1C2D08 /* UnscannedTool */ = {
+			isa = PBXGroup;
+			children = (
+				9C3E2A7D4F615B8E0A1C2D01 /* UnscannedMain.swift */,
+			);
+			path = UnscannedTool;
 			sourceTree = "<group>";
 		};
 		9A60F218F3BAA664928D2997 /* MixedLanguageProjectTests */ = {
@@ -159,6 +184,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				8B2D1F6C3E505B7C9DAE1F0F /* MixedFramework.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9C3E2A7D4F615B8E0A1C2D0A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C3E2A7D4F615B8E0A1C2D07 /* MixedFramework.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,6 +253,25 @@
 			productReference = AC4D03EF097F3F98084F1A08 /* MixedLanguageProjectTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		9C3E2A7D4F615B8E0A1C2D0B /* UnscannedTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9C3E2A7D4F615B8E0A1C2D0C /* Build configuration list for PBXNativeTarget "UnscannedTool" */;
+			buildPhases = (
+				9C3E2A7D4F615B8E0A1C2D09 /* Sources */,
+				9C3E2A7D4F615B8E0A1C2D0A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9C3E2A7D4F615B8E0A1C2D10 /* PBXTargetDependency */,
+			);
+			name = UnscannedTool;
+			packageProductDependencies = (
+			);
+			productName = UnscannedTool;
+			productReference = 9C3E2A7D4F615B8E0A1C2D03 /* UnscannedTool */;
+			productType = "com.apple.product-type.tool";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -248,6 +300,7 @@
 				6B4910E03A8E8DEE34391B54 /* MixedLanguageProject */,
 				89A1AE325D4891D782500131 /* MixedLanguageProjectTests */,
 				8B2D1F6C3E505B7C9DAE1F1D /* MixedFramework */,
+				9C3E2A7D4F615B8E0A1C2D0B /* UnscannedTool */,
 			);
 		};
 /* End PBXProject section */
@@ -269,6 +322,7 @@
 				8B2D1F6C3E505B7C9DAE1F5A /* ImportsForwardDeclaration.m in Sources */,
 				8B2D1F6C3E505B7C9DAE1F1B /* ImportsIgnored.m in Sources */,
 				8B2D1F6C3E505B7C9DAE1F1C /* ImportsUsedByHeader.m in Sources */,
+				9C3E2A7D4F615B8E0A1C2D06 /* SharedBetweenTargets.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -290,6 +344,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9C3E2A7D4F615B8E0A1C2D09 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C3E2A7D4F615B8E0A1C2D04 /* UnscannedMain.swift in Sources */,
+				9C3E2A7D4F615B8E0A1C2D05 /* SharedBetweenTargets.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -297,6 +360,11 @@
 			isa = PBXTargetDependency;
 			target = 8B2D1F6C3E505B7C9DAE1F1D /* MixedFramework */;
 			targetProxy = 8B2D1F6C3E505B7C9DAE1F25 /* PBXContainerItemProxy */;
+		};
+		9C3E2A7D4F615B8E0A1C2D10 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8B2D1F6C3E505B7C9DAE1F1D /* MixedFramework */;
+			targetProxy = 9C3E2A7D4F615B8E0A1C2D0F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -530,6 +598,30 @@
 			};
 			name = Release;
 		};
+		9C3E2A7D4F615B8E0A1C2D0D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		9C3E2A7D4F615B8E0A1C2D0E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -565,6 +657,15 @@
 			buildConfigurations = (
 				8B2D1F6C3E505B7C9DAE1F22 /* Debug */,
 				8B2D1F6C3E505B7C9DAE1F23 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9C3E2A7D4F615B8E0A1C2D0C /* Build configuration list for PBXNativeTarget "UnscannedTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9C3E2A7D4F615B8E0A1C2D0D /* Debug */,
+				9C3E2A7D4F615B8E0A1C2D0E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

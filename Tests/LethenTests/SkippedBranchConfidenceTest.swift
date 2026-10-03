@@ -63,4 +63,29 @@ final class SkippedBranchConfidenceTest: XCTestCase {
         let location = Location(file: file, line: 1, column: 1)
         return graph.assessConfidence(of: Declaration(name: "Shared", kind: kind, usrs: ["s:Shared"], location: location))
     }
+
+    /// `SearchEntry` is used only by `SearchWidget`, whose name appears in a skipped `#if DEBUG` clause: the
+    /// clause's uses of `SearchWidget` are not in the graph, and neither are `SearchWidget`'s own, so the
+    /// whole chain under the named declaration is likely.
+    func testDeclarationReachedOnlyThroughANamedDeclarationIsLikely() {
+        let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
+        let file = SourceFile(path: FilePath("/project/Widgets/SearchWidget.swift"), modules: ["Widgets"])
+        let widget = Declaration(name: "SearchWidget", kind: .struct, usrs: ["s:SearchWidget"], location: Location(file: file, line: 9, column: 8))
+        let entry = Declaration(name: "SearchEntry", kind: .struct, usrs: ["s:SearchEntry"], location: Location(file: file, line: 26, column: 8))
+        let reference = Reference(name: "SearchEntry", kind: .normal, declarationKind: .struct, usr: "s:SearchEntry", location: widget.location)
+        reference.parent = widget
+        graph.add([widget, entry])
+        graph.add(reference)
+        graph.addSkippedBranchNames(["SearchWidget": "#if DEBUG at Widgets.swift:15"], members: [:], construction: [:], modules: ["Widgets"])
+
+        XCTAssertEqual(graph.assessConfidence(of: widget).confidence, .likely)
+        let assessment = graph.assessConfidence(of: entry)
+        XCTAssertEqual(assessment.confidence, .likely)
+        XCTAssertEqual(assessment.reason, "it is used by SearchWidget, whose name appears in #if DEBUG at Widgets.swift:15, a branch this build did not compile")
+
+        // Named nowhere and reached from nothing that is.
+        let other = Declaration(name: "Other", kind: .struct, usrs: ["s:Other"], location: Location(file: file, line: 40, column: 8))
+        graph.add(other)
+        XCTAssertEqual(graph.assessConfidence(of: other).confidence, .certain)
+    }
 }

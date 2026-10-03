@@ -47,6 +47,15 @@ public struct IndexPipeline {
             }
         }
 
+        if !plan.unscannedTargets.isEmpty {
+            try UnscannedTargetIndexer(
+                targets: plan.unscannedTargets,
+                graph: graph,
+                logger: logger,
+                configuration: configuration
+            ).perform()
+        }
+
         if !plan.plistPaths.isEmpty {
             try InfoPlistIndexer(
                 infoPlistFiles: plan.plistPaths,
