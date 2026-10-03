@@ -16,6 +16,8 @@ public final class XcodeProject: XcodeProjectlike {
 
     private let xcodebuild: Xcodebuild
     private var subProjects: [XcodeProject] = []
+    /// Every project the project file references, including one that was missing when it loaded.
+    private var declaredSubProjectPaths: [FilePath] = []
     private var synchronizedRootGroupFiles: Set<FilePath>?
 
     /// Every file in the project's file system synchronized groups. Each target reads the same groups,
@@ -84,12 +86,13 @@ public final class XcodeProject: XcodeProjectlike {
 
         // Don't search for sub projects within CocoaPods.
         if !path.components.contains("Pods.xcodeproj") {
-            subProjects = try xcodeProject.pbxproj.fileReferences
+            let referenced = try xcodeProject.pbxproj.fileReferences
                 .filter { $0.path?.hasSuffix(".xcodeproj") ?? false }
                 .compactMap { try $0.fullPath(sourceRoot: sourceRoot.string) }
-                .compactMap {
-                    let projectPath = FilePath($0)
-
+                .map { FilePath($0) }
+            declaredSubProjectPaths = referenced
+            subProjects = try referenced
+                .compactMap { projectPath in
                     // Prevent infinite loading of circular references.
                     guard !loadedProjectPaths.contains(projectPath) else { return nil }
 
@@ -123,11 +126,13 @@ public final class XcodeProject: XcodeProjectlike {
         XcodeSharedSchemes.names(in: [path])
     }
 
-    /// This project's source root, the directories it declares outside that root, and those of every project it
-    /// references, depth first. The declared directories are local Swift packages, folder references and Run
-    /// Script inputs. A declared package or folder that no longer exists stays listed, so its removal counts as a change.
+    /// This project's source root, the directories it declares that the walk of that root does not reach, and those
+    /// of every project it references, depth first. The declared directories are local Swift packages, folder
+    /// references and Run Script inputs, listed through symbolic links. A declared package, folder or project that
+    /// no longer exists stays listed, so its removal counts as a change.
     public var projectSourceRoots: [FilePath] {
-        [sourceRoot] + externalDirectories + subProjects.flatMap(\.projectSourceRoots)
+        [sourceRoot] + declaredDirectories + declaredSubProjectPaths.map { $0.removingLastComponent() }
+            + subProjects.flatMap(\.projectSourceRoots)
     }
 
     /// Every file the project declares as a file reference, such as an `.xcconfig`, or as a Run Script input, in
@@ -144,9 +149,12 @@ public final class XcodeProject: XcodeProjectlike {
     }
 
     /// Whether a Run Script input of this project or one it references names a path Lethen cannot resolve, such as
-    /// one with a build setting other than `SRCROOT` or `PROJECT_DIR`, or an input file list it cannot read.
+    /// one with a build setting other than `SRCROOT` or `PROJECT_DIR`, or an input file list it cannot read, or
+    /// whether such a phase is set to run on every build, which no file time can vouch for.
     public var hasUnenumerableBuildInputs: Bool {
-        scriptInputs(root: sourceRoot.lexicallyNormalized()).unenumerable || subProjects.contains(where: \.hasUnenumerableBuildInputs)
+        scriptInputs(root: sourceRoot.lexicallyNormalized()).unenumerable
+            || xcodeProject.pbxproj.shellScriptBuildPhases.contains(where: \.alwaysOutOfDate)
+            || subProjects.contains(where: \.hasUnenumerableBuildInputs)
     }
 
     /// The path of every file reference that resolves to one, whether or not it exists.
@@ -157,8 +165,10 @@ public final class XcodeProject: XcodeProjectlike {
         }
     }
 
-    /// The local Swift packages, folder references and Run Script input directories outside the source root.
-    private var externalDirectories: [FilePath] {
+    /// The local Swift packages, folder references and Run Script input directories that do not lie inside the
+    /// source root once symbolic links are resolved. The walk of the root does not follow a link, so a declared
+    /// directory reached through one is walked as its target.
+    private var declaredDirectories: [FilePath] {
         let root = sourceRoot.lexicallyNormalized()
         let packages = (xcodeProject.pbxproj.rootObject?.localPackages ?? []).map {
             FilePath($0.relativePath).isAbsolute ? FilePath($0.relativePath) : root.appending($0.relativePath)
@@ -167,8 +177,14 @@ public final class XcodeProject: XcodeProjectlike {
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: directory.string, isDirectory: &isDirectory) && isDirectory.boolValue
         }
+        let resolvedRoot = Self.resolvingSymlinks(root)
         return (packages.map { $0.lexicallyNormalized() } + folders + scriptInputs(root: root).directories)
-            .filter { !$0.starts(with: root) }
+            .map(Self.resolvingSymlinks)
+            .filter { !$0.starts(with: resolvedRoot) }
+    }
+
+    private static func resolvingSymlinks(_ path: FilePath) -> FilePath {
+        FilePath(path.url.resolvingSymlinksInPath().path)
     }
 
     private func scriptInputs(root: FilePath) -> ScriptInputs {

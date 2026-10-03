@@ -187,6 +187,21 @@ final class XcodeBuildInputsTest: XCTestCase {
         XCTAssertNotNil(change())
     }
 
+    /// A declared directory can be reached through a symbolic link, which the enumerator does not enter on its own.
+    func testRootThatIsASymbolicLinkIsWalkedAsItsTarget() throws {
+        let link = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen build inputs link \(UUID().uuidString)").path)
+        defer { try? FileManager.default.removeItem(at: link.url) }
+        try FileManager.default.createSymbolicLink(atPath: link.string, withDestinationPath: root.string)
+        XCTAssertNil(XcodeBuildInputs.firstChange(roots: [link], files: [], started: started, completed: completed))
+
+        try touch("Sources/App.swift", after)
+
+        XCTAssertEqual(
+            XcodeBuildInputs.firstChange(roots: [link], files: [], started: started, completed: completed),
+            link.appending("Sources/App.swift")
+        )
+    }
+
     // MARK: - Private
 
     private func change() -> FilePath? {

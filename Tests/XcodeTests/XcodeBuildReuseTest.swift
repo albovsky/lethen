@@ -372,6 +372,76 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         try assertBuilds(afterPlantedBuildDoing: {})
     }
 
+    /// A phase set to run on every build can write anything, and no file time says it did not.
+    func testAlwaysOutOfDateRunScriptNeverReuses() throws {
+        try addScriptPhase(alwaysOutOfDate: true)
+
+        try assertBuilds(afterPlantedBuildDoing: {})
+    }
+
+    // MARK: - Declared paths
+
+    /// A local package declared at a path inside the project's directory that is a symbolic link to a directory
+    /// outside it is compiled with the project; the walk of the project's directory does not enter the link, so the
+    /// package is walked as its target.
+    func testFileAddedToALocalPackageBehindASymlinkedDirectoryBuilds() throws {
+        let package = try declareExternalLocalPackage(relativePath: "Linked")
+        try FileManager.default.createSymbolicLink(atPath: root.appending("ConfigurationsProject/Linked").string, withDestinationPath: package.string)
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "public func added() {}\n".write(to: package.appending("Sources/Library/Added.swift").url, atomically: true, encoding: .utf8)
+        })
+    }
+
+    func testRunScriptInputDirectoryBehindASymlinkedDirectoryBuilds() throws {
+        let external = root.appending("External/Inputs")
+        try FileManager.default.createDirectory(atPath: external.string, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: root.appending("ConfigurationsProject/Linked").string, withDestinationPath: external.string)
+        try addScriptPhase(inputPaths: ["$(SRCROOT)/Linked"])
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "new\n".write(to: external.appending("Added.txt").url, atomically: true, encoding: .utf8)
+        })
+    }
+
+    /// A member project that was deleted after the build cannot be loaded, but the workspace still lists it.
+    func testDeletedMemberProjectOutsideTheWorkspaceDirectoryBuilds() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let workspacePath = root.appending("Workspace/App.xcworkspace")
+        try FileManager.default.createDirectory(atPath: workspacePath.string, withIntermediateDirectories: true)
+        try """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Workspace version = "1.0">
+           <FileRef location = "group:../ConfigurationsProject/ConfigurationsProject.xcodeproj"></FileRef>
+        </Workspace>
+        """.write(to: workspacePath.appending("contents.xcworkspacedata").url, atomically: true, encoding: .utf8)
+        let configuration = Self.configuration(["Debug"], buildArguments: buildArguments)
+        let planted = try XcodeWorkspace(path: workspacePath, xcodebuild: xcodebuild, configuration: configuration, logger: Self.logger, shell: shell)
+        let schemes = ["ConfigurationsProject"]
+        let directory = try xcodebuild.derivedDataPath(for: planted, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: directory.string)
+            try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+        }
+
+        try xcodebuild.beginBuild(project: planted, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try xcodebuild.completeBuild(project: planted, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        let old = Date(timeIntervalSinceNow: -3600)
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(atPath: root.string))
+        for case let relative as String in enumerator {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: root.appending(relative).string)
+        }
+        try FileManager.default.removeItem(atPath: project.removingLastComponent().string)
+
+        let workspace = try XcodeWorkspace(path: workspacePath, xcodebuild: xcodebuild, configuration: configuration, logger: Self.logger, shell: shell)
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: workspace, schemes: Set(schemes))
+        try driver.build()
+
+        XCTAssertEqual(shell.streamed.count, 1, "\(shell.streamed)")
+    }
+
     // MARK: - Private
 
     /// Declares `External/Extra.xcconfig`, outside the project's directory, as a file reference of the copy.
@@ -389,18 +459,18 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         return xcconfig
     }
 
-    /// Declares `ExternalPackage`, outside the project's directory, as a local Swift package of the copy.
-    private func declareExternalLocalPackage() throws -> FilePath {
+    /// Declares `ExternalPackage`, outside the project's directory, as a local Swift package of the copy at `relativePath`.
+    private func declareExternalLocalPackage(relativePath: String = "../ExternalPackage") throws -> FilePath {
         let package = root.appending("ExternalPackage")
         try FileManager.default.createDirectory(atPath: package.appending("Sources/Library").string, withIntermediateDirectories: true)
         try "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"ExternalPackage\", targets: [.target(name: \"Library\")])\n"
             .write(to: package.appending("Package.swift").url, atomically: true, encoding: .utf8)
         try "public func library() {}\n".write(to: package.appending("Sources/Library/Library.swift").url, atomically: true, encoding: .utf8)
         try editProject { text in
-            text.replacingOccurrences(of: "\t\t\tmainGroup = ", with: "\t\t\tpackageReferences = (\n\t\t\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* XCLocalSwiftPackageReference \"../ExternalPackage\" */,\n\t\t\t);\n\t\t\tmainGroup = ")
+            text.replacingOccurrences(of: "\t\t\tmainGroup = ", with: "\t\t\tpackageReferences = (\n\t\t\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* XCLocalSwiftPackageReference \"\(relativePath)\" */,\n\t\t\t);\n\t\t\tmainGroup = ")
                 .replacingOccurrences(
                     of: "/* End PBXProject section */\n",
-                    with: "/* End PBXProject section */\n\n/* Begin XCLocalSwiftPackageReference section */\n\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* XCLocalSwiftPackageReference \"../ExternalPackage\" */ = {\n\t\t\tisa = XCLocalSwiftPackageReference;\n\t\t\trelativePath = ../ExternalPackage;\n\t\t};\n/* End XCLocalSwiftPackageReference section */\n"
+                    with: "/* End PBXProject section */\n\n/* Begin XCLocalSwiftPackageReference section */\n\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* XCLocalSwiftPackageReference \"\(relativePath)\" */ = {\n\t\t\tisa = XCLocalSwiftPackageReference;\n\t\t\trelativePath = \(relativePath);\n\t\t};\n/* End XCLocalSwiftPackageReference section */\n"
                 )
         }
         return package
@@ -416,7 +486,7 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
     }
 
     /// Adds a Run Script phase with these inputs to the copy's first target.
-    private func addScriptPhase(inputPaths: [String] = [], inputFileListPaths: [String] = []) throws {
+    private func addScriptPhase(inputPaths: [String] = [], inputFileListPaths: [String] = [], alwaysOutOfDate: Bool = false) throws {
         func list(_ paths: [String]) -> String {
             paths.map { "\t\t\t\t\"\($0)\",\n" }.joined()
         }
@@ -432,6 +502,7 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
                     /* Begin PBXShellScriptBuildPhase section */
                     \t\tCCCCCCCCCCCCCCCCCCCCCCCC /* Script */ = {
                     \t\t\tisa = PBXShellScriptBuildPhase;
+                    \t\t\talwaysOutOfDate = \(alwaysOutOfDate ? 1 : 0);
                     \t\t\tbuildActionMask = 2147483647;
                     \t\t\tfiles = (
                     \t\t\t);

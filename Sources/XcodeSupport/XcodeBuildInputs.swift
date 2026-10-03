@@ -18,7 +18,7 @@ public enum XcodeBuildInputs {
     /// enumerated, and so does one whose time equals the limit, since file times are coarse.
     ///
     /// Version control and build directories, `.DS_Store`, and the per-user state in `xcuserdata` are skipped, except
-    /// for the schemes in it, which choose what a build compiles. Symbolic links under a root are not followed; a listed file is read through them.
+    /// for the schemes in it, which choose what a build compiles. A root that is a symbolic link is walked as its target, but links under a root are not followed; a listed file is read through them.
     public static func firstChange(roots: [FilePath], files: Set<FilePath>, started: Date, completed: Date) -> FilePath? {
         for root in roots {
             if let change = firstChange(under: root, started: started, completed: completed) {
@@ -39,8 +39,10 @@ public enum XcodeBuildInputs {
     private static func firstChange(under root: FilePath, started: Date, completed: Date) -> FilePath? {
         let keys: [URLResourceKey] = [.contentModificationDateKey, .isDirectoryKey, .isSymbolicLinkKey]
         var unreadable: FilePath?
+        // A root that is itself a symbolic link is walked as its target, which the enumerator would not enter.
+        let target = FilePath(root.url.resolvingSymlinksInPath().path)
         let enumerator = FileManager.default.enumerator(
-            at: root.url,
+            at: target.url,
             includingPropertiesForKeys: keys,
             options: [],
             errorHandler: { url, _ in
@@ -51,7 +53,7 @@ public enum XcodeBuildInputs {
         guard let enumerator else { return root }
 
         // The root is a directory like any other: a file added directly to it changes its time.
-        guard let rootDate = modificationDate(of: root), rootDate < started else { return root }
+        guard let rootDate = modificationDate(of: target), rootDate < started else { return root }
 
         // The enumerator reports paths with symbolic links resolved, such as /private/var for /var; the names are
         // appended to the root as it was given instead.
