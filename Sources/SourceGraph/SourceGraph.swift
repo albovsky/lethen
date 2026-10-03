@@ -82,8 +82,9 @@ public final class SourceGraph {
         }
     }
 
-    /// Records the names an unscanned target's files use, keeping the smallest site for each name, and the
-    /// files it shares with scanned targets.
+    /// Records the names one file of an unscanned target uses, keeping the smallest site for each name, and
+    /// the files the target shares with scanned targets. `testableModules` are the modules that file imports
+    /// with `@testable`: its names also count toward those modules' internal declarations.
     public func addUnscannedTargetNames(
         names: [String: String],
         members: [String: String],
@@ -93,10 +94,10 @@ public final class SourceGraph {
         testableModules: Set<String> = []
     ) {
         var entry = unscannedTargetNames[target] ?? UnscannedTargetNames()
-        entry.testableModules.formUnion(testableModules)
-        entry.names.merge(names) { min($0, $1) }
-        entry.memberNames.merge(members) { min($0, $1) }
-        entry.constructionNames.merge(construction) { min($0, $1) }
+        entry.all.merge(names: names, members: members, construction: construction)
+        for module in testableModules {
+            entry.testable[module, default: NameSites()].merge(names: names, members: members, construction: construction)
+        }
         entry.sharedSourceFiles.formUnion(sharedSourceFiles.map { $0.lexicallyNormalized() })
         unscannedTargetNames[target] = entry
         nameEvidenceOrigins.removeAll()
@@ -236,31 +237,39 @@ public final class SourceGraph {
         let file = declaration.location.file.path.lexicallyNormalized()
         let enclosingType = enclosingTypeName(of: declaration)
         var best: (site: String, target: String)?
+        let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
         for (target, uses) in unscannedTargetNames.sorted(by: { $0.key < $1.key }) {
-            let names = if declaration.kind == .enumelement {
-                uses.constructionNames
-            } else if Self.memberKinds.contains(declaration.kind) || declaration.kind == .functionSubscript {
-                uses.memberNames
+            // Which files' names can reach the declaration: every file for a public one or one in a file the
+            // target compiles too (the shared file itself is not read, so the name comes from another file,
+            // where a file-scoped declaration is out of reach), and for an internal one only the files that
+            // import its module with `@testable`.
+            let pools: [NameSites] = if isVisibleOutsideItsModule(declaration) || (uses.sharedSourceFiles.contains(file) && isVisibleOutsideItsFile(declaration)) {
+                [uses.all]
+            } else if isVisibleOutsideItsFile(declaration) {
+                modules.sorted().compactMap { uses.testable[$0] }
             } else {
-                uses.names
+                []
             }
-            // The shared file itself is not read, so the name comes from another file of the target, where a
-            // file-scoped declaration is out of reach; a `@testable import` opens the module's internals.
-            let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
-            let isVisible = isVisibleOutsideItsModule(declaration)
-                || ((uses.sharedSourceFiles.contains(file) || !modules.isDisjoint(with: uses.testableModules)) && isVisibleOutsideItsFile(declaration))
-            // A use spelled through the type, `Store.shared` or `Store(...)`, places the match at this type's
-            // member rather than at the first use of any `shared` or `init`.
-            let qualifiedSite = enclosingType.flatMap { names["\($0).\(baseName)"] }
-            guard let site = qualifiedSite ?? names[baseName],
-                  best.map({ site < $0.site }) ?? true,
-                  isVisible,
-                  // A member, initializer or operator of a type is reached through the type, so a target that
-                  // never names the type uses another `init` or `shared`.
-                  enclosingType.map { uses.names[$0] != nil } ?? true
-            else { continue }
+            for pool in pools {
+                let names = if declaration.kind == .enumelement {
+                    pool.constructionNames
+                } else if Self.memberKinds.contains(declaration.kind) || declaration.kind == .functionSubscript {
+                    pool.memberNames
+                } else {
+                    pool.names
+                }
+                // A use spelled through the type, `Store.shared` or `Store(...)`, places the match at this type's
+                // member rather than at the first use of any `shared` or `init`.
+                let qualifiedSite = enclosingType.flatMap { names["\($0).\(baseName)"] }
+                guard let site = qualifiedSite ?? names[baseName],
+                      best.map({ site < $0.site }) ?? true,
+                      // A member, initializer or operator of a type is reached through the type, so a target
+                      // that never names the type uses another `init` or `shared`.
+                      enclosingType.map { pool.names[$0] != nil } ?? true
+                else { continue }
 
-            best = (site, target)
+                best = (site, target)
+            }
         }
         return best.map {
             NameEvidenceOrigin(

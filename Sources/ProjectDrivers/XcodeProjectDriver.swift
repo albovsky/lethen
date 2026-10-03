@@ -302,7 +302,9 @@
                 target.files(kind: .swiftSource).union(target.files(kind: .clangSource)).filter(isCollectable).mapSet { $0.lexicallyNormalized() }
             }
 
-            let compiled = Dictionary(uniqueKeysWithValues: projectTargets.map { ($0.name, compiledFiles($0)) })
+            // Targets are equal by name, so a workspace's same-named targets of two projects are already one here;
+            // the union keeps that from ever being a precondition.
+            let compiled = Dictionary(projectTargets.map { ($0.name, compiledFiles($0)) }, uniquingKeysWith: { $0.union($1) })
             func isIndexed(_ file: FilePath, for target: XcodeTarget) -> Bool {
                 guard let fileModules = modules[file] else { return false }
                 guard fileModules.isDisjoint(with: target.moduleNames) else { return true }

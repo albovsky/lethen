@@ -45,15 +45,16 @@
             ).perform()
 
             let names = try XCTUnwrap(graph.unscannedTargetNames["WidgetsExtension"])
-            XCTAssertEqual(names.names["SearchWidget"], "Widgets.swift:4")
-            XCTAssertEqual(names.memberNames["init"], "Widgets.swift:4")
-            XCTAssertEqual(names.names["Store"], "Widgets.swift:5")
-            XCTAssertEqual(names.memberNames["shared"], "Widgets.swift:5")
-            XCTAssertEqual(names.constructionNames["width"], "Widgets.swift:5")
-            XCTAssertEqual(names.testableModules, ["App"])
+            XCTAssertEqual(names.all.names["SearchWidget"], "Widgets.swift:4")
+            XCTAssertEqual(names.all.memberNames["init"], "Widgets.swift:4")
+            XCTAssertEqual(names.all.names["Store"], "Widgets.swift:5")
+            XCTAssertEqual(names.all.memberNames["shared"], "Widgets.swift:5")
+            XCTAssertEqual(names.all.constructionNames["width"], "Widgets.swift:5")
+            XCTAssertEqual(names.testable["App"]?.names["SearchWidget"], "Widgets.swift:4")
+            XCTAssertNil(names.testable["Shared"], "A plain import opens nothing")
             // Spelled only in the shared file, which the scanned target's index already covers.
-            XCTAssertNil(names.names["SearchEntry"])
-            XCTAssertNil(names.names["Shared"], "an import path is not a use")
+            XCTAssertNil(names.all.names["SearchEntry"])
+            XCTAssertNil(names.all.names["Shared"], "an import path is not a use")
             XCTAssertEqual(names.sharedSourceFiles, [shared.lexicallyNormalized()])
         }
 
@@ -71,7 +72,7 @@
                 configuration: configuration
             ).perform()
 
-            XCTAssertEqual(graph.unscannedTargetNames["T"]?.names["Named"], "Fine.swift:1")
+            XCTAssertEqual(graph.unscannedTargetNames["T"]?.all.names["Named"], "Fine.swift:1")
         }
     }
 #endif

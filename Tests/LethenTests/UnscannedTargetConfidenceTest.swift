@@ -113,16 +113,19 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", accessibility: .internal)).confidence, .likely)
     }
 
-    /// A `@testable import` of the declaration's module opens its internal declarations to the target.
-    func testTestableImportMakesInternalDeclarationsVisible() {
+    /// A `@testable import` of the declaration's module opens its internal declarations to the file that has
+    /// it, and to that file only: an import is file-scoped, so a name in another file of the target is some
+    /// other declaration's.
+    func testTestableImportMakesInternalDeclarationsVisibleToItsFile() {
         let graph = makeGraph()
         use(graph, ["Helper"])
         XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", in: otherFile)).confidence, .certain)
 
-        graph.addUnscannedTargetNames(names: [:], members: [:], construction: [:], target: "WidgetsExtension", testableModules: ["App"])
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", in: otherFile)).confidence, .likely)
+        graph.addUnscannedTargetNames(names: ["Other": site], members: [:], construction: [:], target: "WidgetsExtension", testableModules: ["App"])
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", in: otherFile)).confidence, .certain, "Named only in a file without the import")
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Other", in: otherFile)).confidence, .likely)
         // Not a file-scoped one, which no import opens.
-        use(graph, ["Secret"])
+        graph.addUnscannedTargetNames(names: ["Secret": site], members: [:], construction: [:], target: "WidgetsExtension", testableModules: ["App"])
         XCTAssertEqual(graph.assessConfidence(of: declaration("Secret", in: otherFile, accessibility: .private)).confidence, .certain)
     }
 

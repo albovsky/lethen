@@ -100,12 +100,15 @@ public struct NameUseCollector {
             // `Widget(...)` calls an initializer of `Widget`, which the index records under `init`; a type name
             // starts with a capital letter, a function does not. The use is also recorded as `Widget.init`, so
             // a match can be placed at a use of this type's initializer rather than any type's.
-            if isCalled, reference.parent?.is(MemberAccessExprSyntax.self) != true, name.first?.isUppercase == true {
+            let access = reference.parent?.as(MemberAccessExprSyntax.self)
+            let isQualifiedTypeCall = access?.declName.id == reference.id
+                && access?.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == access?.id
+            if (isCalled && access == nil) || isQualifiedTypeCall, name.first?.isUppercase == true {
                 record("init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
                 record("\(name).init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
             }
             // `Store.shared` names the member through its type; recorded as `Store.shared` as well.
-            if let access = reference.parent?.as(MemberAccessExprSyntax.self), access.declName.id == reference.id,
+            if let access, access.declName.id == reference.id,
                let base = access.base?.as(DeclReferenceExprSyntax.self)?.baseName.text, base.first?.isUppercase == true
             {
                 record("\(base).\(name)", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
