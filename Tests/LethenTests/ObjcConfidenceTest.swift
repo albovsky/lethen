@@ -19,12 +19,21 @@ final class ObjcConfidenceTest: XCTestCase {
         name: String = "exposed()"
     ) -> ConfidenceAssessment {
         let graph = SourceGraph(configuration: configuration, logger: Logger(quiet: true, verbose: false, colorMode: .never))
-        graph.setClangCoverage(coverage)
-        graph.addLiteralTokens(literalTokens)
+        var evidence = ConfidenceEvidence()
+        evidence.clangCoverage = coverage
+        evidence.addLiteralTokens(literalTokens)
         let file = SourceFile(path: FilePath("/p/A.swift"), modules: ["A"])
         let declaration = Declaration(name: name, kind: kind, usrs: usrs, location: Location(file: file, line: 1, column: 1))
         declaration.isObjcAccessible = isObjcAccessible
-        return graph.assessConfidence(of: declaration)
+        return ConfidenceAssessor(evidence: evidence, graph: graph, configuration: configuration).assess(declaration)
+    }
+
+    func testEmptyEvidenceIsCertainWithoutWalkingReferences() {
+        let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
+        let assessor = ConfidenceAssessor(evidence: ConfidenceEvidence(), graph: graph, configuration: Configuration())
+        let file = SourceFile(path: FilePath("/p/A.swift"), modules: ["A"])
+        let declaration = Declaration(name: "plain()", kind: .functionMethodInstance, usrs: ["s:plain"], location: Location(file: file, line: 1, column: 1))
+        XCTAssertEqual(assessor.assess(declaration), ConfidenceAssessment(confidence: .certain, reason: nil))
     }
 
     func testUnknownCoverageIsLikely() {
@@ -118,11 +127,11 @@ final class ObjcConfidenceTest: XCTestCase {
     }
 
     func testObjectiveCNameOfAUSR() {
-        XCTAssertEqual(SourceGraph.objcName(fromUSR: "c:objc(cs)Store(im)load:from:"), "load")
-        XCTAssertEqual(SourceGraph.objcName(fromUSR: "c:@M@App@objc(cs)Store(im)renamedForObjC"), "renamedForObjC")
-        XCTAssertEqual(SourceGraph.objcName(fromUSR: "c:@M@App@objc(cs)RenamedClassForObjC"), "RenamedClassForObjC")
-        XCTAssertEqual(SourceGraph.objcName(fromUSR: "c:@CM@App@@objc(cs)NSObject(py)wmf_value"), "wmf_value")
-        XCTAssertNil(SourceGraph.objcName(fromUSR: "s:3App5StoreC4loadyyF"))
-        XCTAssertNil(SourceGraph.objcName(fromUSR: "c:@M@App@objc(cs)"))
+        XCTAssertEqual(ConfidenceAssessor.objcName(fromUSR: "c:objc(cs)Store(im)load:from:"), "load")
+        XCTAssertEqual(ConfidenceAssessor.objcName(fromUSR: "c:@M@App@objc(cs)Store(im)renamedForObjC"), "renamedForObjC")
+        XCTAssertEqual(ConfidenceAssessor.objcName(fromUSR: "c:@M@App@objc(cs)RenamedClassForObjC"), "RenamedClassForObjC")
+        XCTAssertEqual(ConfidenceAssessor.objcName(fromUSR: "c:@CM@App@@objc(cs)NSObject(py)wmf_value"), "wmf_value")
+        XCTAssertNil(ConfidenceAssessor.objcName(fromUSR: "s:3App5StoreC4loadyyF"))
+        XCTAssertNil(ConfidenceAssessor.objcName(fromUSR: "c:@M@App@objc(cs)"))
     }
 }

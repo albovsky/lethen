@@ -36,8 +36,11 @@ struct ExplainCommand: ParsableCommand {
         guard let graph = output.graph else {
             throw LethenError.sourceGraphIntegrityError(message: "The scan produced no source graph to explain.")
         }
+        guard let confidence = output.confidence else {
+            throw LethenError.sourceGraphIntegrityError(message: "The scan produced no confidence assessment to explain.")
+        }
 
-        let explainer = SourceGraphExplainer(graph: graph, configuration: configuration)
+        let explainer = SourceGraphExplainer(graph: graph, configuration: configuration, confidence: confidence)
         let declarations = explainer.declarations(matching: query)
         guard !declarations.isEmpty else {
             throw LethenError.usageError("No declaration matches '\(query)'. Pass its name, such as 'load' or 'Store.load(from:)', or its USR as printed by '--format json'.")

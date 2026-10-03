@@ -10,6 +10,13 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
     private let sharedFile = FilePath("/project/Shared/Widget.swift")
     private let otherFile = FilePath("/project/App/Other.swift")
 
+    private var evidence = ConfidenceEvidence()
+
+    /// A fresh assessor over the evidence recorded so far: it memoizes, so one built earlier would not see later evidence.
+    private func assessor(_ graph: SourceGraph) -> ConfidenceAssessor {
+        ConfidenceAssessor(evidence: evidence, graph: graph, configuration: Configuration())
+    }
+
     private func makeGraph() -> SourceGraph {
         SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
     }
@@ -29,11 +36,13 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         return declaration
     }
 
-    private func use(_ graph: SourceGraph, _ names: [String], members: [String] = [], construction: [String] = []) {
-        graph.addUnscannedTargetNames(
-            names: Dictionary(uniqueKeysWithValues: names.map { ($0, site) }),
-            members: Dictionary(uniqueKeysWithValues: members.map { ($0, site) }),
-            construction: Dictionary(uniqueKeysWithValues: construction.map { ($0, site) }),
+    private func use(_ names: [String], members: [String] = [], construction: [String] = []) {
+        evidence.addUnscannedTargetNames(
+            NameSites(
+                names: Dictionary(uniqueKeysWithValues: names.map { ($0, site) }),
+                memberNames: Dictionary(uniqueKeysWithValues: members.map { ($0, site) }),
+                constructionNames: Dictionary(uniqueKeysWithValues: construction.map { ($0, site) })
+            ),
             target: "WidgetsExtension",
             sharedSourceFiles: [sharedFile]
         )
@@ -41,36 +50,36 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
 
     func testNameInAFileTheTargetCompilesIsLikely() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
+        use(["Widget"])
 
-        let assessment = graph.assessConfidence(of: declaration("Widget"))
+        let assessment = assessor(graph).assess(declaration("Widget"))
         XCTAssertEqual(assessment.confidence, .likely)
         XCTAssertEqual(assessment.reason, "its name appears in \(place)")
     }
 
     func testInternalDeclarationOutsideTheTargetsFilesIsCertain() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
+        use(["Widget"])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget", in: otherFile)).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget", in: otherFile)).confidence, .certain)
     }
 
     func testPublicDeclarationIsLikelyWhereverItIsDeclared() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
+        use(["Widget"])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget", in: otherFile, accessibility: .public)).confidence, .likely)
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget", in: otherFile, accessibility: .open)).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget", in: otherFile, accessibility: .public)).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget", in: otherFile, accessibility: .open)).confidence, .likely)
     }
 
     /// A public member of an internal type is not visible outside its module.
     func testPublicMemberOfAnInternalTypeIsNotVisible() {
         let graph = makeGraph()
-        use(graph, ["run"], members: ["run"])
+        use(["run"], members: ["run"])
         let type = declaration("Hidden", kind: .class, in: otherFile)
         let member = declaration("run()", kind: .functionMethodInstance, in: otherFile, accessibility: .public, parent: type)
 
-        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .certain)
     }
 
     /// A member is reached through its type, so a target that uses `.shared` or `.init` on some other type
@@ -81,13 +90,13 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         let member = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: type)
         let initializer = declaration("init(url:)", kind: .functionConstructor, in: otherFile, accessibility: .public, parent: type)
 
-        use(graph, ["shared", "init"], members: ["shared", "init"], construction: ["shared", "init"])
-        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .certain)
-        XCTAssertEqual(graph.assessConfidence(of: initializer).confidence, .certain)
+        use(["shared", "init"], members: ["shared", "init"], construction: ["shared", "init"])
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(initializer).confidence, .certain)
 
-        use(graph, ["Store"])
-        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .likely)
-        XCTAssertEqual(graph.assessConfidence(of: initializer).confidence, .likely)
+        use(["Store"])
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(initializer).confidence, .likely)
     }
 
     /// A member of a type in a file the target compiles is reached through the type there too.
@@ -95,22 +104,22 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         let graph = makeGraph()
         let type = declaration("Widget", kind: .struct)
         let member = declaration("entry", kind: .varInstance, parent: type)
-        use(graph, ["entry"], members: ["entry"])
-        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .certain)
+        use(["entry"], members: ["entry"])
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .certain)
 
-        use(graph, ["Widget"])
-        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .likely)
+        use(["Widget"])
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .likely)
     }
 
     /// The shared file is not read, so a matching name is in another file, which cannot reach a private or
     /// fileprivate declaration.
     func testFileScopedDeclarationsInASharedFileStayCertain() {
         let graph = makeGraph()
-        use(graph, ["Widget", "Helper"])
+        use(["Widget", "Helper"])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget", accessibility: .private)).confidence, .certain)
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget", accessibility: .fileprivate)).confidence, .certain)
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", accessibility: .internal)).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget", accessibility: .private)).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget", accessibility: .fileprivate)).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(declaration("Helper", accessibility: .internal)).confidence, .likely)
     }
 
     /// A `@testable import` of the declaration's module opens its internal declarations to the file that has
@@ -118,26 +127,26 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
     /// other declaration's.
     func testTestableImportMakesInternalDeclarationsVisibleToItsFile() {
         let graph = makeGraph()
-        use(graph, ["Helper"])
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", in: otherFile)).confidence, .certain)
+        use(["Helper"])
+        XCTAssertEqual(assessor(graph).assess(declaration("Helper", in: otherFile)).confidence, .certain)
 
-        graph.addUnscannedTargetNames(names: ["Other": site], members: [:], construction: [:], target: "WidgetsExtension", testableModules: ["App"])
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", in: otherFile)).confidence, .certain, "Named only in a file without the import")
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Other", in: otherFile)).confidence, .likely)
+        evidence.addUnscannedTargetNames(NameSites(names: ["Other": site], memberNames: [:], constructionNames: [:]), target: "WidgetsExtension", testableModules: ["App"])
+        XCTAssertEqual(assessor(graph).assess(declaration("Helper", in: otherFile)).confidence, .certain, "Named only in a file without the import")
+        XCTAssertEqual(assessor(graph).assess(declaration("Other", in: otherFile)).confidence, .likely)
         // Not a file-scoped one, which no import opens.
-        graph.addUnscannedTargetNames(names: ["Secret": site], members: [:], construction: [:], target: "WidgetsExtension", testableModules: ["App"])
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Secret", in: otherFile, accessibility: .private)).confidence, .certain)
+        evidence.addUnscannedTargetNames(NameSites(names: ["Secret": site], memberNames: [:], constructionNames: [:]), target: "WidgetsExtension", testableModules: ["App"])
+        XCTAssertEqual(assessor(graph).assess(declaration("Secret", in: otherFile, accessibility: .private)).confidence, .certain)
     }
 
     func testSubscriptsAreMatchedThroughTheirType() {
         let graph = makeGraph()
         let type = declaration("Store", kind: .class, in: otherFile, accessibility: .public)
         let subscriptDeclaration = declaration("subscript(_:)", kind: .functionSubscript, in: otherFile, accessibility: .public, parent: type)
-        use(graph, ["subscript"], members: ["subscript"], construction: ["subscript"])
-        XCTAssertEqual(graph.assessConfidence(of: subscriptDeclaration).confidence, .certain)
+        use(["subscript"], members: ["subscript"], construction: ["subscript"])
+        XCTAssertEqual(assessor(graph).assess(subscriptDeclaration).confidence, .certain)
 
-        use(graph, ["Store"])
-        XCTAssertEqual(graph.assessConfidence(of: subscriptDeclaration).confidence, .likely)
+        use(["Store"])
+        XCTAssertEqual(assessor(graph).assess(subscriptDeclaration).confidence, .likely)
     }
 
     /// Naming a type says nothing about a member of it that nothing references; the type being used by the
@@ -147,10 +156,10 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         let type = declaration("Store", kind: .class, in: otherFile, accessibility: .public)
         let member = declaration("deleteAll()", kind: .functionMethodInstance, in: otherFile, accessibility: .public, parent: type)
         graph.add([type, member])
-        use(graph, ["Store"])
+        use(["Store"])
 
-        XCTAssertEqual(graph.assessConfidence(of: type).confidence, .likely)
-        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(type).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .certain)
     }
 
     /// `T.Item` names the associated type through a type, so the protocol must be named too.
@@ -159,12 +168,12 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         let protocolDeclaration = declaration("P", kind: .protocol, in: otherFile, accessibility: .public)
         let item = declaration("Item", kind: .associatedtype, in: otherFile, accessibility: .public, parent: protocolDeclaration)
         let other = declaration("Element", kind: .associatedtype, in: otherFile, accessibility: .public, parent: protocolDeclaration)
-        use(graph, ["Item"], members: ["Item"])
-        XCTAssertEqual(graph.assessConfidence(of: item).confidence, .certain)
+        use(["Item"], members: ["Item"])
+        XCTAssertEqual(assessor(graph).assess(item).confidence, .certain)
 
-        use(graph, ["P"])
-        XCTAssertEqual(graph.assessConfidence(of: item).confidence, .likely)
-        XCTAssertEqual(graph.assessConfidence(of: other).confidence, .certain, "The control: not named")
+        use(["P"])
+        XCTAssertEqual(assessor(graph).assess(item).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(other).confidence, .certain, "The control: not named")
     }
 
     /// `typealias Store = AppStore` lets a file name `AppStore`'s members as `Store.shared`.
@@ -176,9 +185,9 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         let reference = Reference(name: "AppStore", kind: .normal, declarationKind: .class, usr: "s:class:AppStore", location: alias.location)
         alias.references.insert(reference)
         graph.add([type, member, alias])
-        use(graph, ["Store", "shared"], members: ["shared"])
+        use(["Store", "shared"], members: ["shared"])
 
-        XCTAssertEqual(graph.assessConfidence(of: member).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .likely)
     }
 
     /// An extension is reported only with its unused type, so it is as sure as the type.
@@ -189,41 +198,41 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         let reference = Reference(name: "Widget", kind: .normal, declarationKind: .struct, usr: "s:struct:Widget", location: ext.location)
         ext.references.insert(reference)
         graph.add([type, ext])
-        use(graph, ["Widget"])
+        use(["Widget"])
 
-        let assessment = graph.assessConfidence(of: ext)
+        let assessment = assessor(graph).assess(ext)
         XCTAssertEqual(assessment.confidence, .likely)
         XCTAssertEqual(assessment.reason, "it extends Widget, and its name appears in \(place)")
     }
 
     func testMacrosAreMatchedByName() {
         let graph = makeGraph()
-        use(graph, ["makeWidget"])
+        use(["makeWidget"])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("makeWidget()", kind: .macro, in: otherFile, accessibility: .public)).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(declaration("makeWidget()", kind: .macro, in: otherFile, accessibility: .public)).confidence, .likely)
     }
 
     func testMembersAndEnumCasesNeedTheirOwnTiers() {
         let graph = makeGraph()
-        use(graph, ["field", "matched"], members: ["matched"])
+        use(["field", "matched"], members: ["matched"])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("field", kind: .varInstance, accessibility: .public)).confidence, .certain)
-        XCTAssertEqual(graph.assessConfidence(of: declaration("matched", kind: .varInstance, accessibility: .public)).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(declaration("field", kind: .varInstance, accessibility: .public)).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(declaration("matched", kind: .varInstance, accessibility: .public)).confidence, .likely)
         // Matched in a pattern is not constructed.
-        XCTAssertEqual(graph.assessConfidence(of: declaration("matched", kind: .enumelement, accessibility: .public, line: 2)).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(declaration("matched", kind: .enumelement, accessibility: .public, line: 2)).confidence, .certain)
     }
 
     func testSuppressedWhenNoTargetNamesIt() {
         let graph = makeGraph()
-        use(graph, ["Other"])
+        use(["Other"])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget")).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget")).confidence, .certain)
     }
 
     /// `SharedEntry` is named nowhere, and only an unused `SharedWidget`'s property refers to it.
     func testDeclarationReferencedOnlyFromALikelyDeclarationIsLikely() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
+        use(["Widget"])
         let widget = declaration("Widget")
         let property = declaration("entry", kind: .varInstance, parent: widget)
         let entry = declaration("Entry")
@@ -232,15 +241,15 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         graph.add([widget, property, entry])
         graph.add(reference)
 
-        let assessment = graph.assessConfidence(of: entry)
+        let assessment = assessor(graph).assess(entry)
         XCTAssertEqual(assessment.confidence, .likely)
         XCTAssertEqual(assessment.reason, "it is used by Widget, whose name appears in \(place)")
-        XCTAssertEqual(graph.assessConfidence(of: widget).reason, "its name appears in \(place)")
+        XCTAssertEqual(assessor(graph).assess(widget).reason, "its name appears in \(place)")
     }
 
     func testChainFollowsSeveralStepsAndSurvivesCycles() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
+        use(["Widget"])
         let widget = declaration("Widget")
         let middle = declaration("Middle")
         let leaf = declaration("Leaf")
@@ -253,16 +262,16 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
             graph.add(reference)
         }
 
-        XCTAssertEqual(graph.assessConfidence(of: leaf).reason, "it is used by Widget, whose name appears in \(place)")
-        XCTAssertEqual(graph.assessConfidence(of: middle).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(leaf).reason, "it is used by Widget, whose name appears in \(place)")
+        XCTAssertEqual(assessor(graph).assess(middle).confidence, .likely)
     }
 
     /// The parent's own reason may come from an earlier rule, as on a type whose name is also in a string
     /// literal; its unscanned-target match still passes the name on.
     func testChainFollowsAParentWhoseOwnReasonIsAnEarlierRule() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
-        graph.addLiteralTokens(["Widget"])
+        use(["Widget"])
+        evidence.addLiteralTokens(["Widget"])
         let widget = declaration("Widget")
         let entry = declaration("Entry")
         let reference = Reference(name: "Entry", kind: .normal, declarationKind: .struct, usr: "s:struct:Entry", location: widget.location)
@@ -270,14 +279,14 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         graph.add([widget, entry])
         graph.add(reference)
 
-        XCTAssertEqual(graph.assessConfidence(of: widget).reason, "its name appears in a string literal")
-        XCTAssertEqual(graph.assessConfidence(of: entry).reason, "it is used by Widget, whose name appears in \(place)")
+        XCTAssertEqual(assessor(graph).assess(widget).reason, "its name appears in a string literal")
+        XCTAssertEqual(assessor(graph).assess(entry).reason, "it is used by Widget, whose name appears in \(place)")
     }
 
     /// A declaration used by scanned code is not reported at all, so it passes nothing on to what it refers to.
     func testUsedDeclarationDoesNotPassTheNameOn() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
+        use(["Widget"])
         let widget = declaration("Widget")
         let entry = declaration("Entry")
         let reference = Reference(name: "Entry", kind: .normal, declarationKind: .struct, usr: "s:struct:Entry", location: widget.location)
@@ -286,12 +295,12 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         graph.add(reference)
         graph.markUsed(widget)
 
-        XCTAssertEqual(graph.assessConfidence(of: entry).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(entry).confidence, .certain)
     }
 
     func testAnswerFollowsLaterChangesToUsedDeclarations() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
+        use(["Widget"])
         let widget = declaration("Widget")
         let entry = declaration("Entry")
         let reference = Reference(name: "Entry", kind: .normal, declarationKind: .struct, usr: "s:struct:Entry", location: widget.location)
@@ -299,18 +308,18 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         graph.add([widget, entry])
         graph.add(reference)
 
-        XCTAssertEqual(graph.assessConfidence(of: entry).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(entry).confidence, .likely)
         graph.markUsed(widget)
-        XCTAssertEqual(graph.assessConfidence(of: entry).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(entry).confidence, .certain)
     }
 
     func testSmallestSiteAcrossTargetsWins() {
         let graph = makeGraph()
-        graph.addUnscannedTargetNames(names: ["Widget": "Z.swift:1"], members: [:], construction: [:], target: "Zed", sharedSourceFiles: [sharedFile])
-        graph.addUnscannedTargetNames(names: ["Widget": "A.swift:9"], members: [:], construction: [:], target: "Alpha", sharedSourceFiles: [sharedFile])
+        evidence.addUnscannedTargetNames(NameSites(names: ["Widget": "Z.swift:1"], memberNames: [:], constructionNames: [:]), target: "Zed", sharedSourceFiles: [sharedFile])
+        evidence.addUnscannedTargetNames(NameSites(names: ["Widget": "A.swift:9"], memberNames: [:], constructionNames: [:]), target: "Alpha", sharedSourceFiles: [sharedFile])
 
         XCTAssertEqual(
-            graph.assessConfidence(of: declaration("Widget")).reason,
+            assessor(graph).assess(declaration("Widget")).reason,
             "its name appears in A.swift:9, a file of target Alpha, which the scanned schemes do not build"
         )
     }
@@ -319,18 +328,18 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
     /// another target that does names it somewhere else.
     func testVisibilityIsPerTarget() {
         let graph = makeGraph()
-        graph.addUnscannedTargetNames(names: ["Widget": "A.swift:9"], members: [:], construction: [:], target: "Alpha", sharedSourceFiles: [otherFile])
-        graph.addUnscannedTargetNames(names: [:], members: [:], construction: [:], target: "Beta", sharedSourceFiles: [sharedFile])
+        evidence.addUnscannedTargetNames(NameSites(names: ["Widget": "A.swift:9"], memberNames: [:], constructionNames: [:]), target: "Alpha", sharedSourceFiles: [otherFile])
+        evidence.addUnscannedTargetNames(NameSites(names: [:], memberNames: [:], constructionNames: [:]), target: "Beta", sharedSourceFiles: [sharedFile])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget")).confidence, .certain)
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget")).confidence, .certain)
     }
 
     /// Other rules keep their place: a string literal comes first.
     func testStringLiteralReasonComesFirst() {
         let graph = makeGraph()
-        use(graph, ["Widget"])
-        graph.addLiteralTokens(["Widget"])
+        use(["Widget"])
+        evidence.addLiteralTokens(["Widget"])
 
-        XCTAssertEqual(graph.assessConfidence(of: declaration("Widget")).reason, "its name appears in a string literal")
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget")).reason, "its name appears in a string literal")
     }
 }

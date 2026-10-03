@@ -16,6 +16,7 @@ open class SourceGraphTestCase: XCTestCase {
     static var results: [ScanResult] = []
 
     private static var graph: SourceGraph!
+    static var confidence: ConfidenceAssessor!
     private static var allIndexedDeclarations: Set<Declaration> = []
 
     private var scopeStack: [DeclarationScope] = []
@@ -87,7 +88,7 @@ open class SourceGraphTestCase: XCTestCase {
             configuration: configuration,
             swiftVersion: swiftVersion
         )
-        _ = try pipeline.perform()
+        let indexResult = try pipeline.perform()
 
         allIndexedDeclarations = graph.allDeclarations
         try SourceGraphMutatorRunner(
@@ -96,7 +97,8 @@ open class SourceGraphTestCase: XCTestCase {
             configuration: configuration,
             swiftVersion: swiftVersion
         ).perform()
-        results = ScanResultBuilder.build(for: graph, configuration: configuration)
+        confidence = ConfidenceAssessor(evidence: indexResult.evidence, graph: graph, configuration: configuration)
+        results = ScanResultBuilder.build(for: graph, configuration: configuration, confidence: confidence)
     }
 
     func assertReferenced(_ description: DeclarationDescription, scopedAssertions: (() -> Void)? = nil, file: StaticString = #file, line: UInt = #line) {
@@ -323,7 +325,7 @@ open class SourceGraphTestCase: XCTestCase {
         func explanation(of description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) -> String? {
             guard let declaration = materialize(description, file: file, line: line) else { return nil }
 
-            return SourceGraphExplainer(graph: Self.graph, configuration: Configuration()).explain(declaration)
+            return SourceGraphExplainer(graph: Self.graph, configuration: Configuration(), confidence: Self.confidence).explain(declaration)
         }
     #endif
 

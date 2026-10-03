@@ -20,6 +20,7 @@ final class Scan: ScanRunning {
     private let swiftVersion: SwiftVersion
     private var sourceFileCount = 0
     private var lineCount: Int?
+    private var evidence = ConfidenceEvidence()
 
     required init(configuration: Configuration, logger: Logger, swiftVersion: SwiftVersion) {
         self.configuration = configuration
@@ -34,11 +35,14 @@ final class Scan: ScanRunning {
         let statistics: ScanStatistics?
         /// The analyzed source graph, which `lethen explain` reads.
         let graph: SourceGraph?
+        /// The confidence the results were built with, which `lethen explain` reads too.
+        let confidence: ConfidenceAssessor?
 
-        init(results: [ScanResult], statistics: ScanStatistics? = nil, graph: SourceGraph? = nil) {
+        init(results: [ScanResult], statistics: ScanStatistics? = nil, graph: SourceGraph? = nil, confidence: ConfidenceAssessor? = nil) {
             self.results = results
             self.statistics = statistics
             self.graph = graph
+            self.confidence = confidence
         }
     }
 
@@ -94,13 +98,14 @@ final class Scan: ScanRunning {
         try index(driver)
         let declarationCount = graph.allDeclarations.count
         try analyze()
-        let results = buildResults()
+        let confidence = ConfidenceAssessor(evidence: evidence, graph: graph, configuration: configuration)
+        let results = buildResults(confidence: confidence)
         let statistics = configuration.stats ? ScanStatistics(
             sourceFileCount: sourceFileCount,
             lineCount: lineCount,
             declarationCount: declarationCount
         ) : nil
-        return Output(results: results, statistics: statistics, graph: graph)
+        return Output(results: results, statistics: statistics, graph: graph, confidence: confidence)
     }
 
     // MARK: - Private
@@ -132,7 +137,9 @@ final class Scan: ScanRunning {
         logger.endInterval(planInterval)
         let graphMutex = SourceGraphMutex(graph: graph)
         let pipeline = IndexPipeline(plan: plan, graph: graphMutex, logger: indexLogger, configuration: configuration, swiftVersion: swiftVersion)
-        lineCount = try pipeline.perform()
+        let indexResult = try pipeline.perform()
+        lineCount = indexResult.scannedLOC
+        evidence = indexResult.evidence
         sourceFileCount = plan.sourceFiles.count
         logger.endInterval(indexInterval)
     }
@@ -154,9 +161,9 @@ final class Scan: ScanRunning {
         logger.endInterval(analyzeInterval)
     }
 
-    private func buildResults() -> [ScanResult] {
+    private func buildResults(confidence: ConfidenceAssessor) -> [ScanResult] {
         let resultInterval = logger.beginInterval("result:build")
-        let results = ScanResultBuilder.build(for: graph, configuration: configuration)
+        let results = ScanResultBuilder.build(for: graph, configuration: configuration, confidence: confidence)
         logger.endInterval(resultInterval)
         return results
     }
