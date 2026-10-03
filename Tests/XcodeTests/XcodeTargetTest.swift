@@ -102,16 +102,18 @@ final class XcodeTargetTest: XCTestCase {
         XCTAssertEqual(target.dependencyNames, ["UIKitProject", "RemoteFramework"])
     }
 
-    func testModuleNameIsTheConfiguredProductModuleNameOrTheDefault() throws {
-        let configured = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("CoreKit")])
-        let list = XCConfigurationList(buildConfigurations: [configured])
-        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Core", buildConfigurationList: list)).moduleName, "CoreKit")
+    func testModuleNamesAreTheConfiguredProductModuleNamesOrTheDefault() throws {
+        // Each configuration may name the module differently; a unit could come from any of them.
+        let debug = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("DebugCore")])
+        let release = XCBuildConfiguration(name: "Release", buildSettings: ["PRODUCT_MODULE_NAME": .string("ReleaseCore")])
+        let list = XCConfigurationList(buildConfigurations: [debug, release])
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Core", buildConfigurationList: list)).moduleNames, ["DebugCore", "ReleaseCore"])
 
         let variable = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("$(TARGET_NAME:c99extidentifier)")])
         let variableList = XCConfigurationList(buildConfigurations: [variable])
-        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Target With Spaces", buildConfigurationList: variableList)).moduleName, "Target_With_Spaces")
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Target With Spaces", buildConfigurationList: variableList)).moduleNames, ["Target_With_Spaces"])
 
         XCTAssertEqual(XcodeTarget.defaultModuleName(forTarget: "3D-Kit"), "_3D_Kit")
-        XCTAssertEqual(try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" }).moduleName, "Target_With_Spaces")
+        XCTAssertEqual(try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" }).moduleNames, ["Target_With_Spaces"])
     }
 }

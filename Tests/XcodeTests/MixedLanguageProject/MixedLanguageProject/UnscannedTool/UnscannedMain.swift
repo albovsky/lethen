@@ -9,6 +9,8 @@ enum UnscannedMain {
         let store = PublicStore()
         store.usedFromScannedTarget()
         _ = store.memberReadFromUnscannedTarget
+        _ = PublicStore(label: "labelled")
+        _ = store[0]
         _ = SharedWidget()
         internalNamedFromUnscannedTarget()
         Self.memberNamedWithoutItsType()

@@ -39,9 +39,9 @@ final class UnscannedTargetIndexer: Indexer {
         try JobPool(jobs: jobs).forEach { [weak self] targetName, file in
             guard let self else { return }
 
-            let uses: [NameUseCollector.FileUse]
+            let fileUses: NameUseCollector.FileUses
             do {
-                uses = try NameUseCollector.uses(inFileAt: file)
+                fileUses = try NameUseCollector.uses(inFileAt: file)
             } catch {
                 logger.debug("Skipping \(file.string) of target \(targetName): \(error)")
                 return
@@ -51,14 +51,14 @@ final class UnscannedTargetIndexer: Indexer {
             var names: [String: String] = [:]
             var members: [String: String] = [:]
             var construction: [String: String] = [:]
-            for use in uses {
+            for use in fileUses.uses {
                 let site = "\(path.string):\(use.line)"
                 Self.keepSmallest(site, for: use.name, in: &names)
                 if use.isMember { Self.keepSmallest(site, for: use.name, in: &members) }
                 if use.isConstruction { Self.keepSmallest(site, for: use.name, in: &construction) }
             }
             graph.withLock {
-                $0.addUnscannedTargetNames(names: names, members: members, construction: construction, target: targetName)
+                $0.addUnscannedTargetNames(names: names, members: members, construction: construction, target: targetName, testableModules: fileUses.testableModules)
             }
             logger.debug("\(file.string): \(names.count) names")
         }

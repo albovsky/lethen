@@ -89,9 +89,11 @@ public final class SourceGraph {
         members: [String: String],
         construction: [String: String],
         target: String,
-        sharedSourceFiles: Set<FilePath> = []
+        sharedSourceFiles: Set<FilePath> = [],
+        testableModules: Set<String> = []
     ) {
         var entry = unscannedTargetNames[target] ?? UnscannedTargetNames()
+        entry.testableModules.formUnion(testableModules)
         entry.names.merge(names) { min($0, $1) }
         entry.memberNames.merge(members) { min($0, $1) }
         entry.constructionNames.merge(construction) { min($0, $1) }
@@ -150,7 +152,7 @@ public final class SourceGraph {
             return .init(confidence: .likely, reason: "its name appears in \(site), a branch this build did not compile")
         }
 
-        if Self.skippedBranchKinds.contains(declaration.kind),
+        if Self.nameEvidenceKinds.contains(declaration.kind),
            !unscannedTargetNames.isEmpty || !skippedBranchNames.isEmpty,
            let origin = nameEvidenceOrigin(of: declaration)
         {
@@ -165,6 +167,8 @@ public final class SourceGraph {
     /// reported one is reached from such a name.
     private struct NameEvidenceOrigin {
         let declaration: Declaration
+        /// The declaration as the reason names it: a member with its type, `SharedWidget.init`.
+        let displayName: String
         /// Where the name appears, with what that place is: `#if DEBUG at Widgets.swift:15, a branch this
         /// build did not compile`.
         let place: String
@@ -172,8 +176,14 @@ public final class SourceGraph {
         func reason(isDirect: Bool) -> String {
             isDirect
                 ? "its name appears in \(place)"
-                : "it is used by \(SourceGraph.baseName(of: declaration.name)), whose name appears in \(place)"
+                : "it is used by \(displayName), whose name appears in \(place)"
         }
+    }
+
+    /// The declaration's base name, after its type's for a member: `SharedWidget.init`, `Store.shared`.
+    private func displayName(of declaration: Declaration) -> String {
+        let base = Self.baseName(of: declaration.name)
+        return enclosingTypeName(of: declaration).map { "\($0).\(base)" } ?? base
     }
 
     /// The origin that makes `declaration` likely: code the index has no references for names it, or,
@@ -204,10 +214,10 @@ public final class SourceGraph {
     /// The place that names the declaration itself: a skipped `#if` clause of its module first, then a
     /// file of an unscanned target.
     private func directNameEvidence(of declaration: Declaration) -> NameEvidenceOrigin? {
-        guard Self.skippedBranchKinds.contains(declaration.kind) else { return nil }
+        guard Self.nameEvidenceKinds.contains(declaration.kind) else { return nil }
 
-        if let site = skippedBranchSite(of: declaration) {
-            return NameEvidenceOrigin(declaration: declaration, place: "\(site), a branch this build did not compile")
+        if Self.skippedBranchKinds.contains(declaration.kind), let site = skippedBranchSite(of: declaration) {
+            return NameEvidenceOrigin(declaration: declaration, displayName: displayName(of: declaration), place: "\(site), a branch this build did not compile")
         }
         return unscannedTargetUse(of: declaration)
     }
@@ -220,7 +230,7 @@ public final class SourceGraph {
     /// declaration is public or open, or sits in a file the target compiles too. An internal declaration
     /// elsewhere is not visible to the target, so a use of its name there is another declaration's.
     private func unscannedTargetUse(of declaration: Declaration) -> NameEvidenceOrigin? {
-        guard Self.skippedBranchKinds.contains(declaration.kind) else { return nil }
+        guard Self.nameEvidenceKinds.contains(declaration.kind) else { return nil }
 
         let baseName = Self.baseName(of: declaration.name)
         let file = declaration.location.file.path.lexicallyNormalized()
@@ -229,16 +239,22 @@ public final class SourceGraph {
         for (target, uses) in unscannedTargetNames.sorted(by: { $0.key < $1.key }) {
             let names = if declaration.kind == .enumelement {
                 uses.constructionNames
-            } else if Self.memberKinds.contains(declaration.kind) {
+            } else if Self.memberKinds.contains(declaration.kind) || declaration.kind == .functionSubscript {
                 uses.memberNames
             } else {
                 uses.names
             }
-            guard let site = names[baseName],
+            // The shared file itself is not read, so the name comes from another file of the target, where a
+            // file-scoped declaration is out of reach; a `@testable import` opens the module's internals.
+            let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
+            let isVisible = isVisibleOutsideItsModule(declaration)
+                || ((uses.sharedSourceFiles.contains(file) || !modules.isDisjoint(with: uses.testableModules)) && isVisibleOutsideItsFile(declaration))
+            // A use spelled through the type, `Store.shared` or `Store(...)`, places the match at this type's
+            // member rather than at the first use of any `shared` or `init`.
+            let qualifiedSite = enclosingType.flatMap { names["\($0).\(baseName)"] }
+            guard let site = qualifiedSite ?? names[baseName],
                   best.map({ site < $0.site }) ?? true,
-                  // The shared file itself is not read, so the name comes from another file of the target, where a
-                  // file-scoped declaration is out of reach.
-                  (uses.sharedSourceFiles.contains(file) && isVisibleOutsideItsFile(declaration)) || isVisibleOutsideItsModule(declaration),
+                  isVisible,
                   // A member, initializer or operator of a type is reached through the type, so a target that
                   // never names the type uses another `init` or `shared`.
                   enclosingType.map { uses.names[$0] != nil } ?? true
@@ -247,7 +263,11 @@ public final class SourceGraph {
             best = (site, target)
         }
         return best.map {
-            NameEvidenceOrigin(declaration: declaration, place: "\($0.site), a file of target \($0.target), which the scanned schemes do not build")
+            NameEvidenceOrigin(
+                declaration: declaration,
+                displayName: displayName(of: declaration),
+                place: "\($0.site), a file of target \($0.target), which the scanned schemes do not build"
+            )
         }
     }
 
@@ -301,6 +321,10 @@ public final class SourceGraph {
     private static let skippedBranchKinds = dynamicallyNamedKinds.union([
         .typealias, .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
     ])
+
+    /// Kinds a file of an unscanned target can name: the skipped-branch kinds and subscripts, which such a
+    /// file spells as `store[key]`.
+    private static let nameEvidenceKinds = skippedBranchKinds.union([.functionSubscript])
 
     /// The names a runtime lookup can spell for the declaration: its Swift base name, the Objective-C
     /// name of an exposed declaration when `@objc(name)` differs from it, and the setter selector of an

@@ -1,11 +1,11 @@
-import Configuration
-@testable import Indexer
-import Logger
-@testable import SourceGraph
-import SystemPackage
-import XCTest
-
 #if os(macOS)
+    import Configuration
+    @testable import Indexer
+    import Logger
+    @testable import SourceGraph
+    import SystemPackage
+    import XCTest
+
     /// The names an unscanned target's own Swift files use reach the graph with sites relative to the project
     /// root; a file the target shares with a scanned target is indexed there and is not read again.
     final class UnscannedTargetIndexerTest: XCTestCase {
@@ -30,7 +30,7 @@ import XCTest
         }
 
         func testRecordsNamesWithSitesRelativeToTheProjectRoot() throws {
-            let own = try write("Widgets.swift", "import Shared\n\nlet widget = SearchWidget()\nlet width = Store.shared.width\n")
+            let own = try write("Widgets.swift", "import Shared\n@testable import App\n\nlet widget = SearchWidget()\nlet width = Store.shared.width\n")
             let shared = try write("SearchWidget.swift", "struct SearchWidget { let entry: SearchEntry }\nstruct SearchEntry {}\n")
             let configuration = Configuration()
             configuration.projectRoot = root
@@ -45,10 +45,12 @@ import XCTest
             ).perform()
 
             let names = try XCTUnwrap(graph.unscannedTargetNames["WidgetsExtension"])
-            XCTAssertEqual(names.names["SearchWidget"], "Widgets.swift:3")
-            XCTAssertEqual(names.names["Store"], "Widgets.swift:4")
-            XCTAssertEqual(names.memberNames["shared"], "Widgets.swift:4")
-            XCTAssertEqual(names.constructionNames["width"], "Widgets.swift:4")
+            XCTAssertEqual(names.names["SearchWidget"], "Widgets.swift:4")
+            XCTAssertEqual(names.memberNames["init"], "Widgets.swift:4")
+            XCTAssertEqual(names.names["Store"], "Widgets.swift:5")
+            XCTAssertEqual(names.memberNames["shared"], "Widgets.swift:5")
+            XCTAssertEqual(names.constructionNames["width"], "Widgets.swift:5")
+            XCTAssertEqual(names.testableModules, ["App"])
             // Spelled only in the shared file, which the scanned target's index already covers.
             XCTAssertNil(names.names["SearchEntry"])
             XCTAssertNil(names.names["Shared"], "an import path is not a use")

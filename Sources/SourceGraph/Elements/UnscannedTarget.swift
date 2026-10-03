@@ -31,6 +31,8 @@ public struct UnscannedTargetNames {
     public var constructionNames: [String: String] = [:]
     /// The files the target compiles that a scanned target compiles too, normalized.
     public var sharedSourceFiles: Set<FilePath> = []
+    /// The modules the target's files import with `@testable`, whose internal declarations they can use.
+    public var testableModules: Set<String> = []
 
     public init() {}
 }

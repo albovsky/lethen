@@ -18,6 +18,12 @@ import Foundation
 public class PublicStore {
     public init() {}
 
+    /// Called only from `UnscannedTool`, as `PublicStore(label:)`.
+    public init(label: String) {}
+
+    /// Used only from `UnscannedTool`, as `store[0]`.
+    public subscript(index: Int) -> Int { index }
+
     /// Read from `UnscannedTool` only.
     public var memberReadFromUnscannedTarget = 0
 

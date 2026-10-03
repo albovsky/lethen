@@ -179,6 +179,11 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         assertReferenced(.class("PublicStore")) {
             self.assertNotReferenced(.varInstance("memberReadFromUnscannedTarget"))
             self.assertConfidence(.varInstance("memberReadFromUnscannedTarget"), .likely)
+            // `PublicStore(label:)` is a call of an initializer, `store[0]` of a subscript.
+            self.assertNotReferenced(.functionConstructor("init(label:)"))
+            self.assertConfidence(.functionConstructor("init(label:)"), .likely)
+            self.assertNotReferenced(.functionSubscript("subscript(_:)"))
+            self.assertConfidence(.functionSubscript("subscript(_:)"), .likely)
         }
         let reason = confidenceReason(ofDeclarationNamed: "onlyCalledFromUnscannedTarget()")
         XCTAssertEqual(reason.map { $0.components(separatedBy: " appears in ").first }, "its name")
@@ -191,16 +196,18 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
     func testDeclarationsOfASharedFileAreLikelyDirectlyAndThroughTheChain() {
         assertNotReferenced(.struct("SharedWidget"))
         assertConfidence(.struct("SharedWidget"), .likely)
-        XCTAssertTrue(confidenceReason(ofDeclarationNamed: "SharedWidget")?.hasSuffix(String(format: Self.unscannedPlace, 12)) == true)
+        XCTAssertTrue(confidenceReason(ofDeclarationNamed: "SharedWidget")?.hasSuffix(String(format: Self.unscannedPlace, 14)) == true)
 
         assertNotReferenced(.struct("SharedEntry"))
         assertConfidence(.struct("SharedEntry"), .likely)
         XCTAssertEqual(
-            confidenceReason(ofDeclarationNamed: "SharedEntry")?.hasPrefix("it is used by SharedWidget, whose name appears in "),
+            // `SharedWidget()` names both the type and its initializer; either carries the name on.
+            confidenceReason(ofDeclarationNamed: "SharedEntry")?.hasPrefix("it is used by SharedWidget") == true
+                && confidenceReason(ofDeclarationNamed: "SharedEntry")?.contains(", whose name appears in ") == true,
             true,
             confidenceReason(ofDeclarationNamed: "SharedEntry") ?? "nil"
         )
-        XCTAssertTrue(confidenceReason(ofDeclarationNamed: "SharedEntry")?.hasSuffix(String(format: Self.unscannedPlace, 12)) == true)
+        XCTAssertTrue(confidenceReason(ofDeclarationNamed: "SharedEntry")?.hasSuffix(String(format: Self.unscannedPlace, 14)) == true)
     }
 
     /// Retained controls: nothing names these in the unscanned target in a way that can use them.

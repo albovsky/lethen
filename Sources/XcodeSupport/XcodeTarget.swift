@@ -28,13 +28,20 @@ public final class XcodeTarget {
         target.dependencies.compactMapSet { $0.target?.name ?? $0.targetProxy?.remoteInfo }
     }
 
-    /// The name of the target's Swift module, which its index units carry: `PRODUCT_MODULE_NAME` when a
-    /// configuration sets it to a plain name, otherwise Xcode's default, the target name as a C identifier.
-    public var moduleName: String {
-        let configured = target.buildConfigurationList?.buildConfigurations.compactMap {
-            $0.buildSettings["PRODUCT_MODULE_NAME"]?.stringValue
-        }.first { !$0.contains("$(") }
-        return configured ?? Self.defaultModuleName(forTarget: name)
+    /// The names the target's Swift module can have, which its index units carry: each plain
+    /// `PRODUCT_MODULE_NAME` a configuration sets, and Xcode's default, the target name as a C identifier,
+    /// for a configuration that sets none. Which configuration a unit came from is not known here.
+    public var moduleNames: Set<String> {
+        let configurations = target.buildConfigurationList?.buildConfigurations ?? []
+        var names: Set<String> = []
+        for configuration in configurations {
+            if let configured = configuration.buildSettings["PRODUCT_MODULE_NAME"]?.stringValue, !configured.contains("$(") {
+                names.insert(configured)
+            } else {
+                names.insert(Self.defaultModuleName(forTarget: name))
+            }
+        }
+        return names.isEmpty ? [Self.defaultModuleName(forTarget: name)] : names
     }
 
     /// The module Xcode names a target by default: its name with every character that is not an ASCII

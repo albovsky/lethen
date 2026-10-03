@@ -31,6 +31,9 @@ public struct NameUseCollector {
     /// imports, comments, or whitespace.
     public private(set) var hasIndexableSyntax = false
 
+    /// The modules the syntax imports with `@testable`, whose internal declarations it can use.
+    public private(set) var testableModules: Set<String> = []
+
     private let onUse: ((Use) -> Void)?
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order.
@@ -39,14 +42,26 @@ public struct NameUseCollector {
         collect(node, inPattern: false)
     }
 
-    private mutating func record(_ name: String, isMember: Bool, isConstruction: Bool, at node: Syntax) {
-        uses[name] = (uses[name] ?? false) || isMember
-        if isConstruction { constructionUses.insert(name) }
+    /// Records a use. A `qualified` name, `Store.shared`, is a second spelling of a use already recorded by
+    /// its bare name; it reaches `onUse` only, since `uses` holds the names the index records.
+    private mutating func record(_ name: String, isMember: Bool, isConstruction: Bool, at node: Syntax, qualified: Bool = false) {
+        if !qualified {
+            uses[name] = (uses[name] ?? false) || isMember
+            if isConstruction { constructionUses.insert(name) }
+        }
         onUse?(Use(name: name, isMember: isMember, isConstruction: isConstruction, position: node.positionAfterSkippingLeadingTrivia))
     }
 
     private mutating func collect(_ node: Syntax, inPattern: Bool) {
-        if node.is(ImportDeclSyntax.self) { return }
+        if let importDecl = node.as(ImportDeclSyntax.self) {
+            let isTestable = importDecl.attributes.contains {
+                if case let .attribute(attribute) = $0 { attribute.attributeName.trimmedDescription == "testable" } else { false }
+            }
+            if isTestable, let module = importDecl.path.first?.name.text {
+                testableModules.insert(module)
+            }
+            return
+        }
 
         // Any other declaration, call, or reference is recorded by the index.
         if node.is(DeclSyntax.self) || node.is(FunctionCallExprSyntax.self)
@@ -75,16 +90,33 @@ public struct NameUseCollector {
             // `process<Int>()` wraps the reference in a generic specialization before the call.
             let specialized = reference.parent?.as(GenericSpecializationExprSyntax.self)
             let callee = specialized.flatMap { $0.expression.id == reference.id ? Syntax($0) : nil } ?? Syntax(reference)
+            let isCalled = callee.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == callee.id
             let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
-                || callee.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == callee.id
+                || isCalled
                 || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
             record(name, isMember: isMember, isConstruction: isMember && !inPattern, at: node)
+            // `Widget(...)` calls an initializer of `Widget`, which the index records under `init`; a type name
+            // starts with a capital letter, a function does not. The use is also recorded as `Widget.init`, so
+            // a match can be placed at a use of this type's initializer rather than any type's.
+            if isCalled, reference.parent?.is(MemberAccessExprSyntax.self) != true, name.first?.isUppercase == true {
+                record("init", isMember: true, isConstruction: !inPattern, at: node)
+                record("\(name).init", isMember: true, isConstruction: !inPattern, at: node, qualified: true)
+            }
+            // `Store.shared` names the member through its type; recorded as `Store.shared` as well.
+            if let access = reference.parent?.as(MemberAccessExprSyntax.self), access.declName.id == reference.id,
+               let base = access.base?.as(DeclReferenceExprSyntax.self)?.baseName.text, base.first?.isUppercase == true
+            {
+                record("\(base).\(name)", isMember: true, isConstruction: !inPattern, at: node, qualified: true)
+            }
         } else if let type = node.as(IdentifierTypeSyntax.self) {
             let name = type.name.identifier?.name ?? type.name.text
             record(name, isMember: false, isConstruction: false, at: node)
         } else if let type = node.as(MemberTypeSyntax.self) {
             let name = type.name.identifier?.name ?? type.name.text
             record(name, isMember: true, isConstruction: !inPattern, at: node)
+        } else if node.is(SubscriptCallExprSyntax.self) {
+            // `store[key]` is a use of a subscript, which the index records under that name.
+            record("subscript", isMember: true, isConstruction: !inPattern, at: node)
         }
         for child in node.children(viewMode: .sourceAccurate) {
             collect(child, inPattern: inPattern)
@@ -99,16 +131,22 @@ public struct NameUseCollector {
         public let line: Int
     }
 
+    /// What a file uses: each name with its line, and the modules it imports with `@testable`.
+    public struct FileUses {
+        public let uses: [FileUse]
+        public let testableModules: Set<String>
+    }
+
     /// Every use in the Swift file at `path`. Throws when the file cannot be read as UTF-8; a file that
     /// does not parse cleanly still yields the uses SwiftSyntax recovered.
-    public static func uses(inFileAt path: FilePath) throws -> [FileUse] {
+    public static func uses(inFileAt path: FilePath) throws -> FileUses {
         let source = try String(contentsOf: path.url, encoding: .utf8)
         let tree = Parser.parse(source: source)
         let converter = SourceLocationConverter(fileName: path.string, tree: tree)
         var fileUses: [FileUse] = []
-        _ = NameUseCollector(Syntax(tree)) { use in
+        let collector = NameUseCollector(Syntax(tree)) { use in
             fileUses.append(FileUse(name: use.name, isMember: use.isMember, isConstruction: use.isConstruction, line: converter.location(for: use.position).line))
         }
-        return fileUses
+        return FileUses(uses: fileUses, testableModules: collector.testableModules)
     }
 }

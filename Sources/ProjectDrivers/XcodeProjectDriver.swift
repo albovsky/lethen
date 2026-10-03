@@ -291,7 +291,8 @@
         /// A file compiled into several targets has a unit for each target that built it, named by module, so a
         /// unit counts for a target unless the file's modules show another target of the project compiled it
         /// instead. A unit whose module matches no target, such as a clang one, counts for every target that
-        /// compiles the file, which errs toward scanned.
+        /// compiles the file, which errs toward scanned. A target's module is any `PRODUCT_MODULE_NAME` its
+        /// configurations set, otherwise the default derived from its name.
         private func unscannedTargets(
             among projectTargets: Set<XcodeTarget>,
             indexedModules: [FilePath: Set<String>]
@@ -304,10 +305,10 @@
             let compiled = Dictionary(uniqueKeysWithValues: projectTargets.map { ($0.name, compiledFiles($0)) })
             func isIndexed(_ file: FilePath, for target: XcodeTarget) -> Bool {
                 guard let fileModules = modules[file] else { return false }
-                guard !fileModules.contains(target.moduleName) else { return true }
+                guard fileModules.isDisjoint(with: target.moduleNames) else { return true }
 
                 let builtByAnother = projectTargets.contains {
-                    $0.name != target.name && fileModules.contains($0.moduleName) && compiled[$0.name]?.contains(file) == true
+                    $0.name != target.name && !fileModules.isDisjoint(with: $0.moduleNames) && compiled[$0.name]?.contains(file) == true
                 }
                 return !builtByAnother
             }

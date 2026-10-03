@@ -113,6 +113,30 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", accessibility: .internal)).confidence, .likely)
     }
 
+    /// A `@testable import` of the declaration's module opens its internal declarations to the target.
+    func testTestableImportMakesInternalDeclarationsVisible() {
+        let graph = makeGraph()
+        use(graph, ["Helper"])
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", in: otherFile)).confidence, .certain)
+
+        graph.addUnscannedTargetNames(names: [:], members: [:], construction: [:], target: "WidgetsExtension", testableModules: ["App"])
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Helper", in: otherFile)).confidence, .likely)
+        // Not a file-scoped one, which no import opens.
+        use(graph, ["Secret"])
+        XCTAssertEqual(graph.assessConfidence(of: declaration("Secret", in: otherFile, accessibility: .private)).confidence, .certain)
+    }
+
+    func testSubscriptsAreMatchedThroughTheirType() {
+        let graph = makeGraph()
+        let type = declaration("Store", kind: .class, in: otherFile, accessibility: .public)
+        let subscriptDeclaration = declaration("subscript(_:)", kind: .functionSubscript, in: otherFile, accessibility: .public, parent: type)
+        use(graph, ["subscript"], members: ["subscript"], construction: ["subscript"])
+        XCTAssertEqual(graph.assessConfidence(of: subscriptDeclaration).confidence, .certain)
+
+        use(graph, ["Store"])
+        XCTAssertEqual(graph.assessConfidence(of: subscriptDeclaration).confidence, .likely)
+    }
+
     func testMembersAndEnumCasesNeedTheirOwnTiers() {
         let graph = makeGraph()
         use(graph, ["field", "matched"], members: ["matched"])
