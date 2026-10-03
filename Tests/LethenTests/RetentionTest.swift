@@ -1,3 +1,4 @@
+@testable import PeripheryKit
 import SystemPackage
 @testable import TestShared
 import XCTest
@@ -6,6 +7,21 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     func testNonReferencedClass() throws {
         try analyze {
             assertNotReferenced(.class("FixtureClass1"))
+        }
+    }
+
+    /// `lethen explain` reads the assessor the report was built from, so the two cannot disagree.
+    func testResultsAndExplainShareOneConfidenceAssessment() throws {
+        try analyze {
+            assertNotReferenced(.class("FixtureConfidenceNamedInLiteral"))
+            assertConfidence(.class("FixtureConfidenceNamedInLiteral"), .likely)
+            assertNotReferenced(.class("FixtureConfidenceNamedNowhere"))
+            assertConfidence(.class("FixtureConfidenceNamedNowhere"), .certain)
+            XCTAssertFalse(Self.results.isEmpty)
+            for result in Self.results {
+                XCTAssertEqual(Self.confidence.assess(result.declaration).confidence, result.confidence, "\(result.declaration)")
+                XCTAssertEqual(Self.confidence.assess(result.declaration).reason, result.confidenceReason, "\(result.declaration)")
+            }
         }
     }
 

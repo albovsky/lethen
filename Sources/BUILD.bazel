@@ -75,6 +75,10 @@ swift_library(
 swift_library(
     name = "SourceGraph",
     srcs = [
+        "SourceGraph/Confidence/ConfidenceAssessor.swift",
+        "SourceGraph/Confidence/ConfidenceEvidence.swift",
+        "SourceGraph/Confidence/ConfidenceEvidenceCollector.swift",
+        "SourceGraph/Confidence/NameSites.swift",
         "SourceGraph/Elements/Accessibility.swift",
         "SourceGraph/Elements/AssetReference.swift",
         "SourceGraph/Elements/ClangCoverage.swift",

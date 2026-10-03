@@ -7,10 +7,12 @@ import Foundation
 public struct SourceGraphExplainer {
     private let graph: SourceGraph
     private let configuration: Configuration
+    private let confidence: ConfidenceAssessor
 
-    public init(graph: SourceGraph, configuration: Configuration) {
+    public init(graph: SourceGraph, configuration: Configuration, confidence: ConfidenceAssessor) {
         self.graph = graph
         self.configuration = configuration
+        self.confidence = confidence
     }
 
     /// Declarations whose USR is `query`, or whose name matches it. A name matches with or without its
@@ -85,7 +87,7 @@ public struct SourceGraphExplainer {
     }
 
     private func confidenceLine(for declaration: Declaration) -> String {
-        switch graph.assessConfidence(of: declaration).reason {
+        switch confidence.assess(declaration).reason {
         case let reason?:
             "Confidence: likely, because \(reason). Check by hand before removing it."
         case nil:

@@ -10,18 +10,20 @@ import SystemPackage
 ///
 /// Those files have no index unit, so a use they make of scanned code is not a reference in the graph and
 /// the declaration is reported as certainly unused. A declaration's name in such a file is evidence that it
-/// may be used, so the names go into the graph for `SourceGraph.assessConfidence` to downgrade the
+/// may be used, so the names go into the confidence evidence for `ConfidenceAssessor` to downgrade the
 /// declarations they match. They are read from syntax alone, so a use from an Objective-C file of the target
 /// is not seen.
 final class UnscannedTargetIndexer: Indexer {
     private let targets: [UnscannedTarget]
     private let graph: SourceGraphMutex
+    private let evidence: ConfidenceEvidenceCollector
     private let logger: ContextualLogger
     private let projectRoot: FilePath
 
-    required init(targets: [UnscannedTarget], graph: SourceGraphMutex, logger: ContextualLogger, configuration: Configuration) {
+    required init(targets: [UnscannedTarget], graph: SourceGraphMutex, evidence: ConfidenceEvidenceCollector, logger: ContextualLogger, configuration: Configuration) {
         self.targets = targets
         self.graph = graph
+        self.evidence = evidence
         self.logger = logger.contextualized(with: "unscanned-target")
         projectRoot = configuration.projectRoot
         super.init(configuration: configuration)
@@ -29,8 +31,8 @@ final class UnscannedTargetIndexer: Indexer {
 
     func perform() throws {
         for target in targets {
-            graph.withLock {
-                $0.addUnscannedTargetNames(names: [:], members: [:], construction: [:], target: target.name, sharedSourceFiles: target.sharedSourceFiles)
+            evidence.add {
+                $0.addUnscannedTargetNames(NameSites(), target: target.name, sharedSourceFiles: target.sharedSourceFiles)
             }
         }
 
@@ -57,8 +59,12 @@ final class UnscannedTargetIndexer: Indexer {
                 if use.isMember { Self.keepSmallest(site, for: use.name, in: &members) }
                 if use.isConstruction { Self.keepSmallest(site, for: use.name, in: &construction) }
             }
-            graph.withLock {
-                $0.addUnscannedTargetNames(names: names, members: members, construction: construction, target: targetName, testableModules: fileUses.testableModules)
+            evidence.add {
+                $0.addUnscannedTargetNames(
+                    NameSites(names: names, memberNames: members, constructionNames: construction),
+                    target: targetName,
+                    testableModules: fileUses.testableModules
+                )
             }
             logger.debug("\(file.string): \(names.count) names")
         }
