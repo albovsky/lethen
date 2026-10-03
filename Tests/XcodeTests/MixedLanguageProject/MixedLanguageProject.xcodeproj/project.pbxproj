@@ -24,6 +24,7 @@
 		8B2D1F6C3E505B7C9DAE1F1A /* ImportsNothing.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F14 /* ImportsNothing.m */; };
 		8B2D1F6C3E505B7C9DAE1F3A /* ImportsUsedNestedEnum.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F34 /* ImportsUsedNestedEnum.m */; };
 		8B2D1F6C3E505B7C9DAE1F4A /* ImportsIgnoredAll.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F44 /* ImportsIgnoredAll.m */; };
+		8B2D1F6C3E505B7C9DAE1F5A /* ImportsForwardDeclaration.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F54 /* ImportsForwardDeclaration.m */; };
 		8B2D1F6C3E505B7C9DAE1F1B /* ImportsIgnored.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F15 /* ImportsIgnored.m */; };
 		8B2D1F6C3E505B7C9DAE1F1C /* ImportsUsedByHeader.m in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D1F6C3E505B7C9DAE1F16 /* ImportsUsedByHeader.m */; };
 /* End PBXBuildFile section */
@@ -61,6 +62,7 @@
 		8B2D1F6C3E505B7C9DAE1F14 /* ImportsNothing.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsNothing.m; sourceTree = "<group>"; };
 		8B2D1F6C3E505B7C9DAE1F34 /* ImportsUsedNestedEnum.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsUsedNestedEnum.m; sourceTree = "<group>"; };
 		8B2D1F6C3E505B7C9DAE1F44 /* ImportsIgnoredAll.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsIgnoredAll.m; sourceTree = "<group>"; };
+		8B2D1F6C3E505B7C9DAE1F54 /* ImportsForwardDeclaration.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsForwardDeclaration.m; sourceTree = "<group>"; };
 		8B2D1F6C3E505B7C9DAE1F15 /* ImportsIgnored.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsIgnored.m; sourceTree = "<group>"; };
 		8B2D1F6C3E505B7C9DAE1F16 /* ImportsUsedByHeader.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImportsUsedByHeader.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -87,6 +89,7 @@
 				8B2D1F6C3E505B7C9DAE1F14 /* ImportsNothing.m */,
 				8B2D1F6C3E505B7C9DAE1F34 /* ImportsUsedNestedEnum.m */,
 				8B2D1F6C3E505B7C9DAE1F44 /* ImportsIgnoredAll.m */,
+				8B2D1F6C3E505B7C9DAE1F54 /* ImportsForwardDeclaration.m */,
 				8B2D1F6C3E505B7C9DAE1F15 /* ImportsIgnored.m */,
 				8B2D1F6C3E505B7C9DAE1F16 /* ImportsUsedByHeader.m */,
 				8B2D1F6C3E505B7C9DAE1F08 /* ImportsUsedByHeader.h */,
@@ -263,6 +266,7 @@
 				8B2D1F6C3E505B7C9DAE1F1A /* ImportsNothing.m in Sources */,
 				8B2D1F6C3E505B7C9DAE1F3A /* ImportsUsedNestedEnum.m in Sources */,
 				8B2D1F6C3E505B7C9DAE1F4A /* ImportsIgnoredAll.m in Sources */,
+				8B2D1F6C3E505B7C9DAE1F5A /* ImportsForwardDeclaration.m in Sources */,
 				8B2D1F6C3E505B7C9DAE1F1B /* ImportsIgnored.m in Sources */,
 				8B2D1F6C3E505B7C9DAE1F1C /* ImportsUsedByHeader.m in Sources */,
 			);

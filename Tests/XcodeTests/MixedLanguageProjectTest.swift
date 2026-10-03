@@ -214,6 +214,14 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         }
     }
 
+    /// `@class Name;` names the type without using it, so it is not a use of the module either.
+    func testForwardDeclarationIsNotAUseOfTheModule() {
+        file("ImportsForwardDeclaration.m") {
+            self.assertImport("MixedFramework", inFile: "ImportsForwardDeclaration.m")
+            self.assertNotReferenced(.module("MixedFramework"))
+        }
+    }
+
     /// `// periphery:ignore:all` ignores the whole file, imports included.
     func testRetainsEveryImportOfAFileWithAFileWideIgnoreCommand() {
         file("ImportsIgnoredAll.m") {

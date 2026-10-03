@@ -134,6 +134,14 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("@import A;\n/* periphery:ignore:all */\n").map(\.commentCommands), [[.ignoreAll]])
     }
 
+    /// The header name of an include is skipped, but a comment after it is still a comment.
+    func testFileWideIgnoreCommandOnAnIncludeLine() {
+        let found = imports("#import \"Header.h\" // periphery:ignore:all\n@import A;\n")
+
+        XCTAssertEqual(found.map(\.commentCommands), [[.ignoreAll]])
+        XCTAssertEqual(imports("#include <A//ignore:all.h>\n@import A;\n").map(\.commentCommands), [[]])
+    }
+
     func testIgnoreCommandOnTheSameLine() throws {
         let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
 

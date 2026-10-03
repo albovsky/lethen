@@ -41,8 +41,15 @@ enum ClangImportScanner {
                     conditionalDepth = max(0, conditionalDepth - 1)
                 }
                 // A header name such as `<A//B.h>` is not code, and other directives are scanned as code.
-                index = ClangLiteralScanner.isIncludeDirective(at: index, in: bytes)
-                    ? ClangLiteralScanner.endOfLine(from: index, in: bytes) : index + 1
+                // A comment after the header name still is one.
+                if ClangLiteralScanner.isIncludeDirective(at: index, in: bytes) {
+                    let end = ClangLiteralScanner.endOfLine(from: index, in: bytes)
+                    ignoresAll = ignoresAll || trailingComment(from: index, to: end, in: bytes)
+                        .map { CommentCommand.parseCommand(inComment: $0) == .ignoreAll } ?? false
+                    index = end
+                } else {
+                    index += 1
+                }
             case ClangLiteralScanner.slash where bytes[safe: index + 1] == ClangLiteralScanner.slash:
                 let end = ClangLiteralScanner.endOfLine(from: index, in: bytes)
                 ignoresAll = ignoresAll || CommentCommand.parseCommand(inComment: text(bytes[index ..< end])) == .ignoreAll
@@ -101,6 +108,28 @@ enum ClangImportScanner {
     /// The slice as text; a slice that is not UTF-8 is empty, so it names no module and holds no command.
     private static func text(_ slice: ArraySlice<UInt8>) -> String {
         String(bytes: slice, encoding: .utf8) ?? ""
+    }
+
+    /// The comment that follows the header name of an include directive on its line, or `nil`.
+    private static func trailingComment(from index: Int, to end: Int, in bytes: [UInt8]) -> String? {
+        var cursor = index
+        var inHeaderName: UInt8?
+        while cursor + 1 < end {
+            let byte = bytes[cursor]
+            if let closing = inHeaderName {
+                if byte == closing { inHeaderName = nil }
+            } else if byte == ClangLiteralScanner.quote {
+                inHeaderName = ClangLiteralScanner.quote
+            } else if byte == UInt8(ascii: "<") {
+                inHeaderName = UInt8(ascii: ">")
+            } else if byte == ClangLiteralScanner.slash,
+                      bytes[cursor + 1] == ClangLiteralScanner.slash || bytes[cursor + 1] == ClangLiteralScanner.star
+            {
+                return text(bytes[cursor ..< end])
+            }
+            cursor += 1
+        }
+        return nil
     }
 
     /// The lowercase name after the `#` at `index`, such as `ifdef`, or an empty string.

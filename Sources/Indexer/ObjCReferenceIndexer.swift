@@ -73,6 +73,14 @@ final class ObjCReferenceIndexer: Indexer {
                 let usr = occurrence.symbol.usr
                 guard occurrence.roles.contains(.reference) else { return }
 
+                // A forward declaration (`@class Name;`, `@protocol Name;`) is indexed as a reference
+                // with no relation, but it names the type without using it, and needs no import.
+                if Self.forwardDeclarableKinds.contains(occurrence.symbol.kind) {
+                    var hasRelation = false
+                    occurrence.forEach(relation: { _, _ in hasRelation = true })
+                    guard hasRelation else { return }
+                }
+
                 if record.collectsReferencedUSRs {
                     referencedUSRs.insert(usr)
                 }
@@ -80,14 +88,6 @@ final class ObjCReferenceIndexer: Indexer {
                 guard usr.hasPrefix("c:"),
                       occurrence.roles.isDisjoint(with: [.definition, .declaration])
                 else { return }
-
-                // A forward declaration (`@class Name;`, `@protocol Name;`) is indexed as a reference
-                // with no relation, but it names the type without using it.
-                if Self.forwardDeclarableKinds.contains(occurrence.symbol.kind) {
-                    var hasRelation = false
-                    occurrence.forEach(relation: { _, _ in hasRelation = true })
-                    guard hasRelation else { return }
-                }
 
                 let location = occurrence.location
                 occurrences.append(Occurrence(usr: usr, file: record.file, line: location.line, column: location.column))
