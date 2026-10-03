@@ -9,6 +9,8 @@ public protocol XcodeProjectlike: AnyObject {
     var sourceRoot: FilePath { get }
     /// The source roots of every project this container loads.
     var projectSourceRoots: [FilePath] { get }
+    /// The regular files every project this container loads declares as file references, such as an `.xcconfig`.
+    var declaredInputFiles: Set<FilePath> { get }
     /// The project-level build configurations of every project this one loads, such as Debug and Release.
     var buildConfigurationNames: Set<String> { get }
 
@@ -23,6 +25,10 @@ public protocol XcodeProjectlike: AnyObject {
 public extension XcodeProjectlike {
     var projectSourceRoots: [FilePath] {
         [sourceRoot]
+    }
+
+    var declaredInputFiles: Set<FilePath> {
+        []
     }
 
     var name: String {

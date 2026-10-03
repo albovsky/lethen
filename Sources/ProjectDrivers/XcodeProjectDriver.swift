@@ -374,8 +374,10 @@
             guard (try? project.targets.forEach { try $0.identifyFiles() }) != nil else { return [] }
 
             let kinds = ProjectFileKind.allCases
-            let files = project.targets.flatMapSet { target in kinds.flatMapSet { target.files(kind: $0) } }
             let roots = ([project.sourceRoot] + project.projectSourceRoots).map { $0.lexicallyNormalized() }.removingDuplicates()
+            // Declared files outside every root, such as an external .xcconfig, are not reached by the walk.
+            let declared = project.declaredInputFiles.filter { file in !roots.contains { file.starts(with: $0) } }
+            let files = project.targets.flatMapSet { target in kinds.flatMapSet { target.files(kind: $0) } }.union(declared)
             return buildConfigurations.filter { buildConfiguration in
                 guard let dates = try? xcodebuild.completedBuildDates(
                     project: project,

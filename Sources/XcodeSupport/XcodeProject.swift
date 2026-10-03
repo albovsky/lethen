@@ -123,9 +123,43 @@ public final class XcodeProject: XcodeProjectlike {
         XcodeSharedSchemes.names(in: [path])
     }
 
-    /// This project's source root followed by those of every project it references, depth first.
+    /// This project's source root, the directories it declares outside that root, and those of every project it
+    /// references, depth first. The declared directories are local Swift packages and folder references.
     public var projectSourceRoots: [FilePath] {
-        [sourceRoot] + subProjects.flatMap(\.projectSourceRoots)
+        [sourceRoot] + externalDirectories + subProjects.flatMap(\.projectSourceRoots)
+    }
+
+    /// Every regular file the project declares as a file reference, such as an `.xcconfig`, in this project and
+    /// the ones it references. Each changes what a build compiles, wherever it lives.
+    public var declaredInputFiles: Set<FilePath> {
+        let root = sourceRoot.lexicallyNormalized()
+        let own = Set(xcodeProject.pbxproj.fileReferences.compactMap { reference -> FilePath? in
+            guard let path = (try? reference.fullPath(sourceRoot: root.string)).flatMap(\.self) else { return nil }
+
+            let file = FilePath(path).lexicallyNormalized()
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: file.string, isDirectory: &isDirectory), !isDirectory.boolValue else { return nil }
+
+            return file
+        })
+        return own.union(subProjects.flatMapSet(\.declaredInputFiles))
+    }
+
+    /// The local Swift packages and folder references that live outside the source root.
+    private var externalDirectories: [FilePath] {
+        let root = sourceRoot.lexicallyNormalized()
+        let packages = (xcodeProject.pbxproj.rootObject?.localPackages ?? []).map {
+            FilePath($0.relativePath).isAbsolute ? FilePath($0.relativePath) : root.appending($0.relativePath)
+        }
+        let folders = xcodeProject.pbxproj.fileReferences.compactMap { reference -> FilePath? in
+            (try? reference.fullPath(sourceRoot: root.string)).flatMap(\.self).map { FilePath($0) }
+        }
+        return (packages + folders).map { $0.lexicallyNormalized() }.filter { directory in
+            var isDirectory: ObjCBool = false
+            return !directory.starts(with: root)
+                && FileManager.default.fileExists(atPath: directory.string, isDirectory: &isDirectory)
+                && isDirectory.boolValue
+        }
     }
 
     /// This project followed by every project it references, depth first.

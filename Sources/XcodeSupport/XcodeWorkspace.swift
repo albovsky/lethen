@@ -48,6 +48,10 @@ public final class XcodeWorkspace: XcodeProjectlike {
         projects.flatMap(\.projectSourceRoots)
     }
 
+    public var declaredInputFiles: Set<FilePath> {
+        projects.flatMapSet(\.declaredInputFiles)
+    }
+
     public func schemes(additionalArguments: [String]) throws -> Set<String> {
         try xcodebuild.schemes(project: self, additionalArguments: additionalArguments)
     }

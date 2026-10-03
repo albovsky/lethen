@@ -282,7 +282,87 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         XCTAssertEqual(shell.streamed.count, 1, "\(shell.streamed)")
     }
 
+    /// A build setting file the project declares can live outside its directory; editing it changes how the build
+    /// compiles, such as its Swift compilation conditions, so the completed build is not reused.
+    func testEditedXcconfigOutsideTheScannedDirectoryBuilds() throws {
+        let external = root.appending("External")
+        try FileManager.default.createDirectory(atPath: external.string, withIntermediateDirectories: true)
+        let xcconfig = external.appending("Extra.xcconfig")
+        try "SWIFT_ACTIVE_COMPILATION_CONDITIONS = A\n".write(to: xcconfig.url, atomically: true, encoding: .utf8)
+        try editProject { text in
+            text.replacingOccurrences(
+                of: "/* Begin PBXFileReference section */\n",
+                with: "/* Begin PBXFileReference section */\n\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* Extra.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Extra.xcconfig; path = ../External/Extra.xcconfig; sourceTree = \"<group>\"; };\n"
+            ).replacingOccurrences(
+                of: "\t\t\t\t3C57B168ABF45A4AEDE2A1AB /* Products */,\n\t\t\t);\n\t\t\tsourceTree",
+                with: "\t\t\t\t3C57B168ABF45A4AEDE2A1AB /* Products */,\n\t\t\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* Extra.xcconfig */,\n\t\t\t);\n\t\t\tsourceTree"
+            )
+        }
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "SWIFT_ACTIVE_COMPILATION_CONDITIONS = B\n".write(to: xcconfig.url, atomically: false, encoding: .utf8)
+        })
+    }
+
+    /// A local package outside the project's directory is compiled with the project; a file added to it changes what
+    /// the build compiles, so the completed build is not reused.
+    func testFileAddedToALocalPackageOutsideTheScannedDirectoryBuilds() throws {
+        let package = root.appending("ExternalPackage")
+        try FileManager.default.createDirectory(atPath: package.appending("Sources/Library").string, withIntermediateDirectories: true)
+        try "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"ExternalPackage\", targets: [.target(name: \"Library\")])\n"
+            .write(to: package.appending("Package.swift").url, atomically: true, encoding: .utf8)
+        try "public func library() {}\n".write(to: package.appending("Sources/Library/Library.swift").url, atomically: true, encoding: .utf8)
+        try editProject { text in
+            text.replacingOccurrences(of: "\t\t\tmainGroup = ", with: "\t\t\tpackageReferences = (\n\t\t\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* XCLocalSwiftPackageReference \"../ExternalPackage\" */,\n\t\t\t);\n\t\t\tmainGroup = ")
+                .replacingOccurrences(
+                    of: "/* End PBXProject section */\n",
+                    with: "/* End PBXProject section */\n\n/* Begin XCLocalSwiftPackageReference section */\n\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* XCLocalSwiftPackageReference \"../ExternalPackage\" */ = {\n\t\t\tisa = XCLocalSwiftPackageReference;\n\t\t\trelativePath = ../ExternalPackage;\n\t\t};\n/* End XCLocalSwiftPackageReference section */\n"
+                )
+        }
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "public func added() {}\n".write(to: package.appending("Sources/Library/Added.swift").url, atomically: true, encoding: .utf8)
+        })
+    }
+
     // MARK: - Private
+
+    private func editProject(_ edit: (String) -> String) throws {
+        let pbxproj = project.appending("project.pbxproj")
+        let text = try String(contentsOf: pbxproj.url, encoding: .utf8)
+        let edited = edit(text)
+        XCTAssertNotEqual(edited, text)
+        try edited.write(to: pbxproj.url, atomically: true, encoding: .utf8)
+    }
+
+    /// Plants a completed build of the copy, ages every file, runs `change`, and expects `build()` to run one build.
+    private func assertBuilds(afterPlantedBuildDoing change: () throws -> Void, file: StaticString = #filePath, line: UInt = #line) throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let configuration = Self.configuration(["Debug"], buildArguments: buildArguments)
+        let scanned = try Self.load(project, shell: shell)
+        let schemes = ["ConfigurationsProject"]
+        let directory = try xcodebuild.derivedDataPath(for: scanned, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        defer {
+            try? FileManager.default.removeItem(atPath: directory.string)
+            try? FileManager.default.removeItem(atPath: directory.string + ".lock")
+        }
+
+        try xcodebuild.beginBuild(project: scanned, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try xcodebuild.completeBuild(project: scanned, schemes: schemes, configuration: "Debug", buildArguments: buildArguments)
+        try FileManager.default.createDirectory(atPath: directory.appending("Index.noindex/DataStore/v5/units").string, withIntermediateDirectories: true)
+        let old = Date(timeIntervalSinceNow: -3600)
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(atPath: root.string), file: file, line: line)
+        for case let relative as String in enumerator {
+            try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: root.appending(relative).string)
+        }
+        try change()
+
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: scanned, schemes: Set(schemes))
+        try driver.build()
+
+        XCTAssertEqual(shell.streamed.count, 1, "\(shell.streamed)", file: file, line: line)
+    }
 
     private struct Builds {
         /// The build commands `build()` ran.
