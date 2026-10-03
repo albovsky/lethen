@@ -371,6 +371,10 @@
         /// without a build, which has its own checks.
         private func reusableConfigurations() -> [String?] {
             guard !configuration.cleanBuild, !configuration.skipBuild, configuration.indexStorePath.isEmpty else { return [] }
+            guard !project.hasUnenumerableBuildInputs else {
+                logger.debug("Building: a Run Script input cannot be resolved to a path")
+                return []
+            }
             guard (try? project.targets.forEach { try $0.identifyFiles() }) != nil else { return [] }
 
             let kinds = ProjectFileKind.allCases

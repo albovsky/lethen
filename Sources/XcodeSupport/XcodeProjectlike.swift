@@ -9,8 +9,12 @@ public protocol XcodeProjectlike: AnyObject {
     var sourceRoot: FilePath { get }
     /// The source roots of every project this container loads.
     var projectSourceRoots: [FilePath] { get }
-    /// The regular files every project this container loads declares as file references, such as an `.xcconfig`.
+    /// The files every project this container loads declares as file references, such as an `.xcconfig`,
+    /// or as Run Script inputs.
     var declaredInputFiles: Set<FilePath> { get }
+    /// Whether a Run Script input of any project this container loads cannot be resolved to a path, so a build's
+    /// inputs cannot all be checked.
+    var hasUnenumerableBuildInputs: Bool { get }
     /// The project-level build configurations of every project this one loads, such as Debug and Release.
     var buildConfigurationNames: Set<String> { get }
 
@@ -29,6 +33,10 @@ public extension XcodeProjectlike {
 
     var declaredInputFiles: Set<FilePath> {
         []
+    }
+
+    var hasUnenumerableBuildInputs: Bool {
+        false
     }
 
     var name: String {

@@ -122,6 +122,34 @@ final class XcodeBuildInputsTest: XCTestCase {
         XCTAssertEqual(change(), root.appending(scheme))
     }
 
+    /// A listed file is held to the same limit as one found in a root: only a compiled source may be newer than the
+    /// build's start.
+    func testListedFileThatIsNotACompiledSourceEditedDuringTheBuildIsReported() throws {
+        let other = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen listed \(UUID().uuidString)").path)
+        try FileManager.default.createDirectory(at: other.url, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: other.url) }
+
+        for name in ["Extra.xcconfig", "Shared.h"] {
+            let file = other.appending(name)
+            try Data().write(to: file.url)
+            try FileManager.default.setAttributes([.modificationDate: between], ofItemAtPath: file.string)
+
+            XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root], files: [file], started: started, completed: completed), file, name)
+        }
+
+        let source = other.appending("Shared.swift")
+        try Data().write(to: source.url)
+        try FileManager.default.setAttributes([.modificationDate: between], ofItemAtPath: source.string)
+
+        XCTAssertNil(XcodeBuildInputs.firstChange(roots: [root], files: [source], started: started, completed: completed))
+    }
+
+    func testMissingRootIsReported() {
+        let missing = root.appending("Removed")
+
+        XCTAssertEqual(XcodeBuildInputs.firstChange(roots: [root, missing], files: [], started: started, completed: completed), missing)
+    }
+
     func testUnreadableDirectoryIsReported() throws {
         let locked = root.appending("Locked")
         try write("Locked/Hidden.swift")

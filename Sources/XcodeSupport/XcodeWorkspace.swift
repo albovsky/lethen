@@ -52,6 +52,10 @@ public final class XcodeWorkspace: XcodeProjectlike {
         projects.flatMapSet(\.declaredInputFiles)
     }
 
+    public var hasUnenumerableBuildInputs: Bool {
+        projects.contains(where: \.hasUnenumerableBuildInputs)
+    }
+
     public func schemes(additionalArguments: [String]) throws -> Set<String> {
         try xcodebuild.schemes(project: self, additionalArguments: additionalArguments)
     }

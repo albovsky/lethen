@@ -285,10 +285,75 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
     /// A build setting file the project declares can live outside its directory; editing it changes how the build
     /// compiles, such as its Swift compilation conditions, so the completed build is not reused.
     func testEditedXcconfigOutsideTheScannedDirectoryBuilds() throws {
-        let external = root.appending("External")
-        try FileManager.default.createDirectory(atPath: external.string, withIntermediateDirectories: true)
-        let xcconfig = external.appending("Extra.xcconfig")
-        try "SWIFT_ACTIVE_COMPILATION_CONDITIONS = A\n".write(to: xcconfig.url, atomically: true, encoding: .utf8)
+        let xcconfig = try declareExternalXcconfig()
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "SWIFT_ACTIVE_COMPILATION_CONDITIONS = B\n".write(to: xcconfig.url, atomically: false, encoding: .utf8)
+        })
+    }
+
+    /// A declared file that no longer exists is a change, not a file to forget.
+    func testDeletedXcconfigOutsideTheScannedDirectoryBuilds() throws {
+        let xcconfig = try declareExternalXcconfig()
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try FileManager.default.removeItem(atPath: xcconfig.string)
+        })
+    }
+
+    /// A local package outside the project's directory is compiled with the project; a file added to it changes what
+    /// the build compiles, so the completed build is not reused.
+    func testFileAddedToALocalPackageOutsideTheScannedDirectoryBuilds() throws {
+        let package = try declareExternalLocalPackage()
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "public func added() {}\n".write(to: package.appending("Sources/Library/Added.swift").url, atomically: true, encoding: .utf8)
+        })
+    }
+
+    func testDeletedLocalPackageOutsideTheScannedDirectoryBuilds() throws {
+        let package = try declareExternalLocalPackage()
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try FileManager.default.removeItem(atPath: package.string)
+        })
+    }
+
+    // MARK: - Run Script inputs
+
+    /// A Run Script phase's input paths say what its script reads, so an edit to one outside the project's directory
+    /// changes the build even though nothing else names the file.
+    func testEditedRunScriptInputOutsideTheScannedDirectoryBuilds() throws {
+        let input = try externalFile("Input.txt")
+        try addScriptPhase(inputPaths: ["$(SRCROOT)/../External/Input.txt"])
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "changed\n".write(to: input.url, atomically: false, encoding: .utf8)
+        })
+    }
+
+    func testEditedFileListedInARunScriptInputFileListBuilds() throws {
+        let input = try externalFile("Listed.txt")
+        _ = try externalFile("Inputs.xcfilelist", contents: "${PROJECT_DIR}/../External/Listed.txt\n")
+        try addScriptPhase(inputFileListPaths: ["$(SRCROOT)/../External/Inputs.xcfilelist"])
+
+        try assertBuilds(afterPlantedBuildDoing: {
+            try "changed\n".write(to: input.url, atomically: false, encoding: .utf8)
+        })
+    }
+
+    /// An input that names a build setting Lethen cannot resolve could be any file, so nothing is reused.
+    func testRunScriptInputWithAnUnresolvableVariableNeverReuses() throws {
+        try addScriptPhase(inputPaths: ["$(DERIVED_FILE_DIR)/generated.txt"])
+
+        try assertBuilds(afterPlantedBuildDoing: {})
+    }
+
+    // MARK: - Private
+
+    /// Declares `External/Extra.xcconfig`, outside the project's directory, as a file reference of the copy.
+    private func declareExternalXcconfig() throws -> FilePath {
+        let xcconfig = try externalFile("Extra.xcconfig", contents: "SWIFT_ACTIVE_COMPILATION_CONDITIONS = A\n")
         try editProject { text in
             text.replacingOccurrences(
                 of: "/* Begin PBXFileReference section */\n",
@@ -298,15 +363,11 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
                 with: "\t\t\t\t3C57B168ABF45A4AEDE2A1AB /* Products */,\n\t\t\t\tAAAAAAAAAAAAAAAAAAAAAAAA /* Extra.xcconfig */,\n\t\t\t);\n\t\t\tsourceTree"
             )
         }
-
-        try assertBuilds(afterPlantedBuildDoing: {
-            try "SWIFT_ACTIVE_COMPILATION_CONDITIONS = B\n".write(to: xcconfig.url, atomically: false, encoding: .utf8)
-        })
+        return xcconfig
     }
 
-    /// A local package outside the project's directory is compiled with the project; a file added to it changes what
-    /// the build compiles, so the completed build is not reused.
-    func testFileAddedToALocalPackageOutsideTheScannedDirectoryBuilds() throws {
+    /// Declares `ExternalPackage`, outside the project's directory, as a local Swift package of the copy.
+    private func declareExternalLocalPackage() throws -> FilePath {
         let package = root.appending("ExternalPackage")
         try FileManager.default.createDirectory(atPath: package.appending("Sources/Library").string, withIntermediateDirectories: true)
         try "// swift-tools-version: 5.9\nimport PackageDescription\nlet package = Package(name: \"ExternalPackage\", targets: [.target(name: \"Library\")])\n"
@@ -319,13 +380,58 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
                     with: "/* End PBXProject section */\n\n/* Begin XCLocalSwiftPackageReference section */\n\t\tBBBBBBBBBBBBBBBBBBBBBBBB /* XCLocalSwiftPackageReference \"../ExternalPackage\" */ = {\n\t\t\tisa = XCLocalSwiftPackageReference;\n\t\t\trelativePath = ../ExternalPackage;\n\t\t};\n/* End XCLocalSwiftPackageReference section */\n"
                 )
         }
-
-        try assertBuilds(afterPlantedBuildDoing: {
-            try "public func added() {}\n".write(to: package.appending("Sources/Library/Added.swift").url, atomically: true, encoding: .utf8)
-        })
+        return package
     }
 
-    // MARK: - Private
+    /// A file in `External`, a directory beside the copy that the project does not reference as a folder.
+    private func externalFile(_ name: String, contents: String = "input\n") throws -> FilePath {
+        let external = root.appending("External")
+        try FileManager.default.createDirectory(atPath: external.string, withIntermediateDirectories: true)
+        let file = external.appending(name)
+        try contents.write(to: file.url, atomically: true, encoding: .utf8)
+        return file
+    }
+
+    /// Adds a Run Script phase with these inputs to the copy's first target.
+    private func addScriptPhase(inputPaths: [String] = [], inputFileListPaths: [String] = []) throws {
+        func list(_ paths: [String]) -> String {
+            paths.map { "\t\t\t\t\"\($0)\",\n" }.joined()
+        }
+        try editProject { original in
+            var text = original
+            if let first = text.range(of: "\t\t\tbuildPhases = (\n") {
+                text.insert(contentsOf: "\t\t\t\tCCCCCCCCCCCCCCCCCCCCCCCC /* Script */,\n", at: first.upperBound)
+            }
+            return text
+                .replacingOccurrences(
+                    of: "/* Begin PBXSourcesBuildPhase section */\n",
+                    with: """
+                    /* Begin PBXShellScriptBuildPhase section */
+                    \t\tCCCCCCCCCCCCCCCCCCCCCCCC /* Script */ = {
+                    \t\t\tisa = PBXShellScriptBuildPhase;
+                    \t\t\tbuildActionMask = 2147483647;
+                    \t\t\tfiles = (
+                    \t\t\t);
+                    \t\t\tinputFileListPaths = (
+                    \(list(inputFileListPaths))\t\t\t);
+                    \t\t\tinputPaths = (
+                    \(list(inputPaths))\t\t\t);
+                    \t\t\toutputFileListPaths = (
+                    \t\t\t);
+                    \t\t\toutputPaths = (
+                    \t\t\t);
+                    \t\t\trunOnlyForDeploymentPostprocessing = 0;
+                    \t\t\tshellPath = /bin/sh;
+                    \t\t\tshellScript = "true";
+                    \t\t};
+                    /* End PBXShellScriptBuildPhase section */
+
+                    /* Begin PBXSourcesBuildPhase section */
+
+                    """
+                )
+        }
+    }
 
     private func editProject(_ edit: (String) -> String) throws {
         let pbxproj = project.appending("project.pbxproj")

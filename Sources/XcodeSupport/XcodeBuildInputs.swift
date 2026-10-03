@@ -9,12 +9,13 @@ public enum XcodeBuildInputs {
     private static let skippedFiles: Set<String> = [".DS_Store"]
 
     /// The first path under `roots`, or in `files`, that changed after a build that ran from `started` to `completed`,
-    /// or `nil` when none did. Any directory or file that is not a compiled source must predate `started`: a
-    /// directory changes when an entry is added, removed or renamed, and every other file, such as a project file, a
-    /// build setting file or a header, can change what the build compiles without the build rewriting it. A compiled
-    /// source may be newer than `started` as long as it predates `completed`; the build can have written it, and the
-    /// index collector checks each such file against its own unit. A path that cannot be read counts as changed, and
-    /// so does one whose time equals the limit, since file times are coarse.
+    /// or `nil` when none did. Any directory or file that is not a compiled source must predate `started`, whether
+    /// it is found in a root or listed: a directory changes when an entry is added, removed or renamed, and every
+    /// other file, such as a project file, a build setting file or a header, can change what the build compiles
+    /// without the build rewriting it. A compiled source may be newer than `started` as long as it predates
+    /// `completed`; the build can have written it, and the index collector checks each such file against its own
+    /// unit. A path that cannot be read counts as changed, as does a root that does not exist or cannot be
+    /// enumerated, and so does one whose time equals the limit, since file times are coarse.
     ///
     /// Version control and build directories, `.DS_Store`, and the per-user state in `xcuserdata` are skipped, except
     /// for the schemes in it, which choose what a build compiles. Symbolic links are not followed.
@@ -26,7 +27,8 @@ public enum XcodeBuildInputs {
         }
 
         for file in files.sorted() {
-            guard let date = modificationDate(of: file), date < completed else { return file }
+            let limit = compiledExtensions.contains(file.extension?.lowercased() ?? "") ? completed : started
+            guard let date = modificationDate(of: file), date < limit else { return file }
         }
 
         return nil
