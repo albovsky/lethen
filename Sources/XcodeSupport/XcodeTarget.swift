@@ -22,6 +22,44 @@ public final class XcodeTarget {
         target.name
     }
 
+    /// The names of the targets this one depends on: the explicit dependencies, which Xcode builds before it
+    /// (a dependency on a target of another project of the workspace is a proxy whose `remoteInfo` is that
+    /// target's name), and the targets of this project whose product it links, which Xcode treats as implicit
+    /// dependencies.
+    public var dependencyNames: Set<String> {
+        let explicit = target.dependencies.compactMapSet { $0.target?.name ?? $0.targetProxy?.remoteInfo }
+        let linkedFiles = target.buildPhases.compactMap { $0 as? PBXFrameworksBuildPhase }
+            .flatMap { $0.files ?? [] }
+            .compactMap(\.file)
+        let linked = project.xcodeProject.pbxproj.nativeTargets
+            .filter { candidate in candidate !== target && linkedFiles.contains { $0 === candidate.product } }
+            .map(\.name)
+        return explicit.union(linked)
+    }
+
+    /// The names the target's Swift module can have, which its index units carry: each plain
+    /// `PRODUCT_MODULE_NAME` a configuration sets, and Xcode's default, the target name as a C identifier,
+    /// for a configuration that sets none. Which configuration a unit came from is not known here.
+    public var moduleNames: Set<String> {
+        let configurations = target.buildConfigurationList?.buildConfigurations ?? []
+        var names: Set<String> = []
+        for configuration in configurations {
+            if let configured = configuration.buildSettings["PRODUCT_MODULE_NAME"]?.stringValue, !configured.contains("$(") {
+                names.insert(configured)
+            } else {
+                names.insert(Self.defaultModuleName(forTarget: name))
+            }
+        }
+        return names.isEmpty ? [Self.defaultModuleName(forTarget: name)] : names
+    }
+
+    /// The module Xcode names a target by default: its name with every character that is not an ASCII
+    /// letter or digit replaced by `_`, and a `_` ahead of a leading digit.
+    public static func defaultModuleName(forTarget name: String) -> String {
+        let identifier = String(name.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "_" })
+        return identifier.first?.isNumber == true ? "_" + identifier : identifier
+    }
+
     public func identifyFiles() throws {
         // A synchronized folder contributes compiled sources only to the targets that own it; resources
         // keep the project-wide behavior.

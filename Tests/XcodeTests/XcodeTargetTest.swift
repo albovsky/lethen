@@ -3,6 +3,7 @@ import Logger
 import Shared
 import SystemPackage
 @testable import TestShared
+import XcodeProj
 @testable import XcodeSupport
 import XCTest
 
@@ -81,5 +82,54 @@ final class XcodeTargetTest: XCTestCase {
 
         XCTAssertFalse(projectTarget.isTestTarget)
         XCTAssertTrue(testTarget.isTestTarget)
+    }
+
+    func testDependencyNamesIncludeTargetsOfOtherProjectsThroughTheirProxy() throws {
+        let local = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "UIKitProject" })
+        let proxy = PBXContainerItemProxy(containerPortal: .project(project.xcodeProject.pbxproj.rootObject!), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: "RemoteFramework")
+        let dependencies = [
+            PBXTargetDependency(name: nil, target: local, targetProxy: nil),
+            PBXTargetDependency(name: nil, target: nil, targetProxy: proxy),
+        ]
+        let pbxTarget = PBXNativeTarget(name: "Consumer", dependencies: dependencies)
+        // References resolve through the project's object graph, as they do for a parsed project.
+        let pbxproj = project.xcodeProject.pbxproj
+        pbxproj.add(object: proxy)
+        dependencies.forEach { pbxproj.add(object: $0) }
+        pbxproj.add(object: pbxTarget)
+        let target = XcodeTarget(project: project, target: pbxTarget)
+
+        XCTAssertEqual(target.dependencyNames, ["UIKitProject", "RemoteFramework"])
+    }
+
+    /// Linking a project target's product is an implicit dependency, which Xcode honors without a
+    /// `PBXTargetDependency`.
+    func testDependencyNamesIncludeLinkedProductsOfProjectTargets() throws {
+        let framework = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "Target With Spaces" })
+        let product = try XCTUnwrap(framework.product)
+        let buildFile = PBXBuildFile(file: product)
+        let phase = PBXFrameworksBuildPhase(files: [buildFile])
+        let pbxTarget = PBXNativeTarget(name: "Linker", buildPhases: [phase])
+        let pbxproj = project.xcodeProject.pbxproj
+        pbxproj.add(object: buildFile)
+        pbxproj.add(object: phase)
+        pbxproj.add(object: pbxTarget)
+
+        XCTAssertEqual(XcodeTarget(project: project, target: pbxTarget).dependencyNames, ["Target With Spaces"])
+    }
+
+    func testModuleNamesAreTheConfiguredProductModuleNamesOrTheDefault() throws {
+        // Each configuration may name the module differently; a unit could come from any of them.
+        let debug = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("DebugCore")])
+        let release = XCBuildConfiguration(name: "Release", buildSettings: ["PRODUCT_MODULE_NAME": .string("ReleaseCore")])
+        let list = XCConfigurationList(buildConfigurations: [debug, release])
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Core", buildConfigurationList: list)).moduleNames, ["DebugCore", "ReleaseCore"])
+
+        let variable = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string("$(TARGET_NAME:c99extidentifier)")])
+        let variableList = XCConfigurationList(buildConfigurations: [variable])
+        XCTAssertEqual(XcodeTarget(project: project, target: PBXNativeTarget(name: "Target With Spaces", buildConfigurationList: variableList)).moduleNames, ["Target_With_Spaces"])
+
+        XCTAssertEqual(XcodeTarget.defaultModuleName(forTarget: "3D-Kit"), "_3D_Kit")
+        XCTAssertEqual(try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" }).moduleNames, ["Target_With_Spaces"])
     }
 }

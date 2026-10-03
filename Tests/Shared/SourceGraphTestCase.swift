@@ -74,7 +74,8 @@ open class SourceGraphTestCase: XCTestCase {
                 xibPaths: plan.xibPaths,
                 xcDataModelPaths: plan.xcDataModelPaths,
                 xcMappingModelPaths: plan.xcMappingModelPaths,
-                clangCoverage: plan.clangCoverage
+                clangCoverage: plan.clangCoverage,
+                unscannedTargets: plan.unscannedTargets
             )
         }
 

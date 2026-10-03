@@ -41,7 +41,7 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
             let isTaken = evidence.contains { start <= $0 && $0 <= end }
             guard !isTaken else { continue }
 
-            let content = ClauseContent(Syntax(elements))
+            let content = NameUseCollector(Syntax(elements))
             guard content.hasIndexableSyntax else { continue }
 
             let keyword = clause.poundKeyword.text
@@ -58,65 +58,5 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
             }
         }
         return .visitChildren
-    }
-
-    private struct ClauseContent {
-        /// Names used in the clause, each flagged when some use is a member access or a call.
-        var uses: [String: Bool] = [:]
-        /// Names with a member access or call use outside every pattern.
-        var constructionUses: Set<String> = []
-        var hasIndexableSyntax = false
-
-        init(_ node: Syntax) {
-            collect(node, inPattern: false)
-        }
-
-        private mutating func collect(_ node: Syntax, inPattern: Bool) {
-            if node.is(ImportDeclSyntax.self) { return }
-
-            // Any other declaration, call, or reference is recorded by the index.
-            if node.is(DeclSyntax.self) || node.is(FunctionCallExprSyntax.self)
-                || node.is(MemberAccessExprSyntax.self) || node.is(DeclReferenceExprSyntax.self)
-                || node.is(BinaryOperatorExprSyntax.self) || node.is(PrefixOperatorExprSyntax.self)
-                || node.is(PostfixOperatorExprSyntax.self)
-                // Type-only syntax (a cast, a generic argument, a metatype), key paths, subscripts and macros.
-                || node.is(IdentifierTypeSyntax.self) || node.is(MemberTypeSyntax.self)
-                || node.is(KeyPathExprSyntax.self) || node.is(SubscriptCallExprSyntax.self)
-                || node.is(MacroExpansionExprSyntax.self)
-            {
-                hasIndexableSyntax = true
-            }
-            // Matching an enum case is not constructing it, but a pattern can read any other declaration,
-            // as `case Limits.windowsValue:` does, so pattern uses are kept and flagged.
-            let inPattern = inPattern || node.is(ExpressionPatternSyntax.self)
-            // An operator is used by its spelling alone, so it is never a member use.
-            if let binary = node.as(BinaryOperatorExprSyntax.self) {
-                uses[binary.operator.text] = uses[binary.operator.text] ?? false
-            } else if let prefix = node.as(PrefixOperatorExprSyntax.self) {
-                uses[prefix.operator.text] = uses[prefix.operator.text] ?? false
-            } else if let postfix = node.as(PostfixOperatorExprSyntax.self) {
-                uses[postfix.operator.text] = uses[postfix.operator.text] ?? false
-            } else if let reference = node.as(DeclReferenceExprSyntax.self) {
-                let name = reference.baseName.identifier?.name ?? reference.baseName.text
-                // `process<Int>()` wraps the reference in a generic specialization before the call.
-                let specialized = reference.parent?.as(GenericSpecializationExprSyntax.self)
-                let callee = specialized.flatMap { $0.expression.id == reference.id ? Syntax($0) : nil } ?? Syntax(reference)
-                let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
-                    || callee.parent?.as(FunctionCallExprSyntax.self)?.calledExpression.id == callee.id
-                    || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
-                uses[name] = (uses[name] ?? false) || isMember
-                if isMember, !inPattern { constructionUses.insert(name) }
-            } else if let type = node.as(IdentifierTypeSyntax.self) {
-                let name = type.name.identifier?.name ?? type.name.text
-                uses[name] = uses[name] ?? false
-            } else if let type = node.as(MemberTypeSyntax.self) {
-                let name = type.name.identifier?.name ?? type.name.text
-                uses[name] = true
-                if !inPattern { constructionUses.insert(name) }
-            }
-            for child in node.children(viewMode: .sourceAccurate) {
-                collect(child, inPattern: inPattern)
-            }
-        }
     }
 }
