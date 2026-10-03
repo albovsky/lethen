@@ -235,6 +235,7 @@ swift_library(
     srcs = [
         "Indexer/ClangImportScanner.swift",
         "Indexer/ClangLiteralScanner.swift",
+        "Indexer/ClangModuleSymbolMap.swift",
         "Indexer/IndexPipeline.swift",
         "Indexer/IndexPlan.swift",
         "Indexer/Indexer.swift",

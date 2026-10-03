@@ -23,6 +23,9 @@ enum ClangImportScanner {
         var index = 0
         var atLineStart = true
         var conditionalDepth = 0
+        // `// periphery:ignore:all` anywhere in the file ignores the whole file, imports included, as the
+        // Swift indexer reads it from any comment of the file.
+        var ignoresAll = false
 
         while index < bytes.count {
             let byte = bytes[index]
@@ -41,11 +44,15 @@ enum ClangImportScanner {
                 index = ClangLiteralScanner.isIncludeDirective(at: index, in: bytes)
                     ? ClangLiteralScanner.endOfLine(from: index, in: bytes) : index + 1
             case ClangLiteralScanner.slash where bytes[safe: index + 1] == ClangLiteralScanner.slash:
-                index = ClangLiteralScanner.endOfLine(from: index, in: bytes)
+                let end = ClangLiteralScanner.endOfLine(from: index, in: bytes)
+                ignoresAll = ignoresAll || CommentCommand.parseCommand(inComment: text(bytes[index ..< end])) == .ignoreAll
+                index = end
             case ClangLiteralScanner.slash where bytes[safe: index + 1] == ClangLiteralScanner.star:
                 // The preprocessor replaces a comment with one space before it looks for directives, so
                 // `/* note */ #if FLAG` is a directive and a comment spanning lines does not end one.
-                index = ClangLiteralScanner.endOfBlockComment(from: index + 2, in: bytes)
+                let end = ClangLiteralScanner.endOfBlockComment(from: index + 2, in: bytes)
+                ignoresAll = ignoresAll || CommentCommand.parseCommand(inComment: text(bytes[index ..< end])) == .ignoreAll
+                index = end
                 atLineStart = wasAtLineStart
             case ClangLiteralScanner.quote:
                 index = ClangLiteralScanner.anyStringLiteral(openingQuoteAt: index, in: bytes).next
@@ -72,7 +79,21 @@ enum ClangImportScanner {
             }
         }
 
-        return statements
+        guard ignoresAll else { return statements }
+
+        return statements.map { statement in
+            guard !statement.commentCommands.contains(.ignoreAll) else { return statement }
+
+            return ImportStatement(
+                module: statement.module,
+                qualifiedModule: statement.qualifiedModule,
+                isTestable: statement.isTestable,
+                isExported: statement.isExported,
+                isConditional: statement.isConditional,
+                location: statement.location,
+                commentCommands: statement.commentCommands + [.ignoreAll]
+            )
+        }
     }
 
     // MARK: - Private

@@ -214,6 +214,31 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         }
     }
 
+    /// `// periphery:ignore:all` ignores the whole file, imports included.
+    func testRetainsEveryImportOfAFileWithAFileWideIgnoreCommand() {
+        file("ImportsIgnoredAll.m") {
+            self.assertImport("MixedFramework", inFile: "ImportsIgnoredAll.m")
+            self.assertImport("MixedFramework.MFComparison", inFile: "ImportsIgnoredAll.m")
+            self.assertReferenced(.module("MixedFramework"))
+            self.assertReferenced(.module("MixedFramework.MFComparison"))
+        }
+    }
+
+    /// A header excluded from the index is as if absent, so its uses no longer keep the import of the
+    /// file that includes it.
+    func testExcludedHeaderIsNotEvidenceForAnImport() throws {
+        let configuration = Self.makeConfiguration()
+        configuration.indexExclude = ["**/ImportsUsedByHeader.h"]
+        configuration.buildFilenameMatchers()
+        try index(configuration: configuration)
+        defer { XCTAssertNoThrow(try index(configuration: Self.makeConfiguration())) }
+
+        file("ImportsUsedByHeader.m") {
+            self.assertImport("MixedFramework.MFComparison", inFile: "ImportsUsedByHeader.m")
+            self.assertNotReferenced(.module("MixedFramework.MFComparison"))
+        }
+    }
+
     func testRetainedModuleIsNotReported() throws {
         let configuration = Self.makeConfiguration()
         configuration.retainUnusedImportedModules = ["MixedFramework"]

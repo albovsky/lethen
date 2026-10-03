@@ -127,6 +127,13 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(statement.commentCommands, [])
     }
 
+    func testFileWideIgnoreCommandReachesEveryImport() {
+        let found = imports("// periphery:ignore:all\n@import A;\n@import B; // periphery:ignore\n")
+
+        XCTAssertEqual(found.map(\.commentCommands), [[.ignoreAll], [.ignore, .ignoreAll]])
+        XCTAssertEqual(imports("@import A;\n/* periphery:ignore:all */\n").map(\.commentCommands), [[.ignoreAll]])
+    }
+
     func testIgnoreCommandOnTheSameLine() throws {
         let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
 

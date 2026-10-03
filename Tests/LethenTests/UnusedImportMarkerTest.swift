@@ -72,6 +72,7 @@ final class UnusedImportMarkerTest: XCTestCase {
     func testKeepsConditionalAndIgnoredImports() throws {
         XCTAssertEqual(try unusedImports(referencing: [], statements: [("WMF.WMFLogging", true, [])]), [])
         XCTAssertEqual(try unusedImports(referencing: [], statements: [("WMF.WMFLogging", false, [.ignore])]), [])
+        XCTAssertEqual(try unusedImports(referencing: [], statements: [("WMF.WMFLogging", false, [.ignoreAll])]), [])
     }
 
     func testKeepsRetainedModulesByTopLevelOrQualifiedName() throws {

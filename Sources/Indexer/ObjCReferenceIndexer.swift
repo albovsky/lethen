@@ -77,8 +77,7 @@ final class ObjCReferenceIndexer: Indexer {
                     referencedUSRs.insert(usr)
                 }
 
-                guard record.reportsReferences,
-                      usr.hasPrefix("c:"),
+                guard usr.hasPrefix("c:"),
                       occurrence.roles.isDisjoint(with: [.definition, .declaration])
                 else { return }
 
@@ -99,7 +98,7 @@ final class ObjCReferenceIndexer: Indexer {
         let occurrences = results.flatMap(\.occurrences)
 
         let headerLiterals = ClangLiteralScanner.scan(
-            files: Set(records.filter(\.reportsReferences).map(\.file.path)).subtracting(sourcesByPath.keys).sorted()
+            files: Set(records.map(\.file.path)).subtracting(sourcesByPath.keys).sorted()
         )
         let literals = (
             tokens: sourceLiterals.tokens.union(headerLiterals.tokens),
@@ -177,10 +176,7 @@ final class ObjCReferenceIndexer: Indexer {
         let name: String
         let file: SourceFile
         let key: RecordKey
-        /// Whether the record's references count as uses of Swift declarations. A record excluded from
-        /// indexing does not, but when an imported module's file includes it, its uses still decide
-        /// whether the import is needed.
-        let reportsReferences: Bool
+        /// Whether the record's references decide what the file that includes it needs to import.
         let collectsReferencedUSRs: Bool
     }
 
@@ -226,9 +222,9 @@ final class ObjCReferenceIndexer: Indexer {
                     guard seen.insert(key).inserted else { return }
 
                     let path = FilePath.makeAbsolute(dependency.filePath)
-                    let reportsReferences = !configuration.indexExcludeMatchers.anyMatch(filename: path.string)
-                    let collectsReferencedUSRs = neededRecords.contains(key)
-                    guard reportsReferences || collectsReferencedUSRs else { return }
+                    // An excluded file is as if absent, so neither its uses of Swift declarations nor its
+                    // uses of imported modules count.
+                    guard !configuration.indexExcludeMatchers.anyMatch(filename: path.string) else { return }
 
                     let file = filesByPath[path] ?? SourceFile(path: path, modules: sourceFile.modules)
                     jobs.append(RecordJob(
@@ -236,8 +232,7 @@ final class ObjCReferenceIndexer: Indexer {
                         name: dependency.name,
                         file: file,
                         key: key,
-                        reportsReferences: reportsReferences,
-                        collectsReferencedUSRs: collectsReferencedUSRs
+                        collectsReferencedUSRs: neededRecords.contains(key)
                     ))
                 })
             }

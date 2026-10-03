@@ -73,8 +73,8 @@ final class UnusedImportMarker: SourceGraphMutator {
                     // Exclude conditional imports as they may provide symbols for sections of code
                     // that are also conditionally compiled.
                     !$0.isConditional &&
-                        // Exclude ignore commented imports
-                        !$0.commentCommands.contains(.ignore) &&
+                        // Exclude ignore commented imports, and every import of a file with `ignore:all`.
+                        !$0.commentCommands.contains(where: { $0 == .ignore || $0 == .ignoreAll }) &&
                         // Exclude exported/public imports because even though they may be unreferenced
                         // in the current file, their exported symbols may be referenced in others.
                         !$0.isExported &&
