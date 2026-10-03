@@ -309,21 +309,22 @@ final class SwiftIndexer: Indexer {
                 topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder)
             )
             visitDeclarations(using: declarationSyntaxVisitor)
-            let patterns = EnumCasePatternSyntaxVisitor()
-            patterns.walk(multiplexingSyntaxVisitor.syntax)
-            let patternLocations = Set(patterns.memberPositions.map { locationBuilder.location(at: $0) })
-            for reference in indexedReferences where reference.declarationKind == .enumelement && patternLocations.contains(reference.location) {
-                reference.role = .enumCasePattern
+            let file = IndexedFile(
+                syntax: multiplexingSyntaxVisitor.syntax,
+                locationBuilder: locationBuilder,
+                referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init)
+            )
+            for analysis in SyntaxAnalysisList.all {
+                try analysis.init(configuration: configuration).apply(to: file)
             }
             let valueUses = ValueUseSyntaxVisitor(locations: locationBuilder)
             valueUses.walk(multiplexingSyntaxVisitor.syntax)
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
             graph.withLock { $0.addLiteralTokens(literalTokens.tokens) }
-            let referencesByLocation = Dictionary(grouping: indexedReferences, by: \.location)
             for (call, arguments) in valueUses.arguments {
-                let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })
-                for reference in referencesByLocation[call, default: []] {
+                let values = file.references(at: arguments)
+                for reference in file.references(at: call) {
                     reference.hasGenericValueArguments = !arguments.isDisjoint(with: valueUses.genericTypeLocations)
                     reference.valueArgumentReferences = values
                 }
