@@ -251,13 +251,10 @@ swift_library(
         "Indexer/ObjCReferenceIndexer.swift",
         "Indexer/SourceFileCollector.swift",
         "Indexer/SwiftIndexer.swift",
-<<<<<<< HEAD
         "Indexer/SyntaxAnalysis/EnumCasePatternAnalysis.swift",
         "Indexer/SyntaxAnalysis/IndexedFile.swift",
         "Indexer/SyntaxAnalysis/SyntaxAnalysis.swift",
-=======
         "Indexer/UnscannedTargetIndexer.swift",
->>>>>>> origin/master
         "Indexer/XCDataModelIndexer.swift",
         "Indexer/XCDataModelParser.swift",
         "Indexer/XCMappingModelIndexer.swift",
