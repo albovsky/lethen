@@ -61,4 +61,14 @@ final class UnscannedTargetWarningTest: XCTestCase {
 
         XCTAssertTrue(warning.contains("--exclude-targets 'Wikipedia Stickers' to silence"), warning)
     }
+
+    /// `App` depends on the unscanned `Bridge`, which depends on the scanned `Core` and may re-export it.
+    func testScannedDependenciesAreReachedThroughUnscannedTargets() {
+        let dependencies: [String: Set<String>] = ["App": ["Bridge", "Tests"], "Bridge": ["Core", "App"], "Tests": [], "Core": ["Base"]]
+        let scanned: Set<String> = ["Core", "Base"]
+
+        XCTAssertEqual(XcodeProjectDriver.scannedDependencies(of: "App", dependencies: dependencies, scanned: scanned), ["Core"])
+        XCTAssertEqual(XcodeProjectDriver.scannedDependencies(of: "Bridge", dependencies: dependencies, scanned: scanned), ["Core"])
+        XCTAssertEqual(XcodeProjectDriver.scannedDependencies(of: "Tests", dependencies: dependencies, scanned: scanned), [])
+    }
 }

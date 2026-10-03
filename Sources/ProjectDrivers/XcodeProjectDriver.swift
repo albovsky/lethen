@@ -317,6 +317,7 @@
 
             let scanned = projectTargets.filter { target in compiled[target.name, default: []].contains { isIndexed($0, for: target) } }
             let scannedNames = scanned.mapSet(\.name)
+            let dependencyNames = Dictionary(projectTargets.map { ($0.name, $0.dependencyNames) }, uniquingKeysWith: { $0.union($1) })
             let scannedSwiftFiles = scanned.flatMapSet { $0.files(kind: .swiftSource).filter(isCollectable).mapSet { $0.lexicallyNormalized() } }
             var unscanned: [UnscannedTarget] = []
             var dependencies: [String: [String]] = [:]
@@ -327,7 +328,7 @@
                 guard !swiftFiles.isEmpty else { continue }
 
                 unscanned.append(UnscannedTarget(name: target.name, swiftSourceFiles: swiftFiles, sharedSourceFiles: swiftFiles.intersection(scannedSwiftFiles)))
-                dependencies[target.name] = target.dependencyNames.intersection(scannedNames).sorted()
+                dependencies[target.name] = Self.scannedDependencies(of: target.name, dependencies: dependencyNames, scanned: scannedNames)
             }
             return (unscanned.sorted { $0.name < $1.name }, dependencies)
         }
@@ -401,6 +402,24 @@
     }
 
     extension XcodeProjectDriver {
+        /// The scanned targets the target reaches through its dependencies, directly or through other unscanned
+        /// targets, which may re-export what they depend on. Sorted by name.
+        static func scannedDependencies(of target: String, dependencies: [String: Set<String>], scanned: Set<String>) -> [String] {
+            var seen: Set<String> = [target]
+            var pending = Array(dependencies[target] ?? [])
+            var reached: Set<String> = []
+            while let next = pending.popLast() {
+                guard seen.insert(next).inserted else { continue }
+
+                if scanned.contains(next) {
+                    reached.insert(next)
+                } else {
+                    pending.append(contentsOf: dependencies[next] ?? [])
+                }
+            }
+            return reached.sorted()
+        }
+
         /// The warnings for the unscanned targets that use scanned code, sorted by target name.
         static func unscannedTargetWarnings(for targets: [UnscannedTarget], scannedDependencies: [String: [String]]) -> [String] {
             targets.sorted { $0.name < $1.name }.compactMap {
