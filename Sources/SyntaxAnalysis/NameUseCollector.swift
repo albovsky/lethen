@@ -173,13 +173,14 @@ public struct NameUseCollector {
 
     /// Whether the call's callee is a value rather than a function or type name that the index resolves: a call,
     /// a subscript, a parenthesized, unwrapped or chained expression, or a lowercase name, since a type name
-    /// starts with a capital letter; leading underscores are skipped, so `_handler` is a value. A call of a local function matches too, which only costs a name that no
+    /// starts with a capital letter; leading underscores are skipped, so `_handler` is a value, and so is a shorthand argument such as `$0`. A call of a local function matches too, which only costs a name that no
     /// type named by the file can narrow to a `callAsFunction`.
     private static func isCallableValueCall(_ call: FunctionCallExprSyntax) -> Bool {
         var callee = call.calledExpression
         if let specialized = callee.as(GenericSpecializationExprSyntax.self) { callee = specialized.expression }
         func isValueName(_ name: String) -> Bool {
-            name.first(where: { $0 != "_" })?.isLowercase == true
+            // `$0` is a closure's shorthand argument, a value whatever it holds.
+            name.hasPrefix("$") || name.first(where: { $0 != "_" })?.isLowercase == true
         }
         if let reference = callee.as(DeclReferenceExprSyntax.self) {
             return isValueName(reference.baseName.text)
