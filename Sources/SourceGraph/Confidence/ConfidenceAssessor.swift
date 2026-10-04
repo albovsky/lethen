@@ -183,6 +183,7 @@ public final class ConfidenceAssessor {
         let baseName = SourceGraph.baseName(of: declaration.name)
         let file = declaration.location.file.path.lexicallyNormalized()
         let enclosingType = enclosingTypeName(of: declaration)
+        let aliasNames = enclosingTypeDeclaration(of: declaration).flatMap { typeAliasNames[$0] } ?? []
         var best: (site: String, target: String)?
         let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
         for (target, uses) in evidence.unscannedTargets.sorted(by: { $0.key < $1.key }) {
@@ -207,7 +208,7 @@ public final class ConfidenceAssessor {
                 }
                 // A use spelled through the type, `Store.shared` or `Store(...)`, places the match at this type's
                 // member rather than at the first use of any `shared` or `init`. A type alias names the type too.
-                let typeNames = enclosingType.map { [$0] + typeAliasNames[$0, default: []].sorted() } ?? []
+                let typeNames = enclosingType.map { [$0] + aliasNames.sorted() } ?? []
                 let qualifiedSite = typeNames.compactMap { names["\($0).\(baseName)"] }.min()
                 guard let site = qualifiedSite ?? names[baseName],
                       best.map({ site < $0.site }) ?? true,
@@ -233,32 +234,62 @@ public final class ConfidenceAssessor {
     /// does `typealias Shop = Store`; a class inherits the members of its superclasses, so a file that overrides
     /// `run` in a subclass of `Middle` names `Base.run` through `Middle`, which inherits `Base`. Built on first
     /// use, after indexing.
-    private lazy var typeAliasNames: [String: Set<String>] = {
-        var direct: [String: Set<String>] = [:]
+    private lazy var typeAliasNames: [Declaration: Set<String>] = {
+        // Followed by declaration, not by name: two modules can each declare a `Shared`, and an alias of one
+        // is not an alias of the other. Names are projected only once the closure is done. A type that is not
+        // indexed, an external one, has no declaration and contributes nothing.
+        var direct: [Declaration: Set<Declaration>] = [:]
         for alias in graph.declarations(ofKind: .typealias) {
             for reference in alias.references where Self.typeKinds.contains(reference.declarationKind) {
-                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: alias.name))
+                guard let type = graph.declaration(withUsr: reference.usr) else { continue }
+
+                direct[type, default: []].insert(alias)
             }
         }
         for subclass in graph.declarations(ofKind: .class) {
             for reference in subclass.references where reference.role == .inheritedType && reference.declarationKind == .class {
-                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: subclass.name))
+                guard let superclass = graph.declaration(withUsr: reference.usr) else { continue }
+
+                direct[superclass, default: []].insert(subclass)
             }
         }
 
-        var names: [String: Set<String>] = [:]
+        var names: [Declaration: Set<String>] = [:]
         for type in direct.keys {
-            var closure: Set<String> = []
+            var closure: Set<Declaration> = []
             var pending = Array(direct[type, default: []])
             while let alias = pending.popLast() {
                 guard alias != type, closure.insert(alias).inserted else { continue }
 
                 pending.append(contentsOf: direct[alias, default: []])
             }
-            names[type] = closure
+            names[type] = Set(closure.map { SourceGraph.baseName(of: $0.name) })
         }
         return names
     }()
+
+    /// The declaration of the type that declares the declaration, through any extension, or `nil` for a
+    /// top-level one or one whose type is not indexed.
+    private func enclosingTypeDeclaration(of declaration: Declaration) -> Declaration? {
+        var current = declaration.parent
+        while let parent = current {
+            if Self.typeKinds.contains(parent.kind) { return parent }
+
+            if parent.kind.isExtensionKind {
+                if let extended = try? graph.extendedDeclaration(forExtension: parent) { return extended }
+
+                // `ProtocolExtensionReferenceBuilder` replaces the extension's reference to its protocol with
+                // one from the protocol to the extension.
+                return graph.references(to: parent)
+                    .filter { $0.declarationKind == .extensionProtocol }
+                    .compactMap(\.parent)
+                    .filter { $0.kind == .protocol && $0.name == parent.name }
+                    .min()
+            }
+            current = parent.parent
+        }
+        return nil
+    }
 
     /// The base name of the type that declares the declaration, through any extension, or `nil` for a
     /// top-level one.
