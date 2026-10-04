@@ -5,6 +5,8 @@ Joins corpus/adjudications/<project>.json with corpus/expected/<project>.json. A
 a project's sample when the hash of its key falls under the project's `sample_rate` (see
 `is_sampled`), so a finding keeps its membership, and its verdict, for as long as it is reported.
 Precision is TP / (TP + FP) over sampled findings with a verdict; UNSURE counts in neither.
+`certain` precision is the same ratio over the sampled findings whose confidence is `certain`
+(the expected rows carry it as their eighth field; a row without it is counted in no `certain` column).
 Verdicts on findings outside the sample are kept, but not counted, and verdicts on findings no
 longer reported must be marked `retired`.
 
@@ -51,8 +53,17 @@ def project_names(root):
     return [entry["name"] for entry in json.loads((root / "corpus/projects.json").read_text())]
 
 
+def row_confidence(row):
+    """The confidence field of an expected row, or None for a row recorded before the field existed."""
+    return row[7] if len(row) > 7 else None
+
+
+def load_expected_rows(root, project):
+    return json.loads((root / f"corpus/expected/{project}.json").read_text())
+
+
 def load_expected(root, project):
-    return [row_key(row) for row in json.loads((root / f"corpus/expected/{project}.json").read_text())]
+    return [row_key(row) for row in load_expected_rows(root, project)]
 
 
 def load_adjudications(root, project):
@@ -85,7 +96,9 @@ def load_adjudications(root, project):
 
 
 def evaluate(root, project):
-    expected = load_expected(root, project)
+    rows = load_expected_rows(root, project)
+    expected = [row_key(row) for row in rows]
+    confidence = {row_key(row): row_confidence(row) for row in rows}
     rate, verdicts = load_adjudications(root, project)
     reported = set(expected)
     for key, entry in verdicts.items():
@@ -94,11 +107,17 @@ def evaluate(root, project):
     sampled = [key for key in expected if is_sampled(project, key, rate)]
     in_sample = set(sampled)
     counts = {verdict: sum(1 for key in sampled if verdicts.get(key, {}).get("verdict") == verdict) for verdict in VERDICTS}
+    certain = [key for key in sampled if confidence[key] == "certain"]
+    certain_counts = {verdict: sum(1 for key in certain if verdicts.get(key, {}).get("verdict") == verdict) for verdict in VERDICTS}
     return {
         "project": project,
         "findings": len(expected),
         "sampled": len(sampled),
         **counts,
+        "certain_sampled": len(certain),
+        "certain_TP": certain_counts["TP"],
+        "certain_FP": certain_counts["FP"],
+        "certain_pending": sum(1 for key in certain if key not in verdicts),
         "pending": sorted(key for key in sampled if key not in verdicts),
         "outside_sample": sum(1 for key in reported if key in verdicts and key not in in_sample),
         "retired": sorted((key, entry) for key, entry in verdicts.items() if key not in reported and "retired" in entry),
@@ -115,7 +134,7 @@ def precision(tp, fp):
 
 
 def total(results):
-    fields = ("findings", "sampled", "TP", "FP", "UNSURE")
+    fields = ("findings", "sampled", "TP", "FP", "UNSURE", "certain_sampled", "certain_TP", "certain_FP", "certain_pending")
     summed = {field: sum(result[field] for result in results) for field in fields}
     summed["pending"] = sum(len(result["pending"]) for result in results)
     summed["outside_sample"] = sum(result["outside_sample"] for result in results)
@@ -133,18 +152,21 @@ def published(tp, fp, pending):
 def scorecard(results):
     """The Markdown scorecard block. It holds no dates, so it changes only when findings or verdicts do."""
     lines = [
-        "| Project | Findings | Sampled | TP | FP | UNSURE | Needs a verdict | Precision |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Project | Findings | Sampled | TP | FP | UNSURE | Needs a verdict | Precision | Sampled `certain` | `certain` precision |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for r in results:
         pending = len(r["pending"])
-        lines.append(f"| {r['project']} | {r['findings']:,} | {r['sampled']} | {r['TP']} | {r['FP']} | {r['UNSURE']} | {pending} | {published(r['TP'], r['FP'], pending)} |")
+        lines.append(f"| {r['project']} | {r['findings']:,} | {r['sampled']} | {r['TP']} | {r['FP']} | {r['UNSURE']} | {pending} | {published(r['TP'], r['FP'], pending)} "
+                     f"| {r['certain_sampled']} | {published(r['certain_TP'], r['certain_FP'], r['certain_pending'])} |")
     t = total(results)
-    lines.append(f"| **All** | {t['findings']:,} | {t['sampled']} | {t['TP']} | {t['FP']} | {t['UNSURE']} | {t['pending']} | **{published(t['TP'], t['FP'], t['pending'])}** |")
+    lines.append(f"| **All** | {t['findings']:,} | {t['sampled']} | {t['TP']} | {t['FP']} | {t['UNSURE']} | {t['pending']} | **{published(t['TP'], t['FP'], t['pending'])}** "
+                 f"| {t['certain_sampled']} | **{published(t['certain_TP'], t['certain_FP'], t['certain_pending'])}** |")
     lines.append("")
     lines.append(
         "Generated by `corpus/precision.py --markdown` from `corpus/expected/` and `corpus/adjudications/`. "
-        "Precision is TP / (TP + FP) over the sampled findings, published once each of them has a verdict. "
+        "Precision is TP / (TP + FP) over the sampled findings, published once each of them has a verdict; "
+        "the `certain` columns count only the sampled findings Lethen reports as `certain`, the rest being `likely`. "
         f"Verdicts kept but not counted: {t['outside_sample']} on reported findings outside the sample, "
         f"{t['retired']} on findings no longer reported."
     )
@@ -156,7 +178,8 @@ def figure(results):
     t = total(results)
     if t["pending"]:
         return f"being re-measured ({t['sampled'] - t['pending']} of {t['sampled']} sampled findings have a verdict)"
-    return f"{precision(t['TP'], t['FP'])} over {t['sampled']} sampled findings"
+    return (f"{precision(t['TP'], t['FP'])} over {t['sampled']} sampled findings, "
+            f"{published(t['certain_TP'], t['certain_FP'], t['certain_pending'])} over `certain` findings")
 
 
 def replace_between(text, markers, body, where):

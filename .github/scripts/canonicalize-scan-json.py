@@ -17,7 +17,7 @@ for finding in findings:
     except ValueError:
         pass  # An external path is evidence, not something to discard.
     rows.add((path, int(line), int(column), finding["kind"], finding.get("name"),
-              tuple(sorted(finding["hints"])), tuple(sorted(finding["ids"]))))
+              tuple(sorted(finding["hints"])), tuple(sorted(finding["ids"])), finding["confidence"]))
 
 json.dump(sorted(rows, key=lambda row: json.dumps(row)), sys.stdout, indent=2)
 sys.stdout.write("\n")

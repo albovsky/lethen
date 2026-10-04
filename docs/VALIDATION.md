@@ -58,7 +58,7 @@ CI scan gates pass `--disable-update-check`, so this never affected scan validat
 `corpus/projects.json` pins open-source projects that every analysis change re-scans:
 `corpus/scan.sh <name>` scans one at its pinned commit and canonicalizes the findings,
 `corpus/diff.sh <name>` compares them with the committed expectation in `corpus/expected/`, and
-`corpus/accept.sh <name>` records a new expectation once the diff has been adjudicated. A project
+`corpus/accept.sh <name>` records a new expectation once the diff has been adjudicated. Each expected row is `[path, line, column, kind, name, hints, ids, confidence]`; the scorecard reports precision over the sampled `certain` rows beside the all-rows figure, and `corpus/diff.sh` compares an older expectation without the confidence field. A project
 that fails to clone, build, or scan, or that yields no findings, fails the run. The expectations
 were generated on 2026-09-26 with Apple Swift 6.4 (swiftlang-6.4.0.34.1) on macOS 27 from Lethen
 at `bc8c5b5`, both scanned with `--retain-public`: Alamofire at `bda9ed5` has 124 findings and
