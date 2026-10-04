@@ -144,16 +144,28 @@ public final class XcodeProject: XcodeProjectlike {
             var isDirectory: ObjCBool = false
             return !(FileManager.default.fileExists(atPath: file.string, isDirectory: &isDirectory) && isDirectory.boolValue)
         })
-        let scripts = scriptInputs(root: root).files
-        return own.union(scripts).union(subProjects.flatMapSet(\.declaredInputFiles))
+        let scripts = scriptInputs(root: root)
+        // A script that reads a directory can turn any file in it into source, so every one is an input.
+        let scriptDirectoryFiles = scripts.directories.flatMapSet { Self.files(inside: $0) }
+        return own.union(scripts.files).union(scriptDirectoryFiles).union(subProjects.flatMapSet(\.declaredInputFiles))
     }
 
-    /// Whether a Run Script input of this project or one it references names a path Lethen cannot resolve, such as
-    /// one with a build setting other than `SRCROOT` or `PROJECT_DIR`, or an input file list it cannot read, or
-    /// whether such a phase is set to run on every build, which no file time can vouch for.
+    /// Whether a Run Script phase of this project or one it references names a path Lethen cannot resolve, such as
+    /// one with a build setting other than `SRCROOT` or `PROJECT_DIR`, or a file list it cannot read, or writes a
+    /// source or build setting file that no walk of the project's directories or declared input reaches, such as one
+    /// in `DERIVED_FILE_DIR`. No file time can vouch for what such a phase reads or writes. A phase set to run on
+    /// every build is not one of these by itself: what it rewrites is compared like any other file.
     public var hasUnenumerableBuildInputs: Bool {
-        scriptInputs(root: sourceRoot.lexicallyNormalized()).unenumerable
-            || xcodeProject.pbxproj.shellScriptBuildPhases.contains(where: \.alwaysOutOfDate)
+        let scripts = scriptInputs(root: sourceRoot.lexicallyNormalized())
+        let roots = projectSourceRoots.map { $0.lexicallyNormalized() }
+        let reached = roots + roots.map(Self.resolvingSymlinks)
+        let declared = declaredInputFiles
+        return scripts.unenumerable
+            || scripts.outputs.contains { output in
+                XcodeBuildInputs.isTracked(output)
+                    && !declared.contains(output)
+                    && !reached.contains { output.starts(with: $0) }
+            }
             || subProjects.contains(where: \.hasUnenumerableBuildInputs)
     }
 
@@ -183,6 +195,20 @@ public final class XcodeProject: XcodeProjectlike {
             .filter { !$0.starts(with: resolvedRoot) }
     }
 
+    /// The files below `directory`, named through it as given, which may be a symbolic link to the directory.
+    private static func files(inside directory: FilePath) -> Set<FilePath> {
+        let resolved = resolvingSymlinks(directory)
+        let relatives = (try? FileManager.default.subpathsOfDirectory(atPath: resolved.string)) ?? []
+        return Set(relatives.compactMap { relative in
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: resolved.appending(relative).string, isDirectory: &isDirectory), !isDirectory.boolValue,
+                  !relative.split(separator: "/").contains(where: { $0 == ".git" || $0 == ".DS_Store" })
+            else { return nil }
+
+            return directory.appending(relative)
+        })
+    }
+
     private static func resolvingSymlinks(_ path: FilePath) -> FilePath {
         FilePath(path.url.resolvingSymlinksInPath().path)
     }
@@ -195,6 +221,12 @@ public final class XcodeProject: XcodeProjectlike {
             }
             for list in phase.inputFileListPaths ?? [] {
                 inputs.addList(list, root: root)
+            }
+            for entry in phase.outputPaths {
+                inputs.addOutput(entry, root: root)
+            }
+            for list in phase.outputFileListPaths ?? [] {
+                inputs.addOutputList(list, root: root)
             }
         }
         return inputs
@@ -222,6 +254,8 @@ extension XcodeProject: Equatable {
 private struct ScriptInputs {
     var files: Set<FilePath> = []
     var directories: [FilePath] = []
+    /// The files the phases declare as outputs.
+    var outputs: Set<FilePath> = []
     /// Set when an input names a path that cannot be resolved or read.
     var unenumerable = false
 
@@ -255,6 +289,38 @@ private struct ScriptInputs {
 
         for line in text.split(whereSeparator: \.isNewline) {
             add(String(line), root: root)
+        }
+    }
+
+    /// Build settings for the directories a build puts its products in. A phase that writes there, such as one that
+    /// copies test fixtures into an app bundle, writes no source and no file a scan reads.
+    private static let productDirectories = ["TARGET_BUILD_DIR", "BUILT_PRODUCTS_DIR", "CONFIGURATION_BUILD_DIR"]
+
+    mutating func addOutput(_ entry: String, root: FilePath) {
+        let trimmed = entry.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        guard !Self.productDirectories.contains(where: { trimmed.hasPrefix("$(\($0))") || trimmed.hasPrefix("${\($0)}") }) else { return }
+        guard let path = Self.resolve(entry, root: root) else {
+            unenumerable = true
+            return
+        }
+
+        outputs.insert(path)
+    }
+
+    /// An output file list is read like an input one, and is tracked like one, since it says what the phase writes.
+    mutating func addOutputList(_ entry: String, root: FilePath) {
+        guard let list = Self.resolve(entry, root: root),
+              let text = try? String(contentsOfFile: list.string, encoding: .utf8)
+        else {
+            unenumerable = true
+            return
+        }
+
+        // Xcode reads the list to learn the outputs, so an edit to it changes them.
+        files.insert(list)
+        for line in text.split(whereSeparator: \.isNewline) {
+            addOutput(String(line), root: root)
         }
     }
 
