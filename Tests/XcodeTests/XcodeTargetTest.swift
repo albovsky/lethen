@@ -84,7 +84,7 @@ final class XcodeTargetTest: XCTestCase {
         XCTAssertTrue(testTarget.isTestTarget)
     }
 
-    func testDependencyNamesIncludeTargetsOfOtherProjectsThroughTheirProxy() throws {
+    func testDependenciesIncludeTargetsOfOtherProjectsThroughTheirProxy() throws {
         let local = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "UIKitProject" })
         let proxy = PBXContainerItemProxy(containerPortal: .project(project.xcodeProject.pbxproj.rootObject!), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: "RemoteFramework")
         let dependencies = [
@@ -99,12 +99,12 @@ final class XcodeTargetTest: XCTestCase {
         pbxproj.add(object: pbxTarget)
         let target = XcodeTarget(project: project, target: pbxTarget)
 
-        XCTAssertEqual(target.dependencyNames, ["UIKitProject", "RemoteFramework"])
+        XCTAssertEqual(Set(target.dependencies.map(\.name)), ["UIKitProject", "RemoteFramework"])
     }
 
     /// Linking a project target's product is an implicit dependency, which Xcode honors without a
     /// `PBXTargetDependency`.
-    func testDependencyNamesIncludeLinkedProductsOfProjectTargets() throws {
+    func testDependenciesIncludeLinkedProductsOfProjectTargets() throws {
         let framework = try XCTUnwrap(project.xcodeProject.pbxproj.nativeTargets.first { $0.name == "Target With Spaces" })
         let product = try XCTUnwrap(framework.product)
         let buildFile = PBXBuildFile(file: product)
@@ -115,7 +115,7 @@ final class XcodeTargetTest: XCTestCase {
         pbxproj.add(object: phase)
         pbxproj.add(object: pbxTarget)
 
-        XCTAssertEqual(XcodeTarget(project: project, target: pbxTarget).dependencyNames, ["Target With Spaces"])
+        XCTAssertEqual(Set(XcodeTarget(project: project, target: pbxTarget).dependencies.map(\.name)), ["Target With Spaces"])
     }
 
     func testModuleNamesAreTheConfiguredProductModuleNamesOrTheDefault() throws {

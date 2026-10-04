@@ -269,7 +269,7 @@
         /// `--retain-public-targets Project/Target` names one target, but declarations carry only their module, so the
         /// target's module names are retained too; a module a retained and another target share is retained for both.
         func retainQualifiedPublicTargets(among targets: Set<XcodeTarget>) {
-            let retained = targets.filter { target in configuration.retainPublicTargets.contains(target.qualifiedName) && target.qualifiedName != target.name }
+            let retained = targets.filter { target in configuration.retainPublicTargets.contains { $0 != target.name && target.isNamedByQualifiedName($0) } }
             for target in retained.sorted(by: { $0.qualifiedName < $1.qualifiedName }) {
                 for module in target.moduleNames.sorted() {
                     if let other = targets.first(where: { !retained.contains($0) && $0.moduleNames.contains(module) && !configuration.retainPublicTargets.contains($0.name) }) {
@@ -357,7 +357,13 @@
             let compiled = Dictionary(uniqueKeysWithValues: projectTargets.map { ($0, compiledFiles($0)) })
             func isIndexed(_ file: FilePath, for target: XcodeTarget) -> Bool {
                 guard let fileModules = modules[file] else { return false }
-                guard fileModules.isDisjoint(with: target.moduleNames) else { return true }
+                guard fileModules.isDisjoint(with: target.moduleNames) else {
+                    // A unit whose module two targets share cannot say which of them built the file, so it proves
+                    // neither; each of them still counts as scanned through a file only it compiles.
+                    return !projectTargets.contains {
+                        $0 != target && !fileModules.isDisjoint(with: $0.moduleNames) && compiled[$0]?.contains(file) == true
+                    }
+                }
 
                 let builtByAnother = projectTargets.contains {
                     $0 != target && !fileModules.isDisjoint(with: $0.moduleNames) && compiled[$0]?.contains(file) == true
@@ -378,8 +384,16 @@
             // A dependency names its target and, through a proxy, the project it is in; without one it is in the
             // dependent's own project. When that project has no such target, every target of the name counts.
             func labels(ofDependency dependency: XcodeTarget.Dependency, of target: XcodeTarget) -> [String] {
-                let candidates = projectTargets.filter { $0.name == dependency.name }
-                let inProject = candidates.filter { $0.projectName == (dependency.projectName ?? target.projectName) }
+                let candidates = Array(projectTargets.filter { $0.name == dependency.name })
+                var inProject: [XcodeTarget]
+                if let path = dependency.projectPath {
+                    inProject = candidates.filter { $0.projectPath == path }
+                    if inProject.isEmpty { inProject = candidates.filter { $0.projectName == dependency.projectName } }
+                } else if let name = dependency.projectName {
+                    inProject = candidates.filter { $0.projectName == name }
+                } else {
+                    inProject = candidates.filter { $0.projectPath == target.projectPath }
+                }
                 return (inProject.isEmpty ? candidates : inProject).map(label)
             }
 
@@ -533,7 +547,7 @@
         /// told from those of a same-named target by module, so they are left out by file; a file a retained target
         /// compiles too stays in.
         static func filesOnlyExcludedTargetsCompile(excluded: Set<XcodeTarget>, among targets: Set<XcodeTarget>, options: [String]) -> Set<FilePath> {
-            let qualified = excluded.filter { target in options.contains { $0 == target.qualifiedName && $0 != target.name } }
+            let qualified = excluded.filter { target in options.contains { $0 != target.name && target.isNamedByQualifiedName($0) } }
             guard !qualified.isEmpty else { return [] }
 
             func files(_ target: XcodeTarget) -> Set<FilePath> {

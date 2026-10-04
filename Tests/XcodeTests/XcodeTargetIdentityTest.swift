@@ -161,7 +161,7 @@ final class XcodeTargetIdentityTest: XCTestCase {
         try FileManager.default.createDirectory(atPath: root.appending("Scanned").string, withIntermediateDirectories: true)
         try "func consume() {}\n".write(to: root.appending("Scanned/Consumer.swift").url, atomically: true, encoding: .utf8)
         let pbxproj = scannedProject.xcodeProject.pbxproj
-        let remote = PBXFileReference(sourceTree: .group, name: "Other.xcodeproj", path: "../Other/Other.xcodeproj")
+        let remote = PBXFileReference(sourceTree: .sourceRoot, name: "Other.xcodeproj", path: "../Other/Other.xcodeproj")
         let proxy = PBXContainerItemProxy(containerPortal: .fileReference(remote), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: "ConfigurationsProject")
         let dependency = PBXTargetDependency(name: nil, target: nil, targetProxy: proxy)
         let source = PBXFileReference(sourceTree: .sourceRoot, lastKnownFileType: "sourcecode.swift", path: "Consumer.swift")
@@ -172,7 +172,10 @@ final class XcodeTargetIdentityTest: XCTestCase {
             pbxproj.add(object: object)
         }
         let consumer = XcodeTarget(project: scannedProject, target: consumerTarget)
-        XCTAssertEqual(consumer.dependencies, [XcodeTarget.Dependency(name: "ConfigurationsProject", projectName: "Other")])
+        XCTAssertEqual(
+            consumer.dependencies,
+            [XcodeTarget.Dependency(name: "ConfigurationsProject", projectName: "Other", projectPath: root.appending("Other/Other.xcodeproj").lexicallyNormalized())]
+        )
         try workspace.targets.forEach { try $0.identifyFiles() }
         try consumer.identifyFiles()
 
@@ -230,6 +233,104 @@ final class XcodeTargetIdentityTest: XCTestCase {
         XCTAssertEqual(Set(unscanned.map(\.name)).count, 2, "\(unscanned.map(\.name))")
         XCTAssertTrue(unscanned.allSatisfy { $0.name.hasSuffix("/Scanned.xcodeproj/ConfigurationsProject") }, "\(unscanned.map(\.name))")
         XCTAssertEqual(dependencies.count, 2)
+
+        // The warning's own name for one of them excludes that one only.
+        let nestedTarget = try XCTUnwrap(targets.first { $0.projectPath.string.contains("/Nested/") })
+        let option = try XCTUnwrap(unscanned.first { $0.name.contains("/Nested/") }?.name)
+        XCTAssertEqual(nestedTarget.pathQualifiedName, option)
+        let excluded = targets.filter { XcodeProjectDriver.isExcluded($0, excludeTests: false, options: [option]) }
+        XCTAssertEqual(excluded, [nestedTarget])
+        let files = XcodeProjectDriver.filesOnlyExcludedTargetsCompile(excluded: excluded, among: targets, options: [option])
+        XCTAssertFalse(files.isEmpty)
+        XCTAssertTrue(files.allSatisfy { $0.lexicallyNormalized().starts(with: nested.lexicallyNormalized()) })
+    }
+
+    /// Two `Scanned.xcodeproj` in different folders: a proxy names one by its path, so only that one is reached.
+    func testProxyDependencyKeepsTheRemoteProjectsPath() throws {
+        let nested = root.appending("Nested")
+        try FileManager.default.createDirectory(atPath: nested.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: root.appending("Scanned").string, toPath: nested.appending("Scanned").string)
+        var loaded: Set<FilePath> = []
+        let shell = RecordingShell()
+        let twin = try XcodeProject(
+            path: nested.appending("Scanned/Scanned.xcodeproj"),
+            loadedProjectPaths: &loaded,
+            xcodebuild: Xcodebuild(shell: shell, logger: Self.logger),
+            shell: shell,
+            logger: Self.logger
+        )
+        let consumer = try makeConsumer(in: scannedProject, dependingOn: "ConfigurationsProject", inProjectAt: "../Nested/Scanned/Scanned.xcodeproj")
+        let targets = Set(scannedProject.targets.union(twin.targets).filter { $0.name == "ConfigurationsProject" } + [consumer])
+        try targets.forEach { try $0.identifyFiles() }
+        // The twin in `Nested` is the scanned one; the consumer's project has an unscanned namesake.
+        let nestedTarget = try XCTUnwrap(targets.first { $0.projectPath.string.contains("/Nested/") && $0.name == "ConfigurationsProject" })
+        let indexedModules = Dictionary(uniqueKeysWithValues: nestedTarget.files(kind: .swiftSource).map { ($0, Set(["ConfigurationsProject"])) })
+        let driver = XcodeProjectDriver(
+            logger: Self.logger,
+            configuration: Configuration(),
+            xcodebuild: Xcodebuild(shell: shell, logger: Self.logger),
+            project: workspace,
+            schemes: ["ConfigurationsProject"]
+        )
+
+        let (_, dependencies) = driver.unscannedTargets(among: targets, indexedModules: indexedModules)
+
+        XCTAssertEqual(dependencies["Consumer"], [nestedTarget.pathQualifiedName])
+    }
+
+    /// A unit whose module two same-named targets share does not say which of them built a file both compile, so the
+    /// target that also compiles a file nothing indexed is still unscanned.
+    func testSharedUnitOfASharedModuleDoesNotMakeBothTargetsScanned() throws {
+        for (directory, file) in [("Shared", "Shared.swift"), ("Scanned", "OnlyA.swift"), ("Other", "Widget.swift")] {
+            try FileManager.default.createDirectory(atPath: root.appending(directory).string, withIntermediateDirectories: true)
+            try "func \(file.dropLast(6).lowercased())() {}\n".write(to: root.appending("\(directory)/\(file)").url, atomically: true, encoding: .utf8)
+        }
+        let a = try makeTarget("Core", in: scannedProject, sources: ["../Shared/Shared.swift", "OnlyA.swift"])
+        let b = try makeTarget("Core", in: load("Other"), sources: ["../Shared/Shared.swift", "Widget.swift"])
+        let indexed = ["Shared/Shared.swift", "Scanned/OnlyA.swift"].map { root.appending($0).lexicallyNormalized() }
+        let driver = XcodeProjectDriver(
+            logger: Self.logger,
+            configuration: Configuration(),
+            xcodebuild: Xcodebuild(shell: RecordingShell(), logger: Self.logger),
+            project: workspace,
+            schemes: ["Core"]
+        )
+
+        let (unscanned, _) = driver.unscannedTargets(among: [a, b], indexedModules: Dictionary(uniqueKeysWithValues: indexed.map { ($0, Set(["Core"])) }))
+
+        XCTAssertEqual(unscanned.map(\.name), ["Other/Core"], "A is scanned through OnlyA.swift; B's Widget.swift has no unit")
+        XCTAssertEqual(unscanned.first?.swiftSourceFiles.compactMap { $0.lastComponent?.string }.sorted(), ["Shared.swift", "Widget.swift"])
+    }
+
+    private func makeTarget(_ name: String, in project: XcodeProject, sources: [String], dependencies: [PBXTargetDependency] = []) throws -> XcodeTarget {
+        let pbxproj = project.xcodeProject.pbxproj
+        var objects: [PBXObject] = []
+        var buildFiles: [PBXBuildFile] = []
+        for path in sources {
+            let reference = PBXFileReference(sourceTree: .sourceRoot, lastKnownFileType: "sourcecode.swift", path: path)
+            buildFiles.append(PBXBuildFile(file: reference))
+            objects.append(reference)
+        }
+        let phase = PBXSourcesBuildPhase(files: buildFiles)
+        let target = PBXNativeTarget(name: name, buildPhases: [phase], dependencies: dependencies)
+        for object in objects + buildFiles + [phase] + dependencies + [target] as [PBXObject] {
+            pbxproj.add(object: object)
+        }
+        let result = XcodeTarget(project: project, target: target)
+        try result.identifyFiles()
+        return result
+    }
+
+    /// A target `Consumer` of `project` with a source file and a proxy dependency on `name` in the project at `path`.
+    private func makeConsumer(in project: XcodeProject, dependingOn name: String, inProjectAt path: String) throws -> XcodeTarget {
+        try "func consume() {}\n".write(to: project.sourceRoot.appending("Consumer.swift").url, atomically: true, encoding: .utf8)
+        let pbxproj = project.xcodeProject.pbxproj
+        let remote = PBXFileReference(sourceTree: .sourceRoot, name: "Remote.xcodeproj", path: path)
+        let proxy = PBXContainerItemProxy(containerPortal: .fileReference(remote), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: name)
+        pbxproj.add(object: remote)
+        pbxproj.add(object: proxy)
+        let dependency = PBXTargetDependency(name: nil, target: nil, targetProxy: proxy)
+        return try makeTarget("Consumer", in: project, sources: ["Consumer.swift"], dependencies: [dependency])
     }
 
     private func load(_ name: String) throws -> XcodeProject {
