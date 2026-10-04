@@ -52,3 +52,36 @@ public func notCalledFromUnscannedTarget() {}
 
 /// Internal and not compiled into `UnscannedTool`, which declares a function of the same name.
 func internalNamedFromUnscannedTarget() {}
+
+/// `UnscannedTool` overrides one member, which stops compiling without it, and never overrides the other.
+open class OverridableBase {
+    public init() {}
+
+    open func overriddenInUnscannedTarget() {}
+
+    open func neverOverridden() {}
+}
+
+/// Run from `UnscannedTool` as `CallableHandler()()`, which never spells `callAsFunction`.
+public struct CallableHandler {
+    public init() {}
+
+    public func callAsFunction() {}
+}
+
+/// The control: `UnscannedTool` names no `UncalledHandler`, so its `callAsFunction` is not run there.
+public struct UncalledHandler {
+    public init() {}
+
+    public func callAsFunction() {}
+}
+
+/// Reached from `UnscannedTool` as `AliasSecond.sharedThroughAliasChain`.
+public class AliasedOriginal {
+    public init() {}
+
+    public static let sharedThroughAliasChain = 0
+}
+
+public typealias AliasFirst = AliasedOriginal
+public typealias AliasSecond = AliasFirst

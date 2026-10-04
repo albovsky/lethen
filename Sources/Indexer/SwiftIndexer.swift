@@ -329,17 +329,19 @@ final class SwiftIndexer: Indexer {
                 sourceFile: sourceFile,
                 syntax: multiplexingSyntaxVisitor.syntax,
                 locationBuilder: locationBuilder,
+                locationConverter: multiplexingSyntaxVisitor.locationConverter,
                 declarations: declarations,
+                fileCommands: multiplexingSyntaxVisitor.parseComments(),
                 referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init),
                 occurrenceLocations: occurrenceLocations,
+                retainsAllDeclarations: retainAllDeclarations,
                 graph: graph,
+                logger: logger,
                 evidence: evidence
             )
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
             }
-            identifyUnusedParameters(using: multiplexingSyntaxVisitor)
-            applyCommentCommands(using: multiplexingSyntaxVisitor)
         }
 
         // MARK: - Private
@@ -447,18 +449,6 @@ final class SwiftIndexer: Indexer {
             }
         }
 
-        private func applyCommentCommands(using syntaxVisitor: MultiplexingSyntaxVisitor) {
-            let fileCommands = syntaxVisitor.parseComments()
-
-            if fileCommands.contains(.ignoreAll) {
-                commandIgnore(declarations, kind: .file)
-            } else {
-                for decl in declarations where decl.commentCommands.contains(.ignore) {
-                    commandIgnore([decl], kind: .declaration)
-                }
-            }
-        }
-
         private func visitDeclarations(using declarationVisitor: DeclarationSyntaxVisitor) {
             let declarationsByLocation = declarationVisitor.resultsByLocation
 
@@ -516,19 +506,6 @@ final class SwiftIndexer: Indexer {
             }
         }
 
-        private func commandIgnore(_ decls: [Declaration], kind: CommandIgnoreKind) {
-            for decl in decls {
-                graph.withLock { graph in
-                    graph.markRetained(decl)
-                    decl.unusedParameters.forEach { graph.markRetained($0) }
-
-                    graph.markCommandIgnored(decl, kind: kind)
-                    decl.unusedParameters.forEach { graph.markCommandIgnored($0, kind: kind) }
-                }
-                commandIgnore(Array(decl.declarations), kind: kind)
-            }
-        }
-
         private func associate(_ ref: Reference, with decl: Declaration) {
             graph.withLock { _ in
                 associateUnsafe(ref, with: decl)
@@ -542,58 +519,6 @@ final class SwiftIndexer: Indexer {
                 decl.related.insert(ref)
             } else {
                 decl.references.insert(ref)
-            }
-        }
-
-        private func identifyUnusedParameters(using syntaxVisitor: MultiplexingSyntaxVisitor) {
-            // Variables too: a closure stored in a property is analyzed like a function.
-            let functionDecls = declarations.filter { $0.kind.isFunctionKind || $0.kind.isVariableKind }
-            let functionDeclsByLocation = functionDecls.reduce(into: [Location: Declaration]()) {
-                $0[$1.location] = $1
-            }
-
-            // Build a map of ignored param names per function, and track functions with ignored
-            // params so ScanResultBuilder can efficiently detect superfluous ignores.
-            var ignoredParamsByLocation: [Location: [String]] = [:]
-            for functionDecl in functionDecls {
-                let ignoredParamNames = functionDecl.commentCommands.ignoredParameterNames
-                if !ignoredParamNames.isEmpty {
-                    ignoredParamsByLocation[functionDecl.location] = ignoredParamNames
-                    graph.withLock { $0.markHasIgnoredParameters(functionDecl) }
-                }
-            }
-
-            let analyzer = UnusedParameterAnalyzer()
-            let paramsByFunction = analyzer.analyze(
-                file: syntaxVisitor.sourceFile,
-                syntax: syntaxVisitor.syntax,
-                locationConverter: syntaxVisitor.locationConverter,
-                parseProtocols: true
-            )
-
-            for (function, params) in paramsByFunction {
-                guard let functionDecl = functionDeclsByLocation[function.location] else {
-                    // The declaration may not exist if the code was not compiled due to build conditions, e.g #if.
-                    logger.debug("Failed to associate indexed function for parameter function '\(function.name)' at \(function.location).")
-                    continue
-                }
-
-                let ignoredParamNames = ignoredParamsByLocation[functionDecl.location] ?? []
-
-                graph.withLock { graph in
-                    for param in params {
-                        let paramDecl = param.makeDeclaration(withParent: functionDecl)
-                        functionDecl.unusedParameters.insert(paramDecl)
-                        graph.add(paramDecl)
-
-                        if retainAllDeclarations || (functionDecl.isObjcAccessible && configuration.retainObjcAccessible) {
-                            graph.markRetained(paramDecl)
-                        } else if ignoredParamNames.contains(param.name.text) {
-                            graph.markRetained(paramDecl)
-                            graph.markCommandIgnored(paramDecl, kind: .declaration)
-                        }
-                    }
-                }
             }
         }
 

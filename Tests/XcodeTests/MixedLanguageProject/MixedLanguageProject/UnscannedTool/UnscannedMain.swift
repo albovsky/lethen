@@ -18,6 +18,9 @@ enum UnscannedMain {
         // Declaring a local of the framework function's name is not a use of it.
         let notCalledFromUnscannedTarget = 1
         if case .matchedOnly = PublicMode.constructed {}
+        CallableHandler()()
+        _ = AliasSecond.sharedThroughAliasChain
+        _ = OverridingBase()
     }
 
     /// A function of the tool's own that shares its name with an internal one of the framework.
@@ -25,6 +28,11 @@ enum UnscannedMain {
 
     /// Shares its name with a member of the framework's `UnnamedStore`, which the tool never names.
     private static func memberNamedWithoutItsType() {}
+}
+
+/// Overrides one member of the framework's open class.
+private class OverridingBase: OverridableBase {
+    override func overriddenInUnscannedTarget() {}
 }
 
 /// The tool's own type of the name a private struct in `SharedBetweenTargets.swift` has.

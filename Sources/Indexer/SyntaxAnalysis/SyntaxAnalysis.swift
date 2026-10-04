@@ -14,5 +14,8 @@ enum SyntaxAnalysisList {
         ValueUseAnalysis.self,
         StringLiteralAnalysis.self,
         SkippedBranchAnalysis.self,
+        UnusedParameterAnalysis.self,
+        // Last: ignoring a declaration recurses into the parameters the analysis above added.
+        CommentCommandAnalysis.self,
     ]
 }
