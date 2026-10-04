@@ -37,10 +37,18 @@ final class InfoPlistParserTest: XCTestCase {
         XCTAssertEqual(try InfoPlistParser(path: path).parse().map(\.name), ["Application"])
     }
 
-    /// The control: text that is neither XML nor a binary list still fails, as before.
+    func testReadsOpenStepPropertyLists() throws {
+        let path = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen-\(UUID().uuidString).plist").path)
+        try "{ CFBundleName = NotAClass; NSPrincipalClass = \"MyApp.Application\"; }".write(toFile: path.string, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: path.string) }
+
+        XCTAssertEqual(try InfoPlistParser(path: path).parse().map(\.name), ["Application"])
+    }
+
+    /// The control: text that is no property list in any format still fails, as before.
     func testNonPropertyListStillThrows() throws {
         let path = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen-\(UUID().uuidString).plist").path)
-        try "not a plist".write(toFile: path.string, atomically: true, encoding: .utf8)
+        try "not a plist, just some words".write(toFile: path.string, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: path.string) }
 
         XCTAssertThrowsError(try InfoPlistParser(path: path).parse())
