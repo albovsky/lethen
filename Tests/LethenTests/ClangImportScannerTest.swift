@@ -199,6 +199,19 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("@ /* needed */ import WMF;\n").first?.commentCommands, [])
     }
 
+    /// Each comment between the tokens is parsed on its own, before or after an ordinary one.
+    func testIgnoreCommandBesideAnOrdinaryCommentBetweenTheTokens() {
+        XCTAssertEqual(imports("@/* note *//* periphery:ignore */import WMF;\n").first?.commentCommands, [.ignore])
+        XCTAssertEqual(imports("@/* periphery:ignore *//* note */import WMF;\n").first?.commentCommands, [.ignore])
+    }
+
+    /// A file-wide command between the tokens reaches every import, as one anywhere else in the file does.
+    func testFileWideIgnoreCommandBetweenTheTokensReachesEveryImport() {
+        let found = imports("@import A;\n@/* periphery:ignore:all */import B;\n@import C;\n")
+
+        XCTAssertEqual(found.map(\.commentCommands), [[.ignoreAll], [.ignoreAll], [.ignoreAll]])
+    }
+
     func testIgnoreCommandOnTheSameLine() throws {
         let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
 
