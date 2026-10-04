@@ -331,6 +331,30 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(assessor(graph).assess(sharedA).confidence, .certain)
     }
 
+    /// A protocol extension keeps no reference to its protocol once the graph is built, only the protocol's reference to
+    /// it: `extension P { var shared }` is still reached through `typealias Alias = P`.
+    func testProtocolExtensionMembersFollowAliasesOfTheProtocol() {
+        let graph = makeGraph()
+        let proto = declaration("P", kind: .protocol, in: otherFile, accessibility: .public)
+        let ext = declaration("P", kind: .extensionProtocol, in: otherFile, accessibility: .public, line: 2)
+        let member = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: ext, line: 3)
+        let other = declaration("Q", kind: .protocol, in: otherFile, accessibility: .public, line: 4)
+        let otherExt = declaration("Q", kind: .extensionProtocol, in: otherFile, accessibility: .public, line: 5)
+        let otherMember = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: otherExt, line: 6)
+        let alias = declaration("Alias", kind: .typealias, in: otherFile, accessibility: .public, line: 7)
+        alias.references.insert(Reference(name: "P", kind: .normal, declarationKind: .protocol, usr: "s:protocol:P", location: alias.location))
+        graph.add([proto, ext, member, other, otherExt, otherMember, alias])
+        for (type, extensionDeclaration) in [(proto, ext), (other, otherExt)] {
+            let reference = Reference(name: type.name, kind: .normal, declarationKind: .extensionProtocol, usr: extensionDeclaration.usrs.first!, location: extensionDeclaration.location)
+            reference.parent = type
+            graph.add(reference, from: type)
+        }
+        use(["Alias", "Alias.shared", "shared"], members: ["Alias.shared", "shared"])
+
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(otherMember).confidence, .certain, "The control: another protocol's extension")
+    }
+
     /// An extension is reported only with its unused type, so it is as sure as the type.
     func testExtensionsFollowTheirType() {
         let graph = makeGraph()

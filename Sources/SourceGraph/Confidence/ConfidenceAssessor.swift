@@ -276,8 +276,15 @@ public final class ConfidenceAssessor {
             if Self.typeKinds.contains(parent.kind) { return parent }
 
             if parent.kind.isExtensionKind {
-                let extended = parent.references.first { Self.typeKinds.contains($0.declarationKind) }
-                return extended.flatMap { graph.declaration(withUsr: $0.usr) }
+                if let extended = try? graph.extendedDeclaration(forExtension: parent) { return extended }
+
+                // `ProtocolExtensionReferenceBuilder` replaces the extension's reference to its protocol with
+                // one from the protocol to the extension.
+                return graph.references(to: parent)
+                    .filter { $0.declarationKind == .extensionProtocol }
+                    .compactMap(\.parent)
+                    .filter { $0.kind == .protocol && $0.name == parent.name }
+                    .min()
             }
             current = parent.parent
         }
