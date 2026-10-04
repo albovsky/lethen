@@ -36,7 +36,7 @@ def main(argv=None):
         rows = json.loads((args.expected or args.root / f"corpus/expected/{args.name}.json").read_text())
         rows.sort(key=json.dumps)
         sample = random.Random(args.seed).sample(rows, min(args.count, len(rows)))
-        for index, (path, line, column, kind, name, hints, ids) in enumerate(sample, 1):
+        for index, (path, line, column, kind, name, hints, *_) in enumerate(sample, 1):
             print(f"| {args.name}-{index} | `{path}:{line}` | {kind} `{name}` | {', '.join(hints)} | | |")
         return 0
     if args.expected or args.count != 30:
@@ -49,7 +49,7 @@ def main(argv=None):
         return 2
     rows = json.loads((args.root / f"corpus/expected/{args.name}.json").read_text())
     sampled = [row for row, key in zip(rows, load_expected(args.root, args.name)) if is_sampled(args.name, key, rate)]
-    for path, line, column, kind, name, hints, ids in sampled:
+    for path, line, column, kind, name, hints, *_ in sampled:
         entry = verdicts.get((path, line, column, kind, name))
         if args.pending:
             if entry is None:
