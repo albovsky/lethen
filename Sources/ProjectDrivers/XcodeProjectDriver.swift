@@ -189,12 +189,12 @@
             let excludedTestTargets = configuration.excludeTests ? project.targets.filter(\.isTestTarget).mapSet(\.name) : []
             retainQualifiedPublicTargets(among: targets)
             let excludedTargets = targets.filter { Self.isExcluded($0, excludeTests: configuration.excludeTests, options: configuration.excludeTargets) }
-            let excludedFiles = Self.filesOnlyExcludedTargetsCompile(excluded: excludedTargets, among: targets, options: configuration.excludeTargets)
+            let excludedUnits = Self.excludedUnits(excluded: excludedTargets, among: targets, options: configuration.excludeTargets)
             func collector(requireFreshUnits: Bool) -> SourceFileCollector {
                 SourceFileCollector(
                     indexStorePaths: indexStorePaths,
                     excludedTestTargets: excludedTestTargets,
-                    excludedFiles: excludedFiles,
+                    excludedUnits: excludedUnits,
                     requireFreshUnits: requireFreshUnits,
                     logger: logger,
                     configuration: configuration
@@ -357,11 +357,14 @@
             let compiled = Dictionary(uniqueKeysWithValues: projectTargets.map { ($0, compiledFiles($0)) })
             func isIndexed(_ file: FilePath, for target: XcodeTarget) -> Bool {
                 guard let fileModules = modules[file] else { return false }
-                guard fileModules.isDisjoint(with: target.moduleNames) else {
+
+                let matched = fileModules.intersection(target.moduleNames)
+                guard matched.isEmpty else {
                     // A unit whose module two targets share cannot say which of them built the file, so it proves
-                    // neither; each of them still counts as scanned through a file only it compiles.
+                    // neither; each of them still counts as scanned through a file only it compiles. Units of
+                    // distinct modules each belong to their own target.
                     return !projectTargets.contains {
-                        $0 != target && !fileModules.isDisjoint(with: $0.moduleNames) && compiled[$0]?.contains(file) == true
+                        $0 != target && !matched.isDisjoint(with: $0.moduleNames) && compiled[$0]?.contains(file) == true
                     }
                 }
 
@@ -382,19 +385,18 @@
                 return qualifiedCounts[target.qualifiedName, default: 0] > 1 ? target.pathQualifiedName : target.qualifiedName
             }
             // A dependency names its target and, through a proxy, the project it is in; without one it is in the
-            // dependent's own project. When that project has no such target, every target of the name counts.
+            // dependent's own project. A project that has no such target among those left in the scan, because it was
+            // excluded, has none, rather than another project's target of that name.
             func labels(ofDependency dependency: XcodeTarget.Dependency, of target: XcodeTarget) -> [String] {
-                let candidates = Array(projectTargets.filter { $0.name == dependency.name })
-                var inProject: [XcodeTarget]
-                if let path = dependency.projectPath {
-                    inProject = candidates.filter { $0.projectPath == path }
-                    if inProject.isEmpty { inProject = candidates.filter { $0.projectName == dependency.projectName } }
+                let candidates = projectTargets.filter { $0.name == dependency.name }
+                let inProject: [XcodeTarget] = if let path = dependency.projectPath {
+                    candidates.filter { $0.projectPath == path }
                 } else if let name = dependency.projectName {
-                    inProject = candidates.filter { $0.projectName == name }
+                    candidates.filter { $0.projectName == name }
                 } else {
-                    inProject = candidates.filter { $0.projectPath == target.projectPath }
+                    candidates.filter { $0.projectPath == target.projectPath }
                 }
-                return (inProject.isEmpty ? candidates : inProject).map(label)
+                return inProject.map(label)
             }
 
             let scanned = projectTargets.filter { target in compiled[target, default: []].contains { isIndexed($0, for: target) } }
@@ -402,7 +404,8 @@
             let dependencyLabels = Dictionary(projectTargets.map { target in
                 (label(target), target.dependencies.flatMapSet { dependency -> Set<String> in
                     let resolved = labels(ofDependency: dependency, of: target)
-                    return resolved.isEmpty ? [dependency.name] : Set(resolved)
+                    // Not a label of any target, so a dependency that is gone reaches nothing.
+                    return resolved.isEmpty ? ["?\(dependency.name)"] : Set(resolved)
                 })
             }, uniquingKeysWith: { $0.union($1) })
             let scannedSwiftFiles = scanned.flatMapSet { $0.files(kind: .swiftSource).filter(isCollectable).mapSet { $0.lexicallyNormalized() } }
@@ -543,19 +546,33 @@
             (excludeTests && target.isTestTarget) || options.contains(where: target.isNamed(by:))
         }
 
-        /// The files only the targets named by a qualified `--exclude-targets` option compile. Their index units cannot be
-        /// told from those of a same-named target by module, so they are left out by file; a file a retained target
-        /// compiles too stays in.
-        static func filesOnlyExcludedTargetsCompile(excluded: Set<XcodeTarget>, among targets: Set<XcodeTarget>, options: [String]) -> Set<FilePath> {
+        /// The units to leave out for the targets named by a qualified `--exclude-targets` option, which cannot be left
+        /// out by module as a plain name is when a same-named target shares it. A file only they compile is left out
+        /// whole (an empty set); one a retained target compiles too is left out only for the modules of the excluded
+        /// target that the retained one does not share, and stays when no module tells them apart.
+        static func excludedUnits(excluded: Set<XcodeTarget>, among targets: Set<XcodeTarget>, options: [String]) -> [FilePath: Set<String>] {
             let qualified = excluded.filter { target in options.contains { $0 != target.name && target.isNamedByQualifiedName($0) } }
-            guard !qualified.isEmpty else { return [] }
-
             func files(_ target: XcodeTarget) -> Set<FilePath> {
                 target.files(kind: .swiftSource).union(target.files(kind: .clangSource)).mapSet { $0.lexicallyNormalized() }
             }
 
-            let retained = targets.subtracting(excluded).flatMapSet(files)
-            return qualified.flatMapSet(files).subtracting(retained)
+            let retained = targets.subtracting(excluded)
+            var units: [FilePath: Set<String>] = [:]
+            for target in qualified {
+                for file in files(target) {
+                    let others = retained.filter { files($0).contains(file) }
+                    if others.isEmpty {
+                        units[file] = []
+                        continue
+                    }
+
+                    let distinct = target.moduleNames.subtracting(others.flatMapSet(\.moduleNames))
+                    if !distinct.isEmpty, units[file]?.isEmpty != true {
+                        units[file, default: []].formUnion(distinct)
+                    }
+                }
+            }
+            return units
         }
 
         /// The scanned targets the target reaches through its dependencies, directly or through other unscanned

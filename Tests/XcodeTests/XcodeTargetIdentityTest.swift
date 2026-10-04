@@ -93,11 +93,11 @@ final class XcodeTargetIdentityTest: XCTestCase {
         let options = ["Other/ConfigurationsProject"]
         let excluded = workspace.targets.filter { XcodeProjectDriver.isExcluded($0, excludeTests: false, options: options) }
 
-        let files = XcodeProjectDriver.filesOnlyExcludedTargetsCompile(excluded: excluded, among: workspace.targets, options: options)
+        let files = Set(XcodeProjectDriver.excludedUnits(excluded: excluded, among: workspace.targets, options: options).keys)
 
         XCTAssertFalse(files.isEmpty)
         XCTAssertTrue(files.allSatisfy { $0.lexicallyNormalized().starts(with: root.appending("Other").lexicallyNormalized()) }, "\(files)")
-        XCTAssertTrue(XcodeProjectDriver.filesOnlyExcludedTargetsCompile(excluded: workspace.targets, among: workspace.targets, options: ["ConfigurationsProject"]).isEmpty, "A plain name needs no files")
+        XCTAssertTrue(XcodeProjectDriver.excludedUnits(excluded: workspace.targets, among: workspace.targets, options: ["ConfigurationsProject"]).isEmpty, "A plain name needs no files")
     }
 
     /// `Scanned`'s target is indexed and `Other`'s, of the same name, is not.
@@ -240,7 +240,7 @@ final class XcodeTargetIdentityTest: XCTestCase {
         XCTAssertEqual(nestedTarget.pathQualifiedName, option)
         let excluded = targets.filter { XcodeProjectDriver.isExcluded($0, excludeTests: false, options: [option]) }
         XCTAssertEqual(excluded, [nestedTarget])
-        let files = XcodeProjectDriver.filesOnlyExcludedTargetsCompile(excluded: excluded, among: targets, options: [option])
+        let files = Set(XcodeProjectDriver.excludedUnits(excluded: excluded, among: targets, options: [option]).keys)
         XCTAssertFalse(files.isEmpty)
         XCTAssertTrue(files.allSatisfy { $0.lexicallyNormalized().starts(with: nested.lexicallyNormalized()) })
     }
@@ -302,7 +302,14 @@ final class XcodeTargetIdentityTest: XCTestCase {
         XCTAssertEqual(unscanned.first?.swiftSourceFiles.compactMap { $0.lastComponent?.string }.sorted(), ["Shared.swift", "Widget.swift"])
     }
 
-    private func makeTarget(_ name: String, in project: XcodeProject, sources: [String], dependencies: [PBXTargetDependency] = []) throws -> XcodeTarget {
+    private func writeSources(_ files: [(String, String)]) throws {
+        for (directory, file) in files {
+            try FileManager.default.createDirectory(atPath: root.appending(directory).string, withIntermediateDirectories: true)
+            try "func \(file.dropLast(6).lowercased())() {}\n".write(to: root.appending("\(directory)/\(file)").url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func makeTarget(_ name: String, in project: XcodeProject, sources: [String], module: String? = nil, dependencies: [PBXTargetDependency] = []) throws -> XcodeTarget {
         let pbxproj = project.xcodeProject.pbxproj
         var objects: [PBXObject] = []
         var buildFiles: [PBXBuildFile] = []
@@ -313,12 +320,72 @@ final class XcodeTargetIdentityTest: XCTestCase {
         }
         let phase = PBXSourcesBuildPhase(files: buildFiles)
         let target = PBXNativeTarget(name: name, buildPhases: [phase], dependencies: dependencies)
+        if let module {
+            let debug = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string(module)])
+            let list = XCConfigurationList(buildConfigurations: [debug])
+            target.buildConfigurationList = list
+            objects += [debug, list]
+        }
         for object in objects + buildFiles + [phase] + dependencies + [target] as [PBXObject] {
             pbxproj.add(object: object)
         }
         let result = XcodeTarget(project: project, target: target)
         try result.identifyFiles()
         return result
+    }
+
+    /// Two targets that compile one file under distinct modules each own their unit, so a file nothing else shares
+    /// does not matter: both are scanned.
+    func testSharedFileOfDistinctModulesLeavesBothTargetsScanned() throws {
+        try writeSources([("Shared", "Shared.swift")])
+        let a = try makeTarget("Core", in: scannedProject, sources: ["../Shared/Shared.swift"], module: "ACore")
+        let b = try makeTarget("Core", in: load("Other"), sources: ["../Shared/Shared.swift"], module: "BCore")
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: Configuration(), xcodebuild: Xcodebuild(shell: RecordingShell(), logger: Self.logger), project: workspace, schemes: ["Core"])
+
+        let (unscanned, _) = driver.unscannedTargets(among: [a, b], indexedModules: [root.appending("Shared/Shared.swift").lexicallyNormalized(): ["ACore", "BCore"]])
+
+        XCTAssertEqual(unscanned.map(\.name), [])
+    }
+
+    /// `Other/Widget` depends on `Other/Core`, which `--exclude-targets Other/Core` leaves out, while `Scanned/Core`
+    /// stays scanned: the dependency is not redirected to the namesake.
+    func testDependencyOnAnExcludedTargetIsNotRedirectedToANamesake() throws {
+        try writeSources([("Scanned", "ScannedCore.swift"), ("Other", "OtherCore.swift"), ("Other", "OtherWidget.swift")])
+        let other = try load("Other")
+        let core = try makeTarget("Core", in: scannedProject, sources: ["ScannedCore.swift"])
+        let excluded = try makeTarget("Core", in: other, sources: ["OtherCore.swift"])
+        let remote = PBXFileReference(sourceTree: .sourceRoot, name: "Other.xcodeproj", path: "Other.xcodeproj")
+        let proxy = PBXContainerItemProxy(containerPortal: .fileReference(remote), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: "Core")
+        other.xcodeProject.pbxproj.add(object: remote)
+        other.xcodeProject.pbxproj.add(object: proxy)
+        let dependency = PBXTargetDependency(name: nil, target: nil, targetProxy: proxy)
+        let widget = try makeTarget("Widget", in: other, sources: ["OtherWidget.swift"], dependencies: [dependency])
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: Configuration(), xcodebuild: Xcodebuild(shell: RecordingShell(), logger: Self.logger), project: workspace, schemes: ["Core"])
+        let options = ["Other/Core"]
+        let retained = Set([core, excluded, widget]).filter { !XcodeProjectDriver.isExcluded($0, excludeTests: false, options: options) }
+
+        let (unscanned, dependencies) = driver.unscannedTargets(
+            among: retained,
+            indexedModules: [root.appending("Scanned/ScannedCore.swift").lexicallyNormalized(): ["Core"]]
+        )
+
+        XCTAssertEqual(retained.count, 2)
+        XCTAssertEqual(unscanned.map(\.name), ["Widget"])
+        XCTAssertEqual(dependencies["Widget"], [], "Its dependency was excluded, and `Scanned/Core` is another target")
+    }
+
+    /// A shared file of distinct modules is left out for the excluded target's module only.
+    func testQualifiedExclusionOfASharedFileLeavesOutOnlyTheExcludedModule() throws {
+        try writeSources([("Shared", "Shared.swift"), ("Other", "OnlyB.swift")])
+        let a = try makeTarget("Core", in: scannedProject, sources: ["../Shared/Shared.swift"], module: "ACore")
+        let b = try makeTarget("Core", in: load("Other"), sources: ["../Shared/Shared.swift", "OnlyB.swift"], module: "BCore")
+        let options = ["Other/Core"]
+        let excluded = Set([a, b]).filter { XcodeProjectDriver.isExcluded($0, excludeTests: false, options: options) }
+
+        let units = XcodeProjectDriver.excludedUnits(excluded: excluded, among: [a, b], options: options)
+
+        XCTAssertEqual(units[root.appending("Shared/Shared.swift").lexicallyNormalized()], ["BCore"])
+        XCTAssertEqual(units[root.appending("Other/OnlyB.swift").lexicallyNormalized()], [], "A file only the excluded target compiles goes whole")
     }
 
     /// A target `Consumer` of `project` with a source file and a proxy dependency on `name` in the project at `path`.
