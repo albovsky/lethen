@@ -27,6 +27,9 @@ public final class ConfidenceAssessor {
         return modules.compactMap { module -> String? in
             guard let sites = evidence.skippedBranches[module] else { return nil }
 
+            if Self.spellingMatchedKinds.contains(declaration.kind), let spelled = sites.spellings[baseName] {
+                return spelled.filter { canBeUse(of: declaration, spelledAs: $0.key) }.values.min()
+            }
             let names = if declaration.kind == .enumelement {
                 sites.constructionNames
             } else if Self.memberKinds.contains(declaration.kind) {
@@ -37,6 +40,114 @@ public final class ConfidenceAssessor {
             return names[baseName]
         }.min()
     }
+
+    /// Kinds whose skipped uses are matched by how they are spelled, not by name alone: functions, methods and
+    /// initializers by argument labels, and members by the type they are reached through.
+    private static let spellingMatchedKinds: Set<Declaration.Kind> = [
+        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .functionConstructor,
+        .varClass, .varInstance, .varStatic,
+    ]
+
+    private static let functionKinds: Set<Declaration.Kind> = [
+        .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .functionConstructor,
+    ]
+
+    /// Whether a skipped use of the declaration's name, spelled this way, can be a use of this declaration. A
+    /// member needs a member access or a call, as for any name. A function is matched by its labels, so that
+    /// `show(title:)` does not name `show(message:)`, and a member reached through a type by that type, so that
+    /// `String.init(data:)` does not name another type's initializer. Neither says anything about a use that
+    /// spells no labels or no type: `#selector(show)` can be any `show`, and `self.show()` names no type.
+    private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling) -> Bool {
+        if Self.memberKinds.contains(declaration.kind), !spelling.isMember { return false }
+
+        if Self.functionKinds.contains(declaration.kind), let labels = spelling.labels,
+           !Self.labels(labels, hasTrailingClosure: spelling.hasTrailingClosure, fit: Self.parameterLabels(of: declaration))
+        {
+            return false
+        }
+        if declaration.kind != .functionFree, let receiver = spelling.receiver, let enclosing = enclosingTypeName(of: declaration) {
+            return receiver == enclosing || !typeNamesDistinguish(receiver, from: enclosing)
+        }
+        return true
+    }
+
+    /// The argument labels of a function's declared name, `_` for an unlabeled parameter: `["title", "_"]` for
+    /// `show(title:_:)`. `nil` for a name that spells none.
+    private static func parameterLabels(of declaration: Declaration) -> [String]? {
+        guard let open = declaration.name.firstIndex(of: "("), declaration.name.hasSuffix(")") else { return nil }
+
+        let inner = declaration.name[declaration.name.index(after: open) ..< declaration.name.index(before: declaration.name.endIndex)]
+        return inner.split(separator: ":", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    /// Whether a call spelling `call` can be of a function that declares `parameters`: the call's labels are some
+    /// of them, in order, since a parameter with a default value can be left out, and a trailing closure fills
+    /// one more that the labels do not spell.
+    private static func labels(_ call: [String], hasTrailingClosure: Bool, fit parameters: [String]?) -> Bool {
+        guard let parameters else { return true }
+
+        var remaining = parameters[...]
+        for label in call {
+            guard let index = remaining.firstIndex(of: label) else { return false }
+
+            remaining = remaining[remaining.index(after: index)...]
+        }
+        return !hasTrailingClosure || call.count < parameters.count
+    }
+
+    /// Whether a use spelled through the type `receiver` cannot reach a member of `enclosing`. Only when both are
+    /// concrete, neither names the other (an alias or a subclass of it does, in either direction, since a subclass
+    /// overrides what its superclass declares), and `enclosing` is a type of the scan, not an extension of a
+    /// protocol or of an unscanned type whose conformers or refinements the graph does not list. A `receiver` that
+    /// is a protocol, an associated type, or a generic parameter of the scan stands for any conforming type.
+    private func typeNamesDistinguish(_ receiver: String, from enclosing: String) -> Bool {
+        let enclosingKinds = typeKindsByName[enclosing, default: []]
+        guard !enclosingKinds.isEmpty, enclosingKinds.isSubset(of: Self.concreteTypeKinds) else { return false }
+
+        let receiverKinds = typeKindsByName[receiver, default: []]
+        guard receiverKinds.isDisjoint(with: Self.placeholderTypeKinds) else { return false }
+
+        return !typeRelatedNames[enclosing, default: []].contains(receiver) && !typeRelatedNames[receiver, default: []].contains(enclosing)
+    }
+
+    /// The names a type can be spelled as besides its own, by base name: its aliases and its subclasses, followed
+    /// through each other. `typeAliasNames` finds a subclass by the reference it holds to its superclass, which
+    /// the index records as a related reference, so it is built here from both. Built on first use, after indexing.
+    private lazy var typeRelatedNames: [String: Set<String>] = {
+        var direct: [String: Set<String>] = typeAliasNames
+        for subclass in graph.declarations(ofKind: .class) {
+            for reference in subclass.references.union(subclass.related) where reference.declarationKind == .class {
+                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: subclass.name))
+            }
+        }
+
+        var names: [String: Set<String>] = [:]
+        for type in direct.keys {
+            var closure: Set<String> = []
+            var pending = Array(direct[type, default: []])
+            while let related = pending.popLast() {
+                guard related != type, closure.insert(related).inserted else { continue }
+
+                pending.append(contentsOf: direct[related, default: []])
+            }
+            names[type] = closure
+        }
+        return names
+    }()
+
+    private static let concreteTypeKinds: Set<Declaration.Kind> = [.class, .struct, .enum]
+    private static let placeholderTypeKinds: Set<Declaration.Kind> = [.protocol, .associatedtype, .genericTypeParam]
+
+    /// The kinds of the type-like declarations of the scan, by base name. Built on first use, after indexing.
+    private lazy var typeKindsByName: [String: Set<Declaration.Kind>] = {
+        var kinds: [String: Set<Declaration.Kind>] = [:]
+        for kind in Self.concreteTypeKinds.union(Self.placeholderTypeKinds).union([.typealias]) {
+            for declaration in graph.declarations(ofKind: kind) {
+                kinds[SourceGraph.baseName(of: declaration.name), default: []].insert(kind)
+            }
+        }
+        return kinds
+    }()
 
     /// Why a string in the scanned sources may name the declaration at run time. Only the Objective-C runtime
     /// resolves a bare string to a declaration it exposes (a selector, a class name, a key-value coding key),
