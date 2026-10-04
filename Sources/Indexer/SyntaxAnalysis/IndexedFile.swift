@@ -11,6 +11,8 @@ struct IndexedFile {
     let locationConverter: SourceLocationConverter
     /// The file's declarations from the index, in index order.
     let declarations: [Declaration]
+    /// The comment commands in the leading trivia of the file, such as `periphery:ignore:all`.
+    let fileCommands: [CommentCommand]
     /// The file's references from the index, by their location. Several references can share one location.
     let referencesByLocation: [Location: Set<Reference>]
     /// Locations of every index occurrence in the file, by the module whose unit recorded them. A file built

@@ -13,6 +13,7 @@ func makeIndexedFile(
     modules: Set<String> = ["T"],
     declarations: [Declaration] = [],
     occurrenceLocations: [String: Set<Location>] = [:],
+    fileCommands: [CommentCommand] = [],
     retainsAllDeclarations: Bool = false,
     configuration: Configuration = Configuration(),
     references: [(line: Int, column: Int, kind: Declaration.Kind, name: String)] = []
@@ -36,6 +37,7 @@ func makeIndexedFile(
         locationBuilder: builder,
         locationConverter: converter,
         declarations: declarations,
+        fileCommands: fileCommands,
         referencesByLocation: byLocation,
         occurrenceLocations: occurrenceLocations,
         retainsAllDeclarations: retainsAllDeclarations,
