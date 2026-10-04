@@ -142,7 +142,7 @@ final class ObjCReferenceIndexer: Indexer {
             }
 
             graph.add(references)
-            evidence.add { $0.addLiteralTokens(literals.tokens) }
+            evidence.add { $0.addClangLiteralTokens(literals.tokens) }
 
             // Not `addIndexedModules`: the app target's clang units name no module, and a module written
             // in Objective-C must not become one the Swift imports of are checked.

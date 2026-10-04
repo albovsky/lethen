@@ -271,7 +271,7 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
     func testChainFollowsAParentWhoseOwnReasonIsAnEarlierRule() {
         let graph = makeGraph()
         use(["Widget"])
-        evidence.addLiteralTokens(["Widget"])
+        evidence.addClangLiteralTokens(["Widget"])
         let widget = declaration("Widget")
         let entry = declaration("Entry")
         let reference = Reference(name: "Entry", kind: .normal, declarationKind: .struct, usr: "s:struct:Entry", location: widget.location)
@@ -338,7 +338,7 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
     func testStringLiteralReasonComesFirst() {
         let graph = makeGraph()
         use(["Widget"])
-        evidence.addLiteralTokens(["Widget"])
+        evidence.addClangLiteralTokens(["Widget"])
 
         XCTAssertEqual(assessor(graph).assess(declaration("Widget")).reason, "its name appears in a string literal")
     }

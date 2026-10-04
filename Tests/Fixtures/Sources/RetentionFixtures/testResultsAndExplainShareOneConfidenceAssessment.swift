@@ -1,5 +1,10 @@
+import Foundation
+
 class FixtureConfidenceNamedInLiteral {}
+
+class FixtureConfidenceNamedInBareLiteral {}
 
 class FixtureConfidenceNamedNowhere {}
 
-let fixtureConfidenceLiteral = "FixtureConfidenceNamedInLiteral"
+let fixtureConfidenceLiteral = NSClassFromString("FixtureConfidenceNamedInLiteral")
+let fixtureConfidenceBareLiteral = "FixtureConfidenceNamedInBareLiteral"

@@ -3,8 +3,15 @@ import SystemPackage
 /// What indexing found that makes a report less certain: names the index has no references for, and
 /// whether every Objective-C file was read. Collected during indexing, then read by `ConfidenceAssessor`.
 public struct ConfidenceEvidence: Equatable {
-    /// Identifier-like words found in string literals across the scanned sources.
+    /// Identifier-like words found in the string literals of the scanned Swift sources. Only a declaration the
+    /// Objective-C runtime can reach is named by a bare literal; a pure-Swift one is named by `reflectionSites`.
     public private(set) var literalTokens: Set<String> = []
+    /// Identifier-like words found in the string literals of the scanned C and Objective-C sources. The call that
+    /// receives such a literal is not read, so it may name any declaration.
+    public private(set) var clangLiteralTokens: Set<String> = []
+    /// Identifiers passed to a reflection or dynamic-lookup API in the scanned Swift sources, each with the
+    /// smallest such call site, such as `NSClassFromString at File.swift:12`.
+    public private(set) var reflectionSites: [String: String] = [:]
     /// Names used in `#if` clauses this build did not compile, by the module whose file has the clause,
     /// each with the clause that uses it.
     public private(set) var skippedBranches: [String: NameSites] = [:]
@@ -18,6 +25,16 @@ public struct ConfidenceEvidence: Equatable {
 
     public mutating func addLiteralTokens(_ tokens: Set<String>) {
         literalTokens.formUnion(tokens)
+    }
+
+    public mutating func addClangLiteralTokens(_ tokens: Set<String>) {
+        clangLiteralTokens.formUnion(tokens)
+    }
+
+    public mutating func addReflectionSites(_ sites: [String: String]) {
+        for (name, site) in sites where reflectionSites[name].map({ $0 > site }) ?? true {
+            reflectionSites[name] = site
+        }
     }
 
     public mutating func addSkippedBranchNames(_ sites: NameSites, modules: Set<String>) {

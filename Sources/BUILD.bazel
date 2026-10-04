@@ -53,6 +53,7 @@ swift_library(
         "SyntaxAnalysis/ImportSyntaxVisitor.swift",
         "SyntaxAnalysis/MultiplexingSyntaxVisitor.swift",
         "SyntaxAnalysis/NameUseCollector.swift",
+        "SyntaxAnalysis/ReflectionLiteralVisitor.swift",
         "SyntaxAnalysis/SkippedConditionalBranchVisitor.swift",
         "SyntaxAnalysis/SourceLOCCounter.swift",
         "SyntaxAnalysis/SourceLocationBuilder.swift",
