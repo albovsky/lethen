@@ -497,6 +497,31 @@ final class XcodeTargetIdentityTest: XCTestCase {
         XCTAssertEqual(assessor.assess(gadget).confidence, .certain, "The control: nothing in `Other/Core` names it")
     }
 
+    /// The build is the costly step, so an ambiguous `Project/Target` option stops the scan before it starts.
+    func testAmbiguousQualifiedOptionStopsBeforeTheBuild() throws {
+        let nested = root.appending("Nested")
+        try FileManager.default.createDirectory(atPath: nested.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: root.appending("Scanned").string, toPath: nested.appending("Scanned").string)
+        let workspacePath = root.appending("Twins.xcworkspace")
+        try FileManager.default.createDirectory(atPath: workspacePath.string, withIntermediateDirectories: true)
+        try """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Workspace version = "1.0">
+           <FileRef location = "group:Scanned/Scanned.xcodeproj"></FileRef>
+           <FileRef location = "group:Nested/Scanned/Scanned.xcodeproj"></FileRef>
+        </Workspace>
+        """.write(to: workspacePath.appending("contents.xcworkspacedata").url, atomically: true, encoding: .utf8)
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let configuration = Configuration()
+        configuration.excludeTargets = ["Scanned/ConfigurationsProject"]
+        let twins = try XcodeWorkspace(path: workspacePath, xcodebuild: xcodebuild, configuration: configuration, logger: Self.logger, shell: shell)
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: xcodebuild, project: twins, schemes: ["ConfigurationsProject"])
+
+        XCTAssertThrowsError(try driver.build())
+        XCTAssertTrue(shell.streamed.isEmpty, "\(shell.streamed)")
+    }
+
     /// A target `Consumer` of `project` with a source file and a proxy dependency on `name` in the project at `path`.
     private func makeConsumer(in project: XcodeProject, dependingOn name: String, inProjectAt path: String) throws -> XcodeTarget {
         try "func consume() {}\n".write(to: project.sourceRoot.appending("Consumer.swift").url, atomically: true, encoding: .utf8)

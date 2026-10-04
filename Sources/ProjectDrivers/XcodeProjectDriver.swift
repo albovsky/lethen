@@ -118,6 +118,8 @@
 
     extension XcodeProjectDriver: ProjectDriver {
         public func build() throws {
+            // An option that cannot be applied stops the scan before a build that `plan()` would only then find useless.
+            try validateQualifiedTargetOptions(among: project.targets)
             guard !configuration.skipBuild else { return }
 
             // A lock this driver already holds would block its own new one, since `flock` locks per open file.
