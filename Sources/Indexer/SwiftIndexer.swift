@@ -331,6 +331,7 @@ final class SwiftIndexer: Indexer {
                 locationBuilder: locationBuilder,
                 locationConverter: multiplexingSyntaxVisitor.locationConverter,
                 declarations: declarations,
+                fileCommands: multiplexingSyntaxVisitor.parseComments(),
                 referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init),
                 occurrenceLocations: occurrenceLocations,
                 retainsAllDeclarations: retainAllDeclarations,
@@ -341,7 +342,6 @@ final class SwiftIndexer: Indexer {
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
             }
-            applyCommentCommands(using: multiplexingSyntaxVisitor)
         }
 
         // MARK: - Private
@@ -449,18 +449,6 @@ final class SwiftIndexer: Indexer {
             }
         }
 
-        private func applyCommentCommands(using syntaxVisitor: MultiplexingSyntaxVisitor) {
-            let fileCommands = syntaxVisitor.parseComments()
-
-            if fileCommands.contains(.ignoreAll) {
-                commandIgnore(declarations, kind: .file)
-            } else {
-                for decl in declarations where decl.commentCommands.contains(.ignore) {
-                    commandIgnore([decl], kind: .declaration)
-                }
-            }
-        }
-
         private func visitDeclarations(using declarationVisitor: DeclarationSyntaxVisitor) {
             let declarationsByLocation = declarationVisitor.resultsByLocation
 
@@ -515,19 +503,6 @@ final class SwiftIndexer: Indexer {
                         ref.role = .initializerType
                     }
                 }
-            }
-        }
-
-        private func commandIgnore(_ decls: [Declaration], kind: CommandIgnoreKind) {
-            for decl in decls {
-                graph.withLock { graph in
-                    graph.markRetained(decl)
-                    decl.unusedParameters.forEach { graph.markRetained($0) }
-
-                    graph.markCommandIgnored(decl, kind: kind)
-                    decl.unusedParameters.forEach { graph.markCommandIgnored($0, kind: kind) }
-                }
-                commandIgnore(Array(decl.declarations), kind: kind)
             }
         }
 
