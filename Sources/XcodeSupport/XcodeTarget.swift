@@ -23,18 +23,73 @@ public final class XcodeTarget {
         target.name
     }
 
-    /// The names of the targets this one depends on: the explicit dependencies, which Xcode builds before it
-    /// (a dependency on a target of another project of the workspace is a proxy whose `remoteInfo` is that
-    /// target's name), and the targets of this project whose product it links, which Xcode treats as implicit
-    /// dependencies.
-    public var dependencyNames: Set<String> {
-        let explicit = target.dependencies.compactMapSet { $0.target?.name ?? $0.targetProxy?.remoteInfo }
+    /// The project's name, its `.xcodeproj` without the extension, which `qualifiedName` and the target options use
+    /// to tell same-named targets of a workspace's projects apart.
+    public var projectName: String {
+        project.name
+    }
+
+    /// The path of the target's project, which with the name identifies the target.
+    public var projectPath: FilePath {
+        project.path.lexicallyNormalized()
+    }
+
+    /// The target as `Project/Target`, which names it among same-named targets of other projects.
+    public var qualifiedName: String {
+        "\(projectName)/\(name)"
+    }
+
+    /// The target as `path/Project.xcodeproj/Target`, for the targets of same-named projects in different folders,
+    /// which `qualifiedName` does not tell apart.
+    public var pathQualifiedName: String {
+        "\(projectPath.string)/\(name)"
+    }
+
+    /// Whether an option such as `--exclude-targets` names this target: by its own name, which every target of that
+    /// name matches, or by `qualifiedName` or `pathQualifiedName`, which narrow it to one project.
+    public func isNamed(by option: String) -> Bool {
+        option == name || isNamedByQualifiedName(option)
+    }
+
+    /// Whether the option is one of this target's qualified names rather than its plain name.
+    public func isNamedByQualifiedName(_ option: String) -> Bool {
+        option == qualifiedName || option == pathQualifiedName
+    }
+
+    /// A target this one depends on: its name, and the project it is in when a proxy says so, by name and by the
+    /// path its file reference resolves to; both are `nil` for a target of this project.
+    public struct Dependency: Hashable {
+        public let name: String
+        public let projectName: String?
+        public let projectPath: FilePath?
+    }
+
+    /// The targets this one depends on: the explicit dependencies, which Xcode builds before it (a dependency on a
+    /// target of another project of the workspace is a proxy whose `remoteInfo` is that target's name and whose
+    /// container is that project), and the targets of this project whose product it links, which Xcode treats as
+    /// implicit dependencies.
+    public var dependencies: Set<Dependency> {
+        let explicit = target.dependencies.compactMapSet { dependency -> Dependency? in
+            if let target = dependency.target { return Dependency(name: target.name, projectName: nil, projectPath: nil) }
+            guard let proxy = dependency.targetProxy, let name = proxy.remoteInfo else { return nil }
+
+            // A proxy to the project itself, or to one Lethen cannot tell, names a target of this project.
+            guard case let .fileReference(reference) = proxy.containerPortal else {
+                return Dependency(name: name, projectName: nil, projectPath: nil)
+            }
+
+            let resolved = (try? reference.fullPath(sourceRoot: project.sourceRoot.string)).flatMap(\.self).map { FilePath($0).lexicallyNormalized() }
+            let projectName = resolved?.stem ?? (reference.path ?? reference.name).map { FilePath($0).stem ?? $0 }
+            if resolved == project.path.lexicallyNormalized() { return Dependency(name: name, projectName: nil, projectPath: nil) }
+
+            return Dependency(name: name, projectName: projectName, projectPath: resolved)
+        }
         let linkedFiles = target.buildPhases.compactMap { $0 as? PBXFrameworksBuildPhase }
             .flatMap { $0.files ?? [] }
             .compactMap(\.file)
         let linked = project.xcodeProject.pbxproj.nativeTargets
             .filter { candidate in candidate !== target && linkedFiles.contains { $0 === candidate.product } }
-            .map(\.name)
+            .map { Dependency(name: $0.name, projectName: nil, projectPath: nil) }
         return explicit.union(linked)
     }
 
@@ -167,14 +222,17 @@ public final class XcodeTarget {
     }
 }
 
+/// A target is identified by its project and its name, since two projects of a workspace can define targets of the
+/// same name.
 extension XcodeTarget: Hashable {
     public func hash(into hasher: inout Hasher) {
+        hasher.combine(project.path.lexicallyNormalized().string)
         hasher.combine(target.name)
     }
 }
 
 extension XcodeTarget: Equatable {
     public static func == (lhs: XcodeTarget, rhs: XcodeTarget) -> Bool {
-        lhs.name == rhs.name
+        lhs.target.name == rhs.target.name && lhs.project.path.lexicallyNormalized() == rhs.project.path.lexicallyNormalized()
     }
 }
