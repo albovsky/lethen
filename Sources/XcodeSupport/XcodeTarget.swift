@@ -23,6 +23,23 @@ public final class XcodeTarget {
         target.name
     }
 
+    /// The project's name, its `.xcodeproj` without the extension, which `qualifiedName` and the target options use
+    /// to tell same-named targets of a workspace's projects apart.
+    public var projectName: String {
+        project.name
+    }
+
+    /// The target as `Project/Target`, which names it among same-named targets of other projects.
+    public var qualifiedName: String {
+        "\(projectName)/\(name)"
+    }
+
+    /// Whether an option such as `--exclude-targets` names this target: by its own name, which every target of that
+    /// name matches, or by `qualifiedName`, which only this one does.
+    public func isNamed(by option: String) -> Bool {
+        option == name || option == qualifiedName
+    }
+
     /// The names of the targets this one depends on: the explicit dependencies, which Xcode builds before it
     /// (a dependency on a target of another project of the workspace is a proxy whose `remoteInfo` is that
     /// target's name), and the targets of this project whose product it links, which Xcode treats as implicit
@@ -167,14 +184,17 @@ public final class XcodeTarget {
     }
 }
 
+/// A target is identified by its project and its name, since two projects of a workspace can define targets of the
+/// same name.
 extension XcodeTarget: Hashable {
     public func hash(into hasher: inout Hasher) {
+        hasher.combine(project.path.lexicallyNormalized().string)
         hasher.combine(target.name)
     }
 }
 
 extension XcodeTarget: Equatable {
     public static func == (lhs: XcodeTarget, rhs: XcodeTarget) -> Bool {
-        lhs.name == rhs.name
+        lhs.target.name == rhs.target.name && lhs.project.path.lexicallyNormalized() == rhs.project.path.lexicallyNormalized()
     }
 }

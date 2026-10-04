@@ -17,6 +17,8 @@ public struct CollectedSourceFiles {
 public struct SourceFileCollector {
     private let indexStorePaths: Set<FilePath>
     private let excludedTestTargets: Set<String>
+    /// Files the units of which are left out, such as the ones only a target named by `Project/Target` compiles.
+    private let excludedFiles: Set<FilePath>
     private let requireFreshUnits: Bool
     private let logger: ContextualLogger
     private let configuration: Configuration
@@ -32,12 +34,14 @@ public struct SourceFileCollector {
     public init(
         indexStorePaths: Set<FilePath>,
         excludedTestTargets: Set<String>,
+        excludedFiles: Set<FilePath> = [],
         requireFreshUnits: Bool = false,
         logger: ContextualLogger,
         configuration: Configuration
     ) {
         self.indexStorePaths = indexStorePaths
         self.excludedTestTargets = excludedTestTargets
+        self.excludedFiles = excludedFiles
         self.requireFreshUnits = requireFreshUnits
         self.logger = logger
         self.configuration = configuration
@@ -63,7 +67,7 @@ public struct SourceFileCollector {
 
                     let file = FilePath.makeAbsolute(filePath, relativeTo: currentFilePath)
 
-                    if !isExcluded(file) {
+                    if !isExcluded(file), !excludedFiles.contains(file.lexicallyNormalized()) {
                         guard file.exists else {
                             logger.debug("Source file does not exist: \(file.string)")
                             return nil
