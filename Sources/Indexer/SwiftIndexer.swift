@@ -326,32 +326,17 @@ final class SwiftIndexer: Indexer {
             )
             visitDeclarations(using: declarationSyntaxVisitor)
             let file = IndexedFile(
+                sourceFile: sourceFile,
                 syntax: multiplexingSyntaxVisitor.syntax,
                 locationBuilder: locationBuilder,
                 declarations: declarations,
                 referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init),
+                occurrenceLocations: occurrenceLocations,
                 graph: graph,
                 evidence: evidence
             )
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
-            }
-            // A module with no occurrence in the file, such as a file conditionally compiled out entirely,
-            // has no evidence for any clause.
-            for module in sourceFile.modules.sorted() {
-                let occurrences = occurrenceLocations[module] ?? []
-                let skippedBranches = SkippedConditionalBranchVisitor(locationBuilder: locationBuilder, evidence: occurrences)
-                skippedBranches.walk(multiplexingSyntaxVisitor.syntax)
-                evidence.add {
-                    $0.addSkippedBranchNames(
-                        NameSites(
-                            names: skippedBranches.names,
-                            memberNames: skippedBranches.memberNames,
-                            constructionNames: skippedBranches.constructionNames
-                        ),
-                        modules: [module]
-                    )
-                }
             }
             identifyUnusedParameters(using: multiplexingSyntaxVisitor)
             applyCommentCommands(using: multiplexingSyntaxVisitor)

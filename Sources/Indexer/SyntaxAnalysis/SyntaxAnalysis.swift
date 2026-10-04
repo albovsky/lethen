@@ -13,5 +13,6 @@ enum SyntaxAnalysisList {
         EnumCasePatternAnalysis.self,
         ValueUseAnalysis.self,
         StringLiteralAnalysis.self,
+        SkippedBranchAnalysis.self,
     ]
 }
