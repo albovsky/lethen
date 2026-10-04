@@ -92,7 +92,6 @@ public extension LethenSyntaxVisitor {
 }
 
 public final class MultiplexingSyntaxVisitor: SyntaxVisitor {
-    public let sourceFile: SourceFile
     public let syntax: SourceFileSyntax
     public let locationConverter: SourceLocationConverter
     let sourceLocationBuilder: SourceLocationBuilder
@@ -101,7 +100,6 @@ public final class MultiplexingSyntaxVisitor: SyntaxVisitor {
     private var visitors: [LethenSyntaxVisitor] = []
 
     public required init(file: SourceFile, swiftVersion: SwiftVersion) throws {
-        sourceFile = file
         let source = try String(contentsOf: file.path.url, encoding: .utf8)
         syntax = Parser.parse(source: source)
         locationConverter = SourceLocationConverter(fileName: file.path.string, tree: syntax)
