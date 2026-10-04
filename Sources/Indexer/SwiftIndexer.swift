@@ -337,7 +337,12 @@ final class SwiftIndexer: Indexer {
             }
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
-            evidence.add { $0.addLiteralTokens(literalTokens.tokens) }
+            let reflectionLiterals = ReflectionLiteralVisitor(locationBuilder: locationBuilder)
+            reflectionLiterals.walk(multiplexingSyntaxVisitor.syntax)
+            evidence.add {
+                $0.addLiteralTokens(literalTokens.tokens)
+                $0.addReflectionSites(reflectionLiterals.sites)
+            }
             // A module with no occurrence in the file, such as a file conditionally compiled out entirely,
             // has no evidence for any clause.
             for module in sourceFile.modules.sorted() {

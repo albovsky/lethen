@@ -15,6 +15,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         try analyze {
             assertNotReferenced(.class("FixtureConfidenceNamedInLiteral"))
             assertConfidence(.class("FixtureConfidenceNamedInLiteral"), .likely)
+            assertNotReferenced(.class("FixtureConfidenceNamedInBareLiteral"))
+            assertConfidence(.class("FixtureConfidenceNamedInBareLiteral"), .certain)
             assertNotReferenced(.class("FixtureConfidenceNamedNowhere"))
             assertConfidence(.class("FixtureConfidenceNamedNowhere"), .certain)
             XCTAssertFalse(Self.results.isEmpty)
@@ -2119,9 +2121,16 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     func testConfidenceLikelyForStringLiteralNames() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass223")) {
-                self.assertNotReferenced(.functionMethodInstance("namedInLiteral()"))
-                self.assertConfidence(.functionMethodInstance("namedInLiteral()"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("namedInReflection()"))
+                self.assertConfidence(.functionMethodInstance("namedInReflection()"), .likely)
                 self.assertConfidence(.functionMethodInstance("namedInSelectorString()"), .likely)
+                self.assertNotReferenced(.varInstance("comparedAgainstMirrorLabel"))
+                self.assertConfidence(.varInstance("comparedAgainstMirrorLabel"), .likely)
+                // A bare literal does not look anything up, so a pure-Swift function it names stays certain.
+                self.assertNotReferenced(.functionMethodInstance("namedInBareLiteral()"))
+                self.assertConfidence(.functionMethodInstance("namedInBareLiteral()"), .certain)
+                // Used-but-not-compared control: named in a reflection call and called, so it is not reported.
+                self.assertReferenced(.functionMethodInstance("usedAndNamed()"))
                 self.assertNotReferenced(.functionMethodInstance("notNamedAnywhere()"))
                 self.assertConfidence(.functionMethodInstance("notNamedAnywhere()"), .certain)
                 self.assertNotReferenced(.functionMethodInstance("namedInProse()"))

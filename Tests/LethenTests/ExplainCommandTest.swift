@@ -45,9 +45,12 @@ final class ExplainCommandTest: FixtureSourceGraphTestCase {
 
     func testReportedDeclarationStatesItsConfidence() throws {
         // FixtureClass223 is public; with --retain-public its unused methods are reported, not the class.
-        let output = try explain("FixtureClass223.namedInLiteral", "--retain-public")
+        let output = try explain("FixtureClass223.namedInReflection", "--retain-public")
 
-        XCTAssertTrue(output.contains("Confidence: likely, because its name appears in a string literal."), output)
+        XCTAssertTrue(
+            output.contains("Confidence: likely, because its name appears in a string passed to lookUp(forKey:) at testConfidenceLikelyForStringLiteralNames.swift:13."),
+            output
+        )
 
         let certain = try explain("FixtureClass223.notNamedAnywhere", "--retain-public")
         XCTAssertTrue(certain.contains("Confidence: certain."), certain)

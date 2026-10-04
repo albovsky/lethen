@@ -38,6 +38,22 @@ public final class ConfidenceAssessor {
         }.min()
     }
 
+    /// Why a string in the scanned sources may name the declaration at run time. Only the Objective-C runtime
+    /// resolves a bare string to a declaration it exposes (a selector, a class name, a key-value coding key),
+    /// so a pure-Swift one counts only when a string is passed to a reflection API, or when an Objective-C
+    /// file holds the string, whose call is not read.
+    private func stringLiteralReason(for declaration: Declaration) -> String? {
+        let names = Self.lookupNames(of: declaration)
+        let isObjcReachable = declaration.isObjcAccessible
+            || declaration.attributes.contains { ["objc", "objc.name", "objcMembers", "NSManaged"].contains($0.name) }
+            || declaration.modifiers.contains("dynamic")
+            || declaration.usrs.contains { Self.objcName(fromUSR: $0) != nil }
+        if !evidence.clangLiteralTokens.isDisjoint(with: names) || (isObjcReachable && !evidence.literalTokens.isDisjoint(with: names)) {
+            return "its name appears in a string literal"
+        }
+        return names.compactMap { evidence.reflectionSites[$0] }.min().map { "its name appears in a string passed to \($0)" }
+    }
+
     private static let memberKinds: Set<Declaration.Kind> = [
         .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .varClass, .varInstance, .varStatic, .enumelement,
     ]
@@ -69,10 +85,8 @@ public final class ConfidenceAssessor {
             }
         }
 
-        if Self.dynamicallyNamedKinds.contains(declaration.kind),
-           !evidence.literalTokens.isDisjoint(with: Self.lookupNames(of: declaration))
-        {
-            return .init(confidence: .likely, reason: "its name appears in a string literal")
+        if Self.dynamicallyNamedKinds.contains(declaration.kind), let reason = stringLiteralReason(for: declaration) {
+            return .init(confidence: .likely, reason: reason)
         }
 
         if Self.skippedBranchKinds.contains(declaration.kind),

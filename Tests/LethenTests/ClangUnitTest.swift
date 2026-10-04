@@ -29,8 +29,9 @@ final class ClangUnitTest: FixtureSourceGraphTestCase {
                 if hasClangUnits {
                     self.assertConfidence(.functionMethodInstance("namedInClangLiteral()"), .likely)
                 }
+                // A pure-Swift method named only by a bare Swift literal is not looked up by it.
                 self.assertNotReferenced(.functionMethodInstance("namedInSwiftLiteral()"))
-                self.assertConfidence(.functionMethodInstance("namedInSwiftLiteral()"), .likely)
+                self.assertConfidence(.functionMethodInstance("namedInSwiftLiteral()"), .certain)
             }
         }
     }
