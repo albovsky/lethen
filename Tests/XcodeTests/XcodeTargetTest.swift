@@ -100,6 +100,7 @@ final class XcodeTargetTest: XCTestCase {
 
         XCTAssertTrue(extra.files(kind: .infoPlist).contains(extraFolder.appending("Extra.plist")), "\(extra.files(kind: .infoPlist).sorted())")
         XCTAssertFalse(extra.files(kind: .infoPlist).contains(extraFolder.appending("Excluded.plist")), "Left out by the folder's membership exceptions for this target")
+        XCTAssertFalse(extra.files(kind: .infoPlist).contains(extraFolder.appending("Hidden/Hidden.plist")), "An exception that names a folder takes the files below it along")
         XCTAssertFalse(app.files(kind: .infoPlist).contains(extraFolder.appending("Extra.plist")))
         XCTAssertTrue(extra.files(kind: .infoPlist).contains { $0.lastComponent?.string == "Info.plist" }, "The INFOPLIST_FILE setting still counts")
     }

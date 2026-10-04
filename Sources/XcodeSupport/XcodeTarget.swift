@@ -186,7 +186,11 @@ public final class XcodeTarget {
                 .flatMap { $0.membershipExceptions ?? [] }
                 .mapSet { groupRoot.appending($0).lexicallyNormalized() }
             let files = FilePath.glob(groupRoot.appending("**/*").string)
-            result.formUnion(files.filter { !excluded.contains($0.lexicallyNormalized()) })
+            // An exception names a file or a folder, which takes everything below it along.
+            result.formUnion(files.filter { file in
+                let path = file.lexicallyNormalized()
+                return !excluded.contains { path.starts(with: $0) }
+            })
         }
 
         return result

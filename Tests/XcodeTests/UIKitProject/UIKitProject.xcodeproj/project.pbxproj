@@ -136,6 +136,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Excluded.plist,
+				Hidden,
 			);
 			target = 3C1FED162556D91C0001BD58 /* Target With Spaces */;
 		};
