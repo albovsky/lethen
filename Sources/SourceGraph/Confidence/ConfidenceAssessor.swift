@@ -65,8 +65,8 @@ public final class ConfidenceAssessor {
         {
             return false
         }
-        if declaration.kind != .functionFree, let receiver = spelling.receiver, let enclosing = enclosingTypeName(of: declaration) {
-            return receiver == enclosing || !typeNamesDistinguish(receiver, from: enclosing)
+        if declaration.kind != .functionFree, let receiver = spelling.receiver, let enclosing = enclosingTypeDeclaration(of: declaration) {
+            return !isDistinct(receiver: receiver, from: enclosing)
         }
         return true
     }
@@ -95,58 +95,63 @@ public final class ConfidenceAssessor {
         return !hasTrailingClosure || call.count < parameters.count
     }
 
-    /// Whether a use spelled through the type `receiver` cannot reach a member of `enclosing`. Only when both are
-    /// concrete, neither names the other (an alias or a subclass of it does, in either direction, since a subclass
-    /// overrides what its superclass declares), and `enclosing` is a type of the scan, not an extension of a
-    /// protocol or of an unscanned type whose conformers or refinements the graph does not list. A `receiver` that
-    /// is a protocol, an associated type, or a generic parameter of the scan stands for any conforming type.
-    private func typeNamesDistinguish(_ receiver: String, from enclosing: String) -> Bool {
-        let enclosingKinds = typeKindsByName[enclosing, default: []]
-        guard !enclosingKinds.isEmpty, enclosingKinds.isSubset(of: Self.concreteTypeKinds) else { return false }
+    /// Whether a use spelled through the type `receiver` cannot reach a member of `enclosing`. Only when
+    /// `enclosing` is a concrete type of the scan, not a protocol whose conformers the extension's members reach, and
+    /// no type of that name is a type alias of it, a subclass of it, or one of them, in either direction, since a
+    /// subclass overrides what its superclass declares. A type of the scan that stands for any conforming type, a
+    /// protocol, an associated type or a generic parameter, is never distinct; a name the scan does not declare is
+    /// an unindexed type, which no member of the scan belongs to unless declared in an extension of it.
+    private func isDistinct(receiver: String, from enclosing: Declaration) -> Bool {
+        guard Self.concreteTypeKinds.contains(enclosing.kind) else { return false }
 
-        let receiverKinds = typeKindsByName[receiver, default: []]
-        guard receiverKinds.isDisjoint(with: Self.placeholderTypeKinds) else { return false }
+        let receivers = typeDeclarationsByName[receiver, default: []]
+        guard receivers.allSatisfy({ !Self.placeholderTypeKinds.contains($0.kind) }) else { return false }
 
-        return !typeRelatedNames[enclosing, default: []].contains(receiver) && !typeRelatedNames[receiver, default: []].contains(enclosing)
+        return !receivers.contains { $0 == enclosing || typeRelatives[enclosing, default: []].contains($0) || typeRelatives[$0, default: []].contains(enclosing) }
     }
 
-    /// The names a type can be spelled as besides its own, by base name: its aliases and its subclasses, followed
-    /// through each other. `typeAliasNames` finds a subclass by the reference it holds to its superclass, which
-    /// the index records as a related reference, so it is built here from both. Built on first use, after indexing.
-    private lazy var typeRelatedNames: [String: Set<String>] = {
-        var direct: [String: Set<String>] = typeAliasNames
+    private static let concreteTypeKinds: Set<Declaration.Kind> = [.class, .struct, .enum]
+    private static let placeholderTypeKinds: Set<Declaration.Kind> = [.protocol, .associatedtype, .genericTypeParam]
+
+    /// The type-like declarations of the scan by base name. Built on first use, after indexing.
+    private lazy var typeDeclarationsByName: [String: [Declaration]] = {
+        var declarations: [String: [Declaration]] = [:]
+        for kind in Self.concreteTypeKinds.union(Self.placeholderTypeKinds).union([.typealias]) {
+            for declaration in graph.declarations(ofKind: kind) {
+                declarations[SourceGraph.baseName(of: declaration.name), default: []].append(declaration)
+            }
+        }
+        return declarations
+    }()
+
+    /// The declarations that can stand for each type, its type aliases and subclasses, followed through each
+    /// other. `typeAliasNames` finds a subclass by a reference it holds to its superclass, which the index records
+    /// as a related reference, so it is not enough here. Built on first use, after indexing.
+    private lazy var typeRelatives: [Declaration: Set<Declaration>] = {
+        var direct: [Declaration: Set<Declaration>] = [:]
+        for alias in graph.declarations(ofKind: .typealias) {
+            for reference in alias.references where Self.typeKinds.contains(reference.declarationKind) {
+                if let type = graph.declaration(withUsr: reference.usr) { direct[type, default: []].insert(alias) }
+            }
+        }
         for subclass in graph.declarations(ofKind: .class) {
             for reference in subclass.references.union(subclass.related) where reference.declarationKind == .class {
-                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: subclass.name))
+                if let superclass = graph.declaration(withUsr: reference.usr) { direct[superclass, default: []].insert(subclass) }
             }
         }
 
-        var names: [String: Set<String>] = [:]
+        var relatives: [Declaration: Set<Declaration>] = [:]
         for type in direct.keys {
-            var closure: Set<String> = []
+            var closure: Set<Declaration> = []
             var pending = Array(direct[type, default: []])
             while let related = pending.popLast() {
                 guard related != type, closure.insert(related).inserted else { continue }
 
                 pending.append(contentsOf: direct[related, default: []])
             }
-            names[type] = closure
+            relatives[type] = closure
         }
-        return names
-    }()
-
-    private static let concreteTypeKinds: Set<Declaration.Kind> = [.class, .struct, .enum]
-    private static let placeholderTypeKinds: Set<Declaration.Kind> = [.protocol, .associatedtype, .genericTypeParam]
-
-    /// The kinds of the type-like declarations of the scan, by base name. Built on first use, after indexing.
-    private lazy var typeKindsByName: [String: Set<Declaration.Kind>] = {
-        var kinds: [String: Set<Declaration.Kind>] = [:]
-        for kind in Self.concreteTypeKinds.union(Self.placeholderTypeKinds).union([.typealias]) {
-            for declaration in graph.declarations(ofKind: kind) {
-                kinds[SourceGraph.baseName(of: declaration.name), default: []].insert(kind)
-            }
-        }
-        return kinds
+        return relatives
     }()
 
     /// Why a string in the scanned sources may name the declaration at run time. Only the Objective-C runtime

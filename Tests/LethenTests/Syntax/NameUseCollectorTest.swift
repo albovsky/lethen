@@ -1,8 +1,8 @@
 import Foundation
+import SourceGraph
 import SwiftParser
 import SwiftSyntax
 @testable import SyntaxAnalysis
-import SourceGraph
 import SystemPackage
 import XCTest
 

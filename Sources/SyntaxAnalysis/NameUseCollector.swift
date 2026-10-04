@@ -1,6 +1,6 @@
 import Foundation
-import SwiftParser
 import SourceGraph
+import SwiftParser
 import SwiftSyntax
 import SystemPackage
 
@@ -122,7 +122,7 @@ public struct NameUseCollector {
                 || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
             let call = Self.call(spelling: reference)
             // A call spells labels, so does a reference such as `show(title:)`; a bare name spells none.
-            let labels = call.map { Self.labels(of: $0) } ?? reference.argumentNames?.arguments.map { $0.name.text }
+            let labels = call.map { Self.labels(of: $0) } ?? reference.argumentNames?.arguments.map(\.name.text)
             let access = reference.parent?.as(MemberAccessExprSyntax.self)
             let receiver = access.flatMap { $0.declName.id == reference.id ? receiverName(of: $0) : nil }
             record(
