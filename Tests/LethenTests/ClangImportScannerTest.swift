@@ -220,6 +220,14 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("@\u{0C}importWMF;\n").count, 0)
     }
 
+    /// The same bytes may indent a directive, which still opens a conditional block.
+    func testFormFeedAndVerticalTabBeforeADirectiveStillOpenAConditional() {
+        let found = imports("\u{0B}#if FLAG\n@\u{0B}import A;\n\u{0C}#endif\n@import B;\n")
+
+        XCTAssertEqual(found.map(\.module), ["A", "B"])
+        XCTAssertEqual(found.map(\.isConditional), [true, false])
+    }
+
     func testIgnoreCommandOnTheSameLine() throws {
         let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
 
