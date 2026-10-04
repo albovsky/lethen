@@ -329,16 +329,18 @@ final class SwiftIndexer: Indexer {
                 sourceFile: sourceFile,
                 syntax: multiplexingSyntaxVisitor.syntax,
                 locationBuilder: locationBuilder,
+                locationConverter: multiplexingSyntaxVisitor.locationConverter,
                 declarations: declarations,
                 referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init),
                 occurrenceLocations: occurrenceLocations,
+                retainsAllDeclarations: retainAllDeclarations,
                 graph: graph,
+                logger: logger,
                 evidence: evidence
             )
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
             }
-            identifyUnusedParameters(using: multiplexingSyntaxVisitor)
             applyCommentCommands(using: multiplexingSyntaxVisitor)
         }
 
@@ -542,58 +544,6 @@ final class SwiftIndexer: Indexer {
                 decl.related.insert(ref)
             } else {
                 decl.references.insert(ref)
-            }
-        }
-
-        private func identifyUnusedParameters(using syntaxVisitor: MultiplexingSyntaxVisitor) {
-            // Variables too: a closure stored in a property is analyzed like a function.
-            let functionDecls = declarations.filter { $0.kind.isFunctionKind || $0.kind.isVariableKind }
-            let functionDeclsByLocation = functionDecls.reduce(into: [Location: Declaration]()) {
-                $0[$1.location] = $1
-            }
-
-            // Build a map of ignored param names per function, and track functions with ignored
-            // params so ScanResultBuilder can efficiently detect superfluous ignores.
-            var ignoredParamsByLocation: [Location: [String]] = [:]
-            for functionDecl in functionDecls {
-                let ignoredParamNames = functionDecl.commentCommands.ignoredParameterNames
-                if !ignoredParamNames.isEmpty {
-                    ignoredParamsByLocation[functionDecl.location] = ignoredParamNames
-                    graph.withLock { $0.markHasIgnoredParameters(functionDecl) }
-                }
-            }
-
-            let analyzer = UnusedParameterAnalyzer()
-            let paramsByFunction = analyzer.analyze(
-                file: syntaxVisitor.sourceFile,
-                syntax: syntaxVisitor.syntax,
-                locationConverter: syntaxVisitor.locationConverter,
-                parseProtocols: true
-            )
-
-            for (function, params) in paramsByFunction {
-                guard let functionDecl = functionDeclsByLocation[function.location] else {
-                    // The declaration may not exist if the code was not compiled due to build conditions, e.g #if.
-                    logger.debug("Failed to associate indexed function for parameter function '\(function.name)' at \(function.location).")
-                    continue
-                }
-
-                let ignoredParamNames = ignoredParamsByLocation[functionDecl.location] ?? []
-
-                graph.withLock { graph in
-                    for param in params {
-                        let paramDecl = param.makeDeclaration(withParent: functionDecl)
-                        functionDecl.unusedParameters.insert(paramDecl)
-                        graph.add(paramDecl)
-
-                        if retainAllDeclarations || (functionDecl.isObjcAccessible && configuration.retainObjcAccessible) {
-                            graph.markRetained(paramDecl)
-                        } else if ignoredParamNames.contains(param.name.text) {
-                            graph.markRetained(paramDecl)
-                            graph.markCommandIgnored(paramDecl, kind: .declaration)
-                        }
-                    }
-                }
             }
         }
 
