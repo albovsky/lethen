@@ -14,7 +14,7 @@ import SyntaxAnalysis
 enum ClangImportScanner {
     private static let semicolon = UInt8(ascii: ";")
     private static let dot = UInt8(ascii: ".")
-    private static let keyword = Array("@import".utf8)
+    private static let keyword = Array("import".utf8)
     private static let conditionalOpeners: Set<String> = ["if", "ifdef", "ifndef"]
 
     static func imports(in source: [UInt8], file: SourceFile) -> [ImportStatement] {
@@ -58,8 +58,11 @@ enum ClangImportScanner {
                 index = ClangLiteralScanner.anyStringLiteral(openingQuoteAt: index, in: bytes).next
             case ClangLiteralScanner.apostrophe:
                 index = ClangLiteralScanner.endOfCharacterLiteral(from: index + 1, in: bytes)
-            case ClangLiteralScanner.at where bytes[index...].starts(with: keyword):
-                if let (path, end) = modulePath(from: index + keyword.count, in: bytes) {
+            case ClangLiteralScanner.at where keywordEnd(after: index, in: bytes) != nil:
+                let afterKeyword = keywordEnd(after: index, in: bytes) ?? index + 1
+                let inner = comments(in: index + 1 ..< afterKeyword - keyword.count, of: bytes)
+                ignoresAll = ignoresAll || inner.contains { CommentCommand.parseCommand(inComment: $0) == .ignoreAll }
+                if let (path, end) = modulePath(from: afterKeyword, in: bytes) {
                     let location = location(of: index, in: bytes, splices: splices, file: file)
                     statements.append(ImportStatement(
                         module: path.first ?? "",
@@ -68,11 +71,11 @@ enum ClangImportScanner {
                         isExported: false,
                         isConditional: conditionalDepth > 0,
                         location: location,
-                        commentCommands: commentCommands(forStatementAt: index, endingBefore: end, in: bytes)
+                        commentCommands: commentCommands(forStatementAt: index, innerComments: inner, endingBefore: end, in: bytes)
                     ))
                     index = end
                 } else {
-                    index += keyword.count
+                    index = afterKeyword
                 }
             default:
                 index += 1
@@ -159,6 +162,14 @@ enum ClangImportScanner {
         return text(bytes[start ..< cursor])
     }
 
+    /// The index after the `import` keyword of the `@import` whose `@` is at `index`, or `nil` when the `@`
+    /// starts something else. Blanks and comments may stand between the `@` and the keyword, as the
+    /// preprocessor turns them into whitespace and the compiler reads `@ import` as one directive.
+    private static func keywordEnd(after index: Int, in bytes: [UInt8]) -> Int? {
+        let cursor = ClangLiteralScanner.skippingBlanksAndComments(from: index + 1, in: bytes)
+        return bytes[cursor...].starts(with: keyword) ? cursor + keyword.count : nil
+    }
+
     /// The identifiers of the dotted path that follows `@import` at `index`, and the index after the
     /// closing semicolon, or `nil` when the text is not an import statement. The preprocessor turns
     /// comments into whitespace, so they may stand between the tokens, but the keyword must be set
@@ -210,11 +221,37 @@ enum ClangImportScanner {
         return Location(file: file, line: line, column: index - lineStart + 1)
     }
 
-    /// The commands in comments that trail the statement on its line, and in the comment directly above
+    /// The comments in a range that holds only blanks and comments, each as its own text.
+    private static func comments(in range: Range<Int>, of bytes: [UInt8]) -> [String] {
+        var found: [String] = []
+        var cursor = range.lowerBound
+        while cursor < range.upperBound {
+            if bytes[safe: cursor] == ClangLiteralScanner.slash, bytes[safe: cursor + 1] == ClangLiteralScanner.slash {
+                let next = min(ClangLiteralScanner.endOfLine(from: cursor, in: bytes), range.upperBound)
+                found.append(text(bytes[cursor ..< next]))
+                cursor = next
+            } else if bytes[safe: cursor] == ClangLiteralScanner.slash, bytes[safe: cursor + 1] == ClangLiteralScanner.star {
+                let next = min(ClangLiteralScanner.endOfBlockComment(from: cursor + 2, in: bytes), range.upperBound)
+                found.append(text(bytes[cursor ..< next]))
+                cursor = next
+            } else {
+                cursor += 1
+            }
+        }
+        return found
+    }
+
+    /// The commands in comments between its `@` and keyword, that trail the statement on its line, and in the comment directly above
     /// it, as Swift's leading and trailing trivia are read: a `//` line, or a block comment, which may
     /// span lines, that only whitespace separates from the statement's line.
-    private static func commentCommands(forStatementAt index: Int, endingBefore end: Int, in bytes: [UInt8]) -> [CommentCommand] {
-        var comments: [String] = []
+    private static func commentCommands(
+        forStatementAt index: Int,
+        innerComments: [String],
+        endingBefore end: Int,
+        in bytes: [UInt8]
+    ) -> [CommentCommand] {
+        // Comments between the `@` and the keyword belong to the statement too.
+        var comments = innerComments
 
         var cursor = end
         while cursor < bytes.count {

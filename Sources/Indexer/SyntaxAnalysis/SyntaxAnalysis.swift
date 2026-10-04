@@ -12,5 +12,7 @@ enum SyntaxAnalysisList {
     static let all: [SyntaxAnalysis.Type] = [
         EnumCasePatternAnalysis.self,
         ValueUseAnalysis.self,
+        StringLiteralAnalysis.self,
+        SkippedBranchAnalysis.self,
     ]
 }

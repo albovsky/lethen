@@ -1,4 +1,5 @@
 import Configuration
+@testable import Indexer
 import Logger
 import Shared
 @testable import SourceGraph
@@ -87,5 +88,33 @@ final class UnusedImportMarkerTest: XCTestCase {
 
     func testRetainedFilesAreNotChecked() throws {
         XCTAssertEqual(try unusedImports(referencing: [], configure: { $0.retainFiles = ["/project/*.m"]; $0.buildFilenameMatchers() }), [])
+    }
+
+    /// The imports the scanner reads from `source`, run through the marker with `referenced` as the modules
+    /// the file uses.
+    private func unusedImports(inSource source: String, referencing referenced: Set<String>) throws -> [String] {
+        let configuration = Configuration()
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+        let graph = SourceGraph(configuration: configuration, logger: logger)
+        let file = SourceFile(path: path, modules: [])
+        file.importStatements = ClangImportScanner.imports(in: Array(source.utf8), file: file)
+        file.clangReferencedModules = referenced
+        graph.addIndexedSourceFile(file)
+        graph.addIndexedModules(["WMF"])
+
+        let shell = ShellImpl(logger: logger)
+        try UnusedImportMarker(graph: graph, configuration: configuration, swiftVersion: SwiftVersion(shell: shell)).mutate()
+        return graph.unusedModuleImports.map(\.name).sorted()
+    }
+
+    /// An `@import` with blanks or comments between the tokens is reported when nothing uses it, retained
+    /// when something does, and retained when an ignore comment sits between the tokens.
+    func testSpacedImportsAreReportedWhenUnusedAndRetainedWhenUsed() throws {
+        for spelling in ["@import WMF;", "@ import WMF;", "@/* note */import WMF;", "@\n import WMF;", "@\u{0C}import WMF;", "@\u{0B}import WMF;"] {
+            XCTAssertEqual(try unusedImports(inSource: spelling + "\n", referencing: []), ["WMF"], spelling)
+            XCTAssertEqual(try unusedImports(inSource: spelling + "\n", referencing: ["WMF"]), [], spelling)
+        }
+        XCTAssertEqual(try unusedImports(inSource: "@ /* periphery:ignore */ import WMF;\n", referencing: []), [])
+        XCTAssertEqual(try unusedImports(inSource: "@import Other;\n@/* periphery:ignore:all */import WMF;\n", referencing: []), [])
     }
 }

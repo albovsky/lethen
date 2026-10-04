@@ -4,13 +4,19 @@ import SyntaxAnalysis
 
 /// One Swift file after index phase one, parsed once, for the syntax analyses of phase two.
 struct IndexedFile {
+    let sourceFile: SourceFile
     let syntax: SourceFileSyntax
     let locationBuilder: SourceLocationBuilder
     /// The file's declarations from the index, in index order.
     let declarations: [Declaration]
     /// The file's references from the index, by their location. Several references can share one location.
     let referencesByLocation: [Location: Set<Reference>]
+    /// Locations of every index occurrence in the file, by the module whose unit recorded them. A file built
+    /// into several modules can compile different `#if` clauses in each.
+    let occurrenceLocations: [String: Set<Location>]
     let graph: SourceGraphMutex
+    /// Where an analysis records what makes a report less certain.
+    let evidence: ConfidenceEvidenceCollector
 
     /// The references at the location; empty when no syntax node of the index reaches it, such as in code
     /// compiled out by `#if`.

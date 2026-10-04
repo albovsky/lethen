@@ -6,7 +6,7 @@ import XCTest
 final class EnumCasePatternAnalysisTest: XCTestCase {
     func testEnumCaseReferenceInsideAPatternGetsThePatternRole() throws {
         let source = "switch v {\ncase .matched: break\ndefault: break\n}\n_ = Kind.constructed\n"
-        let (file, _, _) = makeIndexedFile(source: source, references: [
+        let (file, _, _, _) = makeIndexedFile(source: source, references: [
             (2, 7, .enumelement, "matched"), // inside the pattern
             (5, 10, .enumelement, "constructed"), // a construction, not a pattern
             (2, 7, .varGlobal, "notACase"), // same location as a pattern, not an enum case
