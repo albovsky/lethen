@@ -19,12 +19,21 @@ final class InfoPlistParser {
     func parse() throws -> [AssetReference] {
         guard let data = FileManager.default.contents(atPath: path.string) else { return [] }
 
-        let structure = try AEXMLDocument(xml: data)
+        let structure = try AEXMLDocument(xml: Self.xmlData(from: data))
         let elements = filter(structure.root)
 
         return elements.map {
             AssetReference(absoluteName: $0.string, source: .infoPlist)
         }
+    }
+
+    /// A property list as XML: a binary one, which any `.plist` resource may be, is converted first, since the XML parser
+    /// cannot read it and one such file would otherwise abort the scan.
+    private static func xmlData(from data: Data) throws -> Data {
+        guard data.starts(with: Data("bplist".utf8)) else { return data }
+
+        let plist = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
     }
 
     // MARK: - Private
