@@ -2325,6 +2325,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.class("FixtureClass226Sub")) {
                 self.assertAssignOnlyProperty(.varInstance("subNotEncoded"))
             }
+            assertReferenced(.class("FixtureClass226InheritedEncoder")) {
+                self.assertAssignOnlyProperty(.varInstance("inheritedNotEncoded"))
+            }
             assertReferenced(.class("FixtureClass226Read")) {
                 self.assertNotAssignOnlyProperty(.varInstance("classReadNormally"))
             }

@@ -28,6 +28,18 @@ final class FixtureClass226Sub: FixtureClass226Base {
     var subNotEncoded: Int?
 }
 
+class FixtureClass226CustomBase {
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(0)
+    }
+}
+
+final class FixtureClass226InheritedEncoder: FixtureClass226CustomBase, Encodable {
+    // The inherited encode(to:) is the witness, so nothing is synthesized and nothing reads the property.
+    var inheritedNotEncoded: Int?
+}
+
 final class FixtureClass226Read {
     // Used-but-not-encoded control: read normally, never encoded.
     var classReadNormally: Int = 0
@@ -58,10 +70,13 @@ public final class FixtureClass226StoredRetainer {
         let sub = FixtureClass226Sub()
         sub.subNotEncoded = 4
         _ = sub
+        let inherited = FixtureClass226InheritedEncoder()
+        inherited.inheritedNotEncoded = 5
+        _ = inherited
         _ = read.value()
     }
 
     public func encode() throws -> [Data] {
-        try [JSONEncoder().encode(pages), JSONEncoder().encode(items), JSONEncoder().encode(FixtureClass226Sub())]
+        try [JSONEncoder().encode(pages), JSONEncoder().encode(items), JSONEncoder().encode(FixtureClass226Sub()), JSONEncoder().encode(FixtureClass226InheritedEncoder())]
     }
 }
