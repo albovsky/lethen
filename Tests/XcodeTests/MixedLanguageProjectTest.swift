@@ -191,6 +191,31 @@ final class MixedLanguageProjectTest: XcodeSourceGraphTestCase {
         XCTAssertTrue(confidenceReason(ofDeclarationNamed: "memberReadFromUnscannedTarget")?.hasSuffix(String(format: Self.unscannedPlace, 11)) == true)
     }
 
+    /// Constructs the unscanned target uses without spelling the member: an override, `Handler()()`, and a
+    /// member reached through a chain of type aliases.
+    func testOverridesCallableValuesAndAliasChainsAreLikely() {
+        assertReferenced(.class("OverridableBase")) {
+            self.assertNotReferenced(.functionMethodInstance("overriddenInUnscannedTarget()"))
+            self.assertConfidence(.functionMethodInstance("overriddenInUnscannedTarget()"), .likely)
+            // The control: nothing overrides it.
+            self.assertNotReferenced(.functionMethodInstance("neverOverridden()"))
+            self.assertConfidence(.functionMethodInstance("neverOverridden()"), .certain)
+        }
+        assertReferenced(.struct("CallableHandler")) {
+            self.assertNotReferenced(.functionMethodInstance("callAsFunction()", line: 69))
+            self.assertConfidence(.functionMethodInstance("callAsFunction()", line: 69), .likely)
+        }
+        // The control: the tool never names `UncalledHandler`, so it runs no `callAsFunction` of it.
+        assertReferenced(.struct("UncalledHandler")) {
+            self.assertNotReferenced(.functionMethodInstance("callAsFunction()", line: 76))
+            self.assertConfidence(.functionMethodInstance("callAsFunction()", line: 76), .certain)
+        }
+        assertReferenced(.class("AliasedOriginal")) {
+            self.assertNotReferenced(.varStatic("sharedThroughAliasChain"))
+            self.assertConfidence(.varStatic("sharedThroughAliasChain"), .likely)
+        }
+    }
+
     /// An internal declaration of a file the target compiles has its own copy there, which the target's
     /// other files use; `SharedEntry` is named nowhere and reached only through `SharedWidget`.
     func testDeclarationsOfASharedFileAreLikelyDirectlyAndThroughTheChain() {

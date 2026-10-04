@@ -1,6 +1,9 @@
 import Configuration
 import Logger
 @testable import SourceGraph
+import SwiftParser
+import SwiftSyntax
+import SyntaxAnalysis
 import SystemPackage
 import XCTest
 
@@ -188,6 +191,94 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         use(["Store", "shared"], members: ["shared"])
 
         XCTAssertEqual(assessor(graph).assess(member).confidence, .likely)
+    }
+
+    /// `class Derived: Base { override func run() {} }` in an unscanned target stops compiling without `Base.run`.
+    func testOverrideInAnUnscannedTargetMakesTheBaseMemberLikely() {
+        let graph = makeGraph()
+        let base = declaration("Base", kind: .class, in: otherFile, accessibility: .open)
+        let run = declaration("run()", kind: .functionMethodInstance, in: otherFile, accessibility: .open, parent: base)
+        let stop = declaration("stop()", kind: .functionMethodInstance, in: otherFile, accessibility: .open, parent: base)
+        graph.add([base, run, stop])
+        use(["Base", "run"], members: ["run"])
+
+        XCTAssertEqual(assessor(graph).assess(run).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(stop).confidence, .certain, "The control: a member nothing overrides")
+    }
+
+    /// The control for the override rule: a declaration of the same name without `override` is not collected as a use.
+    func testSameNamedDeclarationWithoutOverrideLeavesTheBaseMemberCertain() throws {
+        let overriding = NameUseCollector(Syntax(Parser.parse(source: "class Derived: Base { override func run() {} }")))
+        let plain = NameUseCollector(Syntax(Parser.parse(source: "class Derived: Base { func run() {} }")))
+        let graph = makeGraph()
+        let base = declaration("Base", kind: .class, in: otherFile, accessibility: .open)
+        let run = declaration("run()", kind: .functionMethodInstance, in: otherFile, accessibility: .open, parent: base)
+        graph.add([base, run])
+
+        for (collector, expected) in [(overriding, Confidence.likely), (plain, .certain)] {
+            evidence = ConfidenceEvidence()
+            evidence.addUnscannedTargetNames(
+                NameSites(
+                    names: collector.uses.mapValues { _ in site },
+                    memberNames: collector.uses.filter(\.value).mapValues { _ in site },
+                    constructionNames: Dictionary(uniqueKeysWithValues: collector.constructionUses.map { ($0, site) })
+                ),
+                target: "WidgetsExtension",
+                sharedSourceFiles: [sharedFile]
+            )
+
+            XCTAssertEqual(assessor(graph).assess(run).confidence, expected)
+        }
+    }
+
+    /// The unscanned `Derived: Middle` names `Middle` only; `Middle: Base` is scanned, so `Base.run` is reached through it.
+    func testOverrideThroughAnIntermediateSuperclassMakesTheBaseMemberLikely() {
+        let graph = makeGraph()
+        let base = declaration("Base", kind: .class, in: otherFile, accessibility: .open)
+        let run = declaration("run()", kind: .functionMethodInstance, in: otherFile, accessibility: .open, parent: base)
+        let middle = declaration("Middle", kind: .class, in: otherFile, accessibility: .open, line: 5)
+        let unrelated = declaration("Unrelated", kind: .class, in: otherFile, accessibility: .open, line: 8)
+        let unrelatedRun = declaration("run()", kind: .functionMethodInstance, in: otherFile, accessibility: .open, parent: unrelated, line: 9)
+        let inheritance = Reference(name: "Base", kind: .related, declarationKind: .class, usr: "s:class:Base", location: middle.location)
+        inheritance.role = .inheritedType
+        middle.references.insert(inheritance)
+        graph.add([base, run, middle, unrelated, unrelatedRun])
+        use(["Middle", "run"], members: ["run"])
+
+        XCTAssertEqual(assessor(graph).assess(run).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(unrelatedRun).confidence, .certain, "The control: a class that Middle does not inherit")
+    }
+
+    /// `Handler()()` names `Handler` and a call, never `callAsFunction`.
+    func testCallableValueMakesCallAsFunctionLikely() {
+        let graph = makeGraph()
+        let handler = declaration("Handler", kind: .struct, in: otherFile, accessibility: .public)
+        let call = declaration("callAsFunction()", kind: .functionMethodInstance, in: otherFile, accessibility: .public, parent: handler)
+        let other = declaration("Other", kind: .struct, in: otherFile, accessibility: .public)
+        let otherCall = declaration("callAsFunction()", kind: .functionMethodInstance, in: otherFile, accessibility: .public, parent: other)
+        graph.add([handler, call, other, otherCall])
+        use(["Handler", "callAsFunction"], members: ["callAsFunction"])
+
+        XCTAssertEqual(assessor(graph).assess(call).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(otherCall).confidence, .certain, "The control: a type the target never names")
+    }
+
+    /// `typealias Second = First`, `typealias First = Original`: `Second.shared` reaches `Original.shared`.
+    func testTypeAliasChainsAreFollowed() {
+        let graph = makeGraph()
+        let original = declaration("Original", kind: .class, in: otherFile, accessibility: .public)
+        let shared = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: original)
+        let unrelated = declaration("Unrelated", kind: .class, in: otherFile, accessibility: .public)
+        let unrelatedShared = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: unrelated, line: 2)
+        let first = declaration("First", kind: .typealias, in: otherFile, accessibility: .public)
+        let second = declaration("Second", kind: .typealias, in: otherFile, accessibility: .public)
+        first.references.insert(Reference(name: "Original", kind: .normal, declarationKind: .class, usr: "s:class:Original", location: first.location))
+        second.references.insert(Reference(name: "First", kind: .normal, declarationKind: .typealias, usr: "s:typealias:First", location: second.location))
+        graph.add([original, shared, unrelated, unrelatedShared, first, second])
+        use(["Second", "Second.shared", "shared"], members: ["Second.shared", "shared"])
+
+        XCTAssertEqual(assessor(graph).assess(shared).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(unrelatedShared).confidence, .certain, "The control: an alias chain that does not end at its type")
     }
 
     /// An extension is reported only with its unused type, so it is as sure as the type.
