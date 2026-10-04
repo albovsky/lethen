@@ -77,6 +77,11 @@ public struct NameUseCollector {
         {
             hasIndexableSyntax = true
         }
+        // An `override` names the member it overrides, which the declaration's own name does not record as a use,
+        // yet removing the base member would stop it compiling.
+        for name in Self.overriddenNames(of: node) {
+            record(name, isMember: true, isConstruction: true, at: node)
+        }
         // Matching an enum case is not constructing it, but a pattern can read any other declaration,
         // as `case Limits.windowsValue:` does, so pattern uses are kept and flagged.
         let inPattern = inPattern || node.is(ExpressionPatternSyntax.self)
@@ -123,6 +128,10 @@ public struct NameUseCollector {
         } else if let type = node.as(MemberTypeSyntax.self) {
             let name = type.name.identifier?.name ?? type.name.text
             record(name, isMember: true, isConstruction: !inPattern, at: node)
+        } else if let call = node.as(FunctionCallExprSyntax.self), Self.isCallableValueCall(call) {
+            // `Handler()()` or `handler(1)` can run a `callAsFunction`, which the call never spells; like `init`
+            // and `subscript`, only a file that names the type can match it.
+            record("callAsFunction", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
         } else if node.is(SubscriptCallExprSyntax.self) {
             // `store[key]` is a use of a subscript, which the index records under that name.
             record("subscript", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
@@ -135,6 +144,48 @@ public struct NameUseCollector {
         for child in node.children(viewMode: .sourceAccurate) {
             collect(child, inPattern: inPattern)
         }
+    }
+
+    /// The names a declaration with the `override` modifier overrides: a function's, each bound variable's,
+    /// `init` or `subscript`.
+    private static func overriddenNames(of node: Syntax) -> [String] {
+        func isOverride(_ modifiers: DeclModifierListSyntax) -> Bool {
+            modifiers.contains { $0.name.text == "override" }
+        }
+        if let function = node.as(FunctionDeclSyntax.self), isOverride(function.modifiers) {
+            return [function.name.identifier?.name ?? function.name.text]
+        }
+        if let variable = node.as(VariableDeclSyntax.self), isOverride(variable.modifiers) {
+            return variable.bindings.flatMap { binding -> [String] in
+                guard let identifier = binding.pattern.as(IdentifierPatternSyntax.self) else { return [] }
+
+                return [identifier.identifier.identifier?.name ?? identifier.identifier.text]
+            }
+        }
+        if let initializer = node.as(InitializerDeclSyntax.self), isOverride(initializer.modifiers) {
+            return ["init"]
+        }
+        if let subscriptDecl = node.as(SubscriptDeclSyntax.self), isOverride(subscriptDecl.modifiers) {
+            return ["subscript"]
+        }
+        return []
+    }
+
+    /// Whether the call's callee is a value rather than a function or type name that the index resolves: a call,
+    /// a subscript, a parenthesized, unwrapped or chained expression, or a lowercase name, since a type name
+    /// starts with a capital letter. A call of a local function matches too, which only costs a name that no
+    /// type named by the file can narrow to a `callAsFunction`.
+    private static func isCallableValueCall(_ call: FunctionCallExprSyntax) -> Bool {
+        var callee = call.calledExpression
+        if let specialized = callee.as(GenericSpecializationExprSyntax.self) { callee = specialized.expression }
+        if let reference = callee.as(DeclReferenceExprSyntax.self) {
+            return reference.baseName.text.first?.isLowercase == true
+        }
+        if let access = callee.as(MemberAccessExprSyntax.self) {
+            return access.declName.baseName.text.first?.isLowercase == true
+        }
+        return callee.is(FunctionCallExprSyntax.self) || callee.is(SubscriptCallExprSyntax.self)
+            || callee.is(TupleExprSyntax.self) || callee.is(ForceUnwrapExprSyntax.self) || callee.is(OptionalChainingExprSyntax.self)
     }
 
     /// A use of a name in a source file, with the line it is on.

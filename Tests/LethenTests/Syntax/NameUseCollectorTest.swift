@@ -53,6 +53,49 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(collector.uses["makeWidget"], true, "A call to a function records only the function")
     }
 
+    /// An `override` names the base member, so its name is a member use; the same declaration without `override`
+    /// is a new member and uses nothing.
+    func testOverridesUseTheNamesTheyOverride() {
+        let collector = collect("""
+        class Derived: Base {
+            override func run() {}
+            override var title: String { "t" }
+            override init() { super.init() }
+            override subscript(index: Int) -> Int { 0 }
+        }
+        """)
+        XCTAssertEqual(collector.uses["run"], true)
+        XCTAssertEqual(collector.uses["title"], true)
+        XCTAssertEqual(collector.constructionUses.isSuperset(of: ["run", "title"]), true)
+        XCTAssertEqual(collector.uses["Base"], false)
+
+        var seen: [String] = []
+        _ = NameUseCollector(Syntax(Parser.parse(source: "class Derived: Base { override init() {}\n override subscript(i: Int) -> Int { 0 } }"))) { seen.append($0.name) }
+        XCTAssertTrue(seen.contains("subscript"))
+        XCTAssertTrue(seen.contains("init"))
+
+        let control = collect("class Derived: Base { func run() {}\n var title: String { \"t\" } }")
+        XCTAssertNil(control.uses["run"], "A declaration without override introduces its own member")
+        XCTAssertNil(control.uses["title"])
+    }
+
+    /// `Handler()()` and `handler(1)` can run a `callAsFunction` that no call spells; a type construction cannot.
+    func testCallableValueCallsReachTheFileReaderAsCallAsFunction() {
+        func names(_ source: String) -> [String] {
+            var seen: [String] = []
+            _ = NameUseCollector(Syntax(Parser.parse(source: source))) { seen.append($0.name) }
+            return seen
+        }
+        XCTAssertTrue(names("let a = Handler()()").contains("callAsFunction"), "The callee is a call")
+        XCTAssertTrue(names("let a = handler(1)").contains("callAsFunction"), "The callee is a value")
+        XCTAssertTrue(names("let a = object.handler(1)").contains("callAsFunction"))
+        XCTAssertTrue(names("let a = (make())(1)").contains("callAsFunction"))
+        XCTAssertFalse(names("let a = Handler(size: 1)").contains("callAsFunction"), "A construction is not a callable value")
+        XCTAssertFalse(names("let a = Framework.Handler(size: 1)").contains("callAsFunction"))
+
+        XCTAssertNil(collect("let a = Handler()()").uses["callAsFunction"], "It reaches the file reader only")
+    }
+
     /// A member spelled through its type is also reported as `Type.member`, so a match can be placed at a use
     /// of this type's member rather than at any type's.
     func testQualifiedMemberUsesReachTheFileReader() throws {

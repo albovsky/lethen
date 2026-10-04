@@ -228,14 +228,27 @@ public final class ConfidenceAssessor {
         }
     }
 
-    /// The names of the type aliases of each type, by the type's base name: `typealias Store = AppStore`
-    /// lets a file name `AppStore`'s members as `Store.shared`. Built on first use, after indexing.
+    /// The names of the type aliases of each type, by the type's base name, followed through other aliases:
+    /// `typealias Store = AppStore` lets a file name `AppStore`'s members as `Store.shared`, and so does
+    /// `typealias Shop = Store`. Built on first use, after indexing.
     private lazy var typeAliasNames: [String: Set<String>] = {
-        var names: [String: Set<String>] = [:]
+        var direct: [String: Set<String>] = [:]
         for alias in graph.declarations(ofKind: .typealias) {
             for reference in alias.references where Self.typeKinds.contains(reference.declarationKind) {
-                names[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: alias.name))
+                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: alias.name))
             }
+        }
+
+        var names: [String: Set<String>] = [:]
+        for type in direct.keys {
+            var closure: Set<String> = []
+            var pending = Array(direct[type, default: []])
+            while let alias = pending.popLast() {
+                guard alias != type, closure.insert(alias).inserted else { continue }
+
+                pending.append(contentsOf: direct[alias, default: []])
+            }
+            names[type] = closure
         }
         return names
     }()
