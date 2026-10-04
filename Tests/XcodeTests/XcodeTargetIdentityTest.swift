@@ -3,7 +3,8 @@ import Foundation
 import Logger
 @testable import ProjectDrivers
 import Shared
-import SourceGraph
+@testable import SourceGraph
+import SyntaxAnalysis
 import SystemPackage
 @testable import TestShared
 import XcodeProj
@@ -409,6 +410,91 @@ final class XcodeTargetIdentityTest: XCTestCase {
         // The control: a test target whose module nothing else uses is left out as a module, as before.
         let lone = try makeTarget("LoneTests", in: scannedProject, sources: ["CoreTests.swift"], testTarget: true)
         XCTAssertEqual(XcodeProjectDriver.excludedTestModules(excluded: [lone], among: [lone, production]), ["LoneTests"])
+    }
+
+    /// Excluding `Other/Core` leaves its files out of the resource indexes too, while `Scanned/Core`'s stay.
+    func testExcludedTargetsFilesAreLeftOutOfTheResourceIndexes() throws {
+        try writeSources([("Scanned", "ScannedCore.swift"), ("Other", "OtherCore.swift")])
+        let kept = try makeTarget("Core", in: scannedProject, sources: ["ScannedCore.swift"])
+        let excluded = try makeTarget("Core", in: load("Other"), sources: ["OtherCore.swift"])
+
+        let files = XcodeProjectDriver.files(ofKind: .swiftSource, in: [kept, excluded], excluding: [excluded])
+
+        XCTAssertEqual(files.compactMap { $0.lastComponent?.string }, ["ScannedCore.swift"])
+        XCTAssertEqual(XcodeProjectDriver.files(ofKind: .swiftSource, in: [kept, excluded], excluding: []).count, 2)
+    }
+
+    /// `Foo/Core` cannot name one target when two `Foo.xcodeproj` in different folders both define `Core`.
+    func testAShortQualifiedNameThatTwoProjectsShareIsRejected() throws {
+        try writeSources([("Scanned", "A.swift"), ("Other", "B.swift")])
+        let a = try makeTarget("Core", in: scannedProject, sources: ["A.swift"])
+        let nested = root.appending("Nested")
+        try FileManager.default.createDirectory(atPath: nested.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: root.appending("Scanned").string, toPath: nested.appending("Scanned").string)
+        var loaded: Set<FilePath> = []
+        let shell = RecordingShell()
+        let twin = try XcodeProject(
+            path: nested.appending("Scanned/Scanned.xcodeproj"),
+            loadedProjectPaths: &loaded,
+            xcodebuild: Xcodebuild(shell: shell, logger: Self.logger),
+            shell: shell,
+            logger: Self.logger
+        )
+        let b = try makeTarget("Core", in: twin, sources: ["../Scanned/A.swift"])
+        func driver(excluding option: String) -> XcodeProjectDriver {
+            let configuration = Configuration()
+            configuration.excludeTargets = [option]
+            return XcodeProjectDriver(logger: Self.logger, configuration: configuration, xcodebuild: Xcodebuild(shell: shell, logger: Self.logger), project: workspace, schemes: ["Core"])
+        }
+
+        XCTAssertThrowsError(try driver(excluding: "Scanned/Core").validateQualifiedTargetOptions(among: [a, b])) { error in
+            XCTAssertTrue("\(error)".contains(b.pathQualifiedName), "\(error)")
+        }
+        XCTAssertNoThrow(try driver(excluding: b.pathQualifiedName).validateQualifiedTargetOptions(among: [a, b]))
+        XCTAssertNoThrow(try driver(excluding: "Core").validateQualifiedTargetOptions(among: [a, b]), "A plain name matches both, as documented")
+        XCTAssertNoThrow(try driver(excluding: "Other/Core").validateQualifiedTargetOptions(among: [a, b]), "Nothing is ambiguous")
+    }
+
+    /// From the targets to the final confidence: the unscanned `Other/Core` uses `Widget`, so `Widget` is reported as
+    /// `likely` with the reason naming that target, and a declaration it does not use stays `certain`, though the
+    /// scanned `Scanned/Core` has the same name.
+    func testUnscannedNamesakeDowngradesWhatItUsesAndNothingElse() throws {
+        try writeSources([("Scanned", "ScannedCore.swift")])
+        try "let widget = Widget()\n".write(to: root.appending("Other/WidgetUser.swift").url, atomically: true, encoding: .utf8)
+        let scanned = try makeTarget("Core", in: scannedProject, sources: ["ScannedCore.swift"])
+        let unscannedTarget = try makeTarget("Core", in: load("Other"), sources: ["WidgetUser.swift"])
+        let driver = XcodeProjectDriver(logger: Self.logger, configuration: Configuration(), xcodebuild: Xcodebuild(shell: RecordingShell(), logger: Self.logger), project: workspace, schemes: ["Core"])
+        let (unscanned, _) = driver.unscannedTargets(among: [scanned, unscannedTarget], indexedModules: [root.appending("Scanned/ScannedCore.swift").lexicallyNormalized(): ["Core"]])
+        let target = try XCTUnwrap(unscanned.first)
+        XCTAssertEqual(unscanned.map(\.name), ["Other/Core"])
+
+        var evidence = ConfidenceEvidence()
+        var sites = NameSites()
+        for file in target.swiftSourceFiles.sorted(by: { $0.string < $1.string }) {
+            for use in try NameUseCollector.uses(inFileAt: file).uses {
+                let site = "\(file.lastComponent?.string ?? ""):\(use.line)"
+                sites.names[use.name] = site
+                if use.isMember { sites.memberNames[use.name] = site }
+                if use.isConstruction { sites.constructionNames[use.name] = site }
+            }
+        }
+        evidence.addUnscannedTargetNames(sites, target: target.name, sharedSourceFiles: target.sharedSourceFiles)
+        let graph = SourceGraph(configuration: Configuration(), logger: Self.logger)
+        let file = SourceFile(path: root.appending("Scanned/ScannedCore.swift"), modules: ["Core"])
+        func declaration(_ name: String, line: Int) -> Declaration {
+            let declaration = Declaration(name: name, kind: .struct, usrs: ["s:struct:\(name)"], location: Location(file: file, line: line, column: 1))
+            declaration.accessibility = DeclarationAccessibility(value: .public, isExplicit: true)
+            return declaration
+        }
+        let widget = declaration("Widget", line: 1)
+        let gadget = declaration("Gadget", line: 2)
+        graph.add([widget, gadget])
+        let assessor = ConfidenceAssessor(evidence: evidence, graph: graph, configuration: Configuration())
+
+        let named = assessor.assess(widget)
+        XCTAssertEqual(named.confidence, .likely)
+        XCTAssertTrue(named.reason?.hasSuffix("a file of target Other/Core, which the scanned schemes do not build") == true, named.reason ?? "nil")
+        XCTAssertEqual(assessor.assess(gadget).confidence, .certain, "The control: nothing in `Other/Core` names it")
     }
 
     /// A target `Consumer` of `project` with a source file and a proxy dependency on `name` in the project at `path`.

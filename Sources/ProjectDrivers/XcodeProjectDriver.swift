@@ -186,6 +186,7 @@
 
             let targets = project.targets
             try targets.forEach { try $0.identifyFiles() }
+            try validateQualifiedTargetOptions(among: targets)
             retainQualifiedPublicTargets(among: targets)
             let excludedTargets = targets.filter { Self.isExcluded($0, excludeTests: configuration.excludeTests, options: configuration.excludeTargets) }
             let excludedTestTargets = configuration.excludeTests ? Self.excludedTestModules(excluded: excludedTargets, among: targets) : []
@@ -220,10 +221,10 @@
                 reusedBuild = false
                 sourceFiles = try collector(requireFreshUnits: false).collect()
             }
-            let infoPlistPaths = targets.flatMapSet { $0.files(kind: .infoPlist) }
-            let xibPaths = targets.flatMapSet { $0.files(kind: .interfaceBuilder) }
-            let xcDataModelPaths = targets.flatMapSet { $0.files(kind: .xcDataModel) }
-            let xcMappingModelPaths = targets.flatMapSet { $0.files(kind: .xcMappingModel) }
+            let infoPlistPaths = Self.files(ofKind: .infoPlist, in: targets, excluding: excludedTargets)
+            let xibPaths = Self.files(ofKind: .interfaceBuilder, in: targets, excluding: excludedTargets)
+            let xcDataModelPaths = Self.files(ofKind: .xcDataModel, in: targets, excluding: excludedTargets)
+            let xcMappingModelPaths = Self.files(ofKind: .xcMappingModel, in: targets, excluding: excludedTargets)
 
             // Only a store this scan built says that a target with no units was not compiled.
             let trustsAbsentUnits = !configuration.skipBuild && configuration.indexStorePath.isEmpty
@@ -265,6 +266,20 @@
         }
 
         // MARK: - Private
+
+        /// A `Project/Target` option names one target, so it cannot be used when two projects of that name in different
+        /// folders both define the target: their `path/Project.xcodeproj/Target` forms are the ones to pass.
+        func validateQualifiedTargetOptions(among targets: Set<XcodeTarget>) throws {
+            for (flag, options) in [("--exclude-targets", configuration.excludeTargets), ("--retain-public-targets", configuration.retainPublicTargets)] {
+                for option in options where option.contains("/") {
+                    let matches = targets.filter { $0.qualifiedName == option }
+                    guard Set(matches.map(\.projectPath)).count > 1 else { continue }
+
+                    let forms = matches.map(\.pathQualifiedName).sorted().map(Self.shellWord).joined(separator: ", ")
+                    throw LethenError.usageError("\(flag) \(Self.shellWord(option)) names targets of projects in different folders; pass one of \(forms).")
+                }
+            }
+        }
 
         /// `--retain-public-targets Project/Target` names one target, but declarations carry only their module, so the
         /// target's module names are retained too; a module a retained and another target share is retained for both.
@@ -544,6 +559,11 @@
         /// of that name, or one target as `Project/Target`.
         static func isExcluded(_ target: XcodeTarget, excludeTests: Bool, options: [String]) -> Bool {
             (excludeTests && target.isTestTarget) || options.contains(where: target.isNamed(by:))
+        }
+
+        /// The files of that kind of the targets that stay in the scan.
+        static func files(ofKind kind: ProjectFileKind, in targets: Set<XcodeTarget>, excluding excluded: Set<XcodeTarget>) -> Set<FilePath> {
+            targets.subtracting(excluded).flatMapSet { $0.files(kind: kind) }
         }
 
         /// The names `--exclude-tests` leaves out of the index as modules: those of the excluded test targets, but not one
