@@ -18,6 +18,7 @@
 
 ##### Bug Fixes
 
+- A declaration that a target the scanned schemes do not build uses through an `override` of it, a callable value (`Handler()()`), or a chain of type aliases (`typealias Second = First`) is now reported as `likely` instead of `certain`, like one it names directly. The set of findings does not change ([#113](https://github.com/albovsky/lethen/issues/113)).
 - An Objective-C `@import` with blanks, a newline or a comment between the `@` and `import` (`@ import Foo;`, `@/* note */import Foo;`) is now read as an import, as the compiler reads it, so an unused one is reported and a used one is not missed.
 - A struct that conforms to `Decodable` without its own `init(from:)` no longer has its non-optional stored properties reported as assign-only when the type reaches a decoder, such as `JSONDecoder().decode(Model.self, from: data)`. The synthesized initializer requires those properties, so removing one relaxes the validation of the decoded shape. Optional properties, properties left out of a custom `CodingKeys`, and types with their own `init(from:)` are still reported, and `Type.self` is now recognized as a use of the type for the other value-flow rules.
 - `--verbose` writes its log lines to standard error, so `--format json --verbose` is valid JSON ([#95](https://github.com/albovsky/lethen/issues/95)).
