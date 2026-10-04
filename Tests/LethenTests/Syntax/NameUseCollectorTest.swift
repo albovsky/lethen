@@ -90,6 +90,8 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertTrue(names("let a = handler(1)").contains("callAsFunction"), "The callee is a value")
         XCTAssertTrue(names("let a = object.handler(1)").contains("callAsFunction"))
         XCTAssertTrue(names("let a = (make())(1)").contains("callAsFunction"))
+        XCTAssertTrue(names("func use(_ _handler: Handler) { _handler() }").contains("callAsFunction"), "Leading underscores do not make a type name")
+        XCTAssertFalse(names("let a = _Handler(size: 1)").contains("callAsFunction"))
         XCTAssertFalse(names("let a = Handler(size: 1)").contains("callAsFunction"), "A construction is not a callable value")
         XCTAssertFalse(names("let a = Framework.Handler(size: 1)").contains("callAsFunction"))
 
