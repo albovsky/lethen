@@ -366,27 +366,31 @@
             }
 
             // Targets are told apart by their project, so same-named targets of two projects stay two. They are
-            // labelled by name, or by `Project/Target` when a name is shared, so warnings and evidence name one.
+            // labelled by name, by `Project/Target` when a name is shared, and by their project's path when even that
+            // is shared, so warnings and evidence name one.
             let nameCounts = Dictionary(projectTargets.map { ($0.name, 1) }, uniquingKeysWith: +)
+            let qualifiedCounts = Dictionary(projectTargets.map { ($0.qualifiedName, 1) }, uniquingKeysWith: +)
             func label(_ target: XcodeTarget) -> String {
-                nameCounts[target.name, default: 0] > 1 ? target.qualifiedName : target.name
+                if nameCounts[target.name, default: 0] <= 1 { return target.name }
+
+                return qualifiedCounts[target.qualifiedName, default: 0] > 1 ? target.pathQualifiedName : target.qualifiedName
             }
-            // A dependency is named by its target's name only, so it is the target of that name in the dependent's own
-            // project when there is one, and every target of that name otherwise.
-            func labels(ofDependency name: String, of target: XcodeTarget) -> [String] {
-                let candidates = projectTargets.filter { $0.name == name }
-                let own = candidates.filter { $0.projectName == target.projectName }
-                return (own.isEmpty ? candidates : own).map(label)
+            // A dependency names its target and, through a proxy, the project it is in; without one it is in the
+            // dependent's own project. When that project has no such target, every target of the name counts.
+            func labels(ofDependency dependency: XcodeTarget.Dependency, of target: XcodeTarget) -> [String] {
+                let candidates = projectTargets.filter { $0.name == dependency.name }
+                let inProject = candidates.filter { $0.projectName == (dependency.projectName ?? target.projectName) }
+                return (inProject.isEmpty ? candidates : inProject).map(label)
             }
 
             let scanned = projectTargets.filter { target in compiled[target, default: []].contains { isIndexed($0, for: target) } }
             let scannedLabels = scanned.mapSet(label)
-            let dependencyLabels = Dictionary(uniqueKeysWithValues: projectTargets.map { target in
-                (label(target), target.dependencyNames.flatMapSet { name -> Set<String> in
-                    let resolved = labels(ofDependency: name, of: target)
-                    return resolved.isEmpty ? [name] : Set(resolved)
+            let dependencyLabels = Dictionary(projectTargets.map { target in
+                (label(target), target.dependencies.flatMapSet { dependency -> Set<String> in
+                    let resolved = labels(ofDependency: dependency, of: target)
+                    return resolved.isEmpty ? [dependency.name] : Set(resolved)
                 })
-            })
+            }, uniquingKeysWith: { $0.union($1) })
             let scannedSwiftFiles = scanned.flatMapSet { $0.files(kind: .swiftSource).filter(isCollectable).mapSet { $0.lexicallyNormalized() } }
             var unscanned: [UnscannedTarget] = []
             var dependencies: [String: [String]] = [:]

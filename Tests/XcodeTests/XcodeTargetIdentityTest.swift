@@ -6,6 +6,7 @@ import Shared
 import SourceGraph
 import SystemPackage
 @testable import TestShared
+import XcodeProj
 @testable import XcodeSupport
 import XCTest
 
@@ -16,7 +17,6 @@ final class XcodeTargetIdentityTest: XCTestCase {
     private var root: FilePath!
     private var workspace: XcodeWorkspace!
     private var scannedProject: XcodeProject!
-    private var otherProject: XcodeProject!
 
     /// A workspace of `Scanned.xcodeproj` and `Other.xcodeproj`, copies of one fixture that each define the targets
     /// `ConfigurationsProject` and `ConfigurationsProjectTests`.
@@ -41,7 +41,6 @@ final class XcodeTargetIdentityTest: XCTestCase {
         let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
         workspace = try XcodeWorkspace(path: workspacePath, xcodebuild: xcodebuild, configuration: Configuration(), logger: Self.logger, shell: shell)
         scannedProject = try load("Scanned")
-        otherProject = try load("Other")
     }
 
     override func tearDownWithError() throws {
@@ -153,6 +152,84 @@ final class XcodeTargetIdentityTest: XCTestCase {
         XCTAssertEqual(retained("Other/ConfigurationsProject"), ["Other/ConfigurationsProject", "ConfigurationsProject"])
         XCTAssertEqual(retained("ConfigurationsProject"), ["ConfigurationsProject"])
         XCTAssertEqual(retained("Elsewhere/ConfigurationsProject"), ["Elsewhere/ConfigurationsProject"])
+    }
+
+    /// A proxy names the project of the target it depends on; a same-named target of the dependent's own project is
+    /// not it. The consumer in `Scanned` depends on `Other/ConfigurationsProject`, which is scanned, not on its own
+    /// project's `ConfigurationsProject`, which is not, so it still depends on scanned code.
+    func testProxyDependencyResolvesToTheRemoteProjectsTarget() throws {
+        try FileManager.default.createDirectory(atPath: root.appending("Scanned").string, withIntermediateDirectories: true)
+        try "func consume() {}\n".write(to: root.appending("Scanned/Consumer.swift").url, atomically: true, encoding: .utf8)
+        let pbxproj = scannedProject.xcodeProject.pbxproj
+        let remote = PBXFileReference(sourceTree: .group, name: "Other.xcodeproj", path: "../Other/Other.xcodeproj")
+        let proxy = PBXContainerItemProxy(containerPortal: .fileReference(remote), remoteGlobalID: .string("ABCDEF0123456789ABCDEF01"), proxyType: .nativeTarget, remoteInfo: "ConfigurationsProject")
+        let dependency = PBXTargetDependency(name: nil, target: nil, targetProxy: proxy)
+        let source = PBXFileReference(sourceTree: .sourceRoot, lastKnownFileType: "sourcecode.swift", path: "Consumer.swift")
+        let buildFile = PBXBuildFile(file: source)
+        let phase = PBXSourcesBuildPhase(files: [buildFile])
+        let consumerTarget = PBXNativeTarget(name: "Consumer", buildPhases: [phase], dependencies: [dependency])
+        for object in [remote, proxy, dependency, source, buildFile, phase, consumerTarget] as [PBXObject] {
+            pbxproj.add(object: object)
+        }
+        let consumer = XcodeTarget(project: scannedProject, target: consumerTarget)
+        XCTAssertEqual(consumer.dependencies, [XcodeTarget.Dependency(name: "ConfigurationsProject", projectName: "Other")])
+        try workspace.targets.forEach { try $0.identifyFiles() }
+        try consumer.identifyFiles()
+
+        let other = try XCTUnwrap(workspace.targets.first { $0.qualifiedName == "Other/ConfigurationsProject" })
+        var indexedModules: [FilePath: Set<String>] = [:]
+        for file in other.files(kind: .swiftSource) {
+            indexedModules[file] = ["ConfigurationsProject"]
+        }
+        let driver = XcodeProjectDriver(
+            logger: Self.logger,
+            configuration: Configuration(),
+            xcodebuild: Xcodebuild(shell: RecordingShell(), logger: Self.logger),
+            project: workspace,
+            schemes: ["ConfigurationsProject"]
+        )
+
+        let (unscanned, dependencies) = driver.unscannedTargets(
+            among: Set(workspace.targets.filter { $0.name == "ConfigurationsProject" } + [consumer]),
+            indexedModules: indexedModules
+        )
+
+        XCTAssertEqual(unscanned.map(\.name), ["Consumer", "Scanned/ConfigurationsProject"])
+        XCTAssertEqual(dependencies["Consumer"], ["Other/ConfigurationsProject"])
+        XCTAssertEqual(dependencies["Scanned/ConfigurationsProject"], [])
+    }
+
+    /// Projects of the same name in different folders share `Project/Target`, so the label falls back to the path.
+    func testSameNamedProjectsInDifferentFoldersAreLabelledByPath() throws {
+        let nested = root.appending("Nested")
+        try FileManager.default.createDirectory(atPath: nested.string, withIntermediateDirectories: true)
+        try FileManager.default.copyItem(atPath: root.appending("Scanned").string, toPath: nested.appending("Scanned").string)
+        var loaded: Set<FilePath> = []
+        let shell = RecordingShell()
+        let twin = try XcodeProject(
+            path: nested.appending("Scanned/Scanned.xcodeproj"),
+            loadedProjectPaths: &loaded,
+            xcodebuild: Xcodebuild(shell: shell, logger: Self.logger),
+            shell: shell,
+            logger: Self.logger
+        )
+        let targets = Set((scannedProject.targets.union(twin.targets)).filter { $0.name == "ConfigurationsProject" })
+        try targets.forEach { try $0.identifyFiles() }
+        XCTAssertEqual(targets.count, 2)
+        XCTAssertEqual(Set(targets.map(\.qualifiedName)).count, 1, "Both are Scanned/ConfigurationsProject")
+        let driver = XcodeProjectDriver(
+            logger: Self.logger,
+            configuration: Configuration(),
+            xcodebuild: Xcodebuild(shell: shell, logger: Self.logger),
+            project: workspace,
+            schemes: ["ConfigurationsProject"]
+        )
+
+        let (unscanned, dependencies) = driver.unscannedTargets(among: targets, indexedModules: [:])
+
+        XCTAssertEqual(Set(unscanned.map(\.name)).count, 2, "\(unscanned.map(\.name))")
+        XCTAssertTrue(unscanned.allSatisfy { $0.name.hasSuffix("/Scanned.xcodeproj/ConfigurationsProject") }, "\(unscanned.map(\.name))")
+        XCTAssertEqual(dependencies.count, 2)
     }
 
     private func load(_ name: String) throws -> XcodeProject {

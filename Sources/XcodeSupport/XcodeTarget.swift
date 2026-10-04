@@ -34,25 +34,54 @@ public final class XcodeTarget {
         "\(projectName)/\(name)"
     }
 
+    /// The target as `path/Project.xcodeproj/Target`, for the targets of same-named projects in different folders,
+    /// which `qualifiedName` does not tell apart.
+    public var pathQualifiedName: String {
+        "\(project.path.lexicallyNormalized().string)/\(name)"
+    }
+
     /// Whether an option such as `--exclude-targets` names this target: by its own name, which every target of that
     /// name matches, or by `qualifiedName`, which only this one does.
     public func isNamed(by option: String) -> Bool {
         option == name || option == qualifiedName
     }
 
-    /// The names of the targets this one depends on: the explicit dependencies, which Xcode builds before it
-    /// (a dependency on a target of another project of the workspace is a proxy whose `remoteInfo` is that
-    /// target's name), and the targets of this project whose product it links, which Xcode treats as implicit
-    /// dependencies.
-    public var dependencyNames: Set<String> {
-        let explicit = target.dependencies.compactMapSet { $0.target?.name ?? $0.targetProxy?.remoteInfo }
+    /// A target this one depends on: its name, and the project it is in when a proxy says so, which is `nil` for a
+    /// target of this project.
+    public struct Dependency: Hashable {
+        public let name: String
+        public let projectName: String?
+    }
+
+    /// The targets this one depends on: the explicit dependencies, which Xcode builds before it (a dependency on a
+    /// target of another project of the workspace is a proxy whose `remoteInfo` is that target's name and whose
+    /// container is that project), and the targets of this project whose product it links, which Xcode treats as
+    /// implicit dependencies.
+    public var dependencies: Set<Dependency> {
+        let explicit = target.dependencies.compactMapSet { dependency -> Dependency? in
+            if let target = dependency.target { return Dependency(name: target.name, projectName: nil) }
+            guard let proxy = dependency.targetProxy, let name = proxy.remoteInfo else { return nil }
+
+            // A proxy to the project itself, or to one Lethen cannot tell, names a target of this project.
+            let projectName: String? = if case let .fileReference(reference) = proxy.containerPortal {
+                (reference.path ?? reference.name).map { FilePath($0).stem ?? $0 }
+            } else {
+                nil
+            }
+            return Dependency(name: name, projectName: projectName == self.projectName ? nil : projectName)
+        }
         let linkedFiles = target.buildPhases.compactMap { $0 as? PBXFrameworksBuildPhase }
             .flatMap { $0.files ?? [] }
             .compactMap(\.file)
         let linked = project.xcodeProject.pbxproj.nativeTargets
             .filter { candidate in candidate !== target && linkedFiles.contains { $0 === candidate.product } }
-            .map(\.name)
+            .map { Dependency(name: $0.name, projectName: nil) }
         return explicit.union(linked)
+    }
+
+    /// The names of the targets this one depends on.
+    public var dependencyNames: Set<String> {
+        dependencies.mapSet(\.name)
     }
 
     /// The names the target's Swift module can have, which its index units carry: each plain
