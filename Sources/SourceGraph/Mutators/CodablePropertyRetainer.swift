@@ -55,8 +55,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// `print(_:)`, are not evidence.
     private func buildSynthesizedEncodeReads() {
         var synthesizedTypes: Set<Declaration> = []
-        for type in graph.declarations(ofKind: .struct) {
-            guard graph.isEncodable(type) else { continue }
+        // A class is covered like a struct; a subclass of an Encodable class is not, as Swift does not
+        // synthesize `encode(to:)` for it.
+        for type in graph.declarations(ofKinds: [.struct, .class]) {
+            guard graph.isEncodable(type), !hasEncodableSuperclass(type) else { continue }
 
             let extensions = graph.extensions[type] ?? []
             let members = type.declarations.union(extensions.flatMap(\.declarations))
@@ -76,6 +78,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             guard mayEncode else { continue }
 
             markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
+        }
+    }
+
+    private func hasEncodableSuperclass(_ type: Declaration) -> Bool {
+        type.immediateInheritedTypeReferences.contains { reference in
+            guard reference.declarationKind == .class, let superclass = graph.declaration(withUsr: reference.usr) else { return false }
+
+            return graph.isEncodable(superclass)
         }
     }
 

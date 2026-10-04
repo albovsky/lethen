@@ -920,3 +920,9 @@ Verdict for every removed row (`FP fixed`: the old finding was a false positive;
 | `Wikipedia/Code/WMFWelcomePageViewController.swift:230` | var.parameter | `sender` | FP fixed | parameter of an `@objc` method, whose selector and callers (target-action, notification observers) fix it |
 | `Wikipedia/Code/WelcomePageViewController.swift:101` | var.parameter | `sender` | FP fixed | parameter of an `@objc` method, whose selector and callers (target-action, notification observers) fix it |
 | `Wikipedia/Code/WelcomePageViewController.swift:115` | var.parameter | `sender` | FP fixed | parameter of an `@objc` method, whose selector and callers (target-action, notification observers) fix it |
+
+### Synthesized `Encodable` reads through classes (#122)
+
+Alamofire and swift-nio re-scanned on Linux (Swift 6.4) with the change and with master `64cec5d`; the two results were compared with each other, since the committed expectations are macOS scans whose USRs differ from Linux's. swift-nio: identical. Alamofire: one row removed, `Tests/ParameterEncoderTests.swift:1149` var.instance `three` (`EncodableSuperclass`, Alamofire-19): FP fixed. The class is `Encodable` with synthesized `encode(to:)` and instances are encoded in `ParameterEncoderTests.swift` (`testThatEncodableSuperclassCanBeEncodedWithIndexInBrackets`), which asserts `three=1` in the output. The row is removed from `corpus/expected/Alamofire.json` by hand rather than by `corpus/accept.sh`, which would have replaced the expectation with Linux USRs.
+
+Wikipedia iOS was not re-scanned here (it needs Xcode). Expected: `WMFPageViewsDataController.swift:97` `latitude` and `:98` `longitude` (the rows added by the #108 drift, filed as #122) no longer reported, because `WMFLegacyPageView` is a class. To be verified on a Mac and retired in `corpus/adjudications/wikipedia-ios.json` as "fixed by #122".
