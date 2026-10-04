@@ -212,6 +212,14 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(found.map(\.commentCommands), [[.ignoreAll], [.ignoreAll], [.ignoreAll]])
     }
 
+    /// Clang takes form feed and vertical tab as whitespace between the tokens too.
+    func testFormFeedAndVerticalTabSeparateTheTokens() {
+        XCTAssertEqual(imports("@\u{0C}import WMF;\n").map(\.module), ["WMF"])
+        XCTAssertEqual(imports("@\u{0B}import WMF;\n").map(\.module), ["WMF"])
+        XCTAssertEqual(imports("@import\u{0C}WMF . \u{0B}Sub;\n").map(\.qualifiedModule), ["WMF.Sub"])
+        XCTAssertEqual(imports("@\u{0C}importWMF;\n").count, 0)
+    }
+
     func testIgnoreCommandOnTheSameLine() throws {
         let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
 

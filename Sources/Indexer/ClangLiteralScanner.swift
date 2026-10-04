@@ -137,7 +137,8 @@ enum ClangLiteralScanner {
     static func skippingBlanksAndComments(from index: Int, in bytes: [UInt8]) -> Int {
         var cursor = index
         while cursor < bytes.count {
-            if isBlank(bytes[cursor]) || bytes[cursor] == newline {
+            // Clang also treats form feed and vertical tab as whitespace between tokens.
+            if isBlank(bytes[cursor]) || bytes[cursor] == newline || bytes[cursor] == 0x0B || bytes[cursor] == 0x0C {
                 cursor += 1
             } else if bytes[cursor] == slash, bytes[safe: cursor + 1] == slash {
                 cursor = endOfLine(from: cursor, in: bytes)
