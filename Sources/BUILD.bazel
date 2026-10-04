@@ -254,6 +254,8 @@ swift_library(
         "Indexer/SwiftIndexer.swift",
         "Indexer/SyntaxAnalysis/EnumCasePatternAnalysis.swift",
         "Indexer/SyntaxAnalysis/IndexedFile.swift",
+        "Indexer/SyntaxAnalysis/SkippedBranchAnalysis.swift",
+        "Indexer/SyntaxAnalysis/StringLiteralAnalysis.swift",
         "Indexer/SyntaxAnalysis/SyntaxAnalysis.swift",
         "Indexer/SyntaxAnalysis/ValueUseAnalysis.swift",
         "Indexer/UnscannedTargetIndexer.swift",

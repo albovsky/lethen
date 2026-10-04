@@ -84,6 +84,29 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("/* a */ @import WMF; // b\n@import Other;\n").map(\.module), ["WMF", "Other"])
     }
 
+    /// Clang reads `@` and `import` as two tokens, so blanks, newlines and comments may stand between them.
+    func testBlanksAndCommentsBetweenTheAtSignAndTheKeywordAreAllowed() throws {
+        XCTAssertEqual(imports("@ import Foo;\n").map(\.module), ["Foo"])
+        XCTAssertEqual(imports("@\timport Foo;\n").map(\.module), ["Foo"])
+        XCTAssertEqual(imports("@/* note */import Foo;\n").map(\.module), ["Foo"])
+        XCTAssertEqual(imports("@ /* note */ import Foo.Bar;\n").map(\.qualifiedModule), ["Foo.Bar"])
+        XCTAssertEqual(imports("@\nimport Foo;\n").map(\.module), ["Foo"])
+
+        // The statement is located at its `@`, whatever follows it.
+        let statement = try XCTUnwrap(imports("int x;\n  @ import Foo;\n").first)
+        XCTAssertEqual(statement.location.line, 2)
+        XCTAssertEqual(statement.location.column, 3)
+    }
+
+    /// Controls: the keyword still has to stand apart from the module name, and another `@` keyword is not an import.
+    func testSpacedAtSignDoesNotMakeOtherTextAnImport() {
+        XCTAssertEqual(imports("@ importFoo;\n").count, 0)
+        XCTAssertEqual(imports("@/* note */importFoo;\n").count, 0)
+        XCTAssertEqual(imports("@ imports Foo;\n").count, 0)
+        XCTAssertEqual(imports("@ interface Foo;\n@ implementation Foo\n").count, 0)
+        XCTAssertEqual(imports("@ import;\n").count, 0)
+    }
+
     func testHeaderImportsAreNotModuleImports() {
         XCTAssertEqual(imports("#import <WMF/WMF.h>\n#import \"WMF.h\"\n#include <WMF/WMF.h>\n").count, 0)
     }
@@ -167,6 +190,42 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("#define OPTIONAL_IMPORT @import A;\n@import B;\n").map(\.module), ["B"])
         XCTAssertEqual(imports("#define S \"\\\" @import X; \"\n@import B;\n").map(\.module), ["B"])
         XCTAssertEqual(imports("#pragma mark - @import X;\n@import B; // periphery:ignore\n").map(\.commentCommands), [[.ignore]])
+    }
+
+    /// A comment between the `@` and the keyword is on the statement's line, so it keeps the import.
+    func testIgnoreCommandBetweenTheAtSignAndTheKeyword() throws {
+        XCTAssertEqual(imports("@ /* periphery:ignore */ import WMF;\n").first?.commentCommands, [.ignore])
+        XCTAssertEqual(imports("@/* periphery:ignore */import WMF;\n").first?.commentCommands, [.ignore])
+        XCTAssertEqual(imports("@ /* needed */ import WMF;\n").first?.commentCommands, [])
+    }
+
+    /// Each comment between the tokens is parsed on its own, before or after an ordinary one.
+    func testIgnoreCommandBesideAnOrdinaryCommentBetweenTheTokens() {
+        XCTAssertEqual(imports("@/* note *//* periphery:ignore */import WMF;\n").first?.commentCommands, [.ignore])
+        XCTAssertEqual(imports("@/* periphery:ignore *//* note */import WMF;\n").first?.commentCommands, [.ignore])
+    }
+
+    /// A file-wide command between the tokens reaches every import, as one anywhere else in the file does.
+    func testFileWideIgnoreCommandBetweenTheTokensReachesEveryImport() {
+        let found = imports("@import A;\n@/* periphery:ignore:all */import B;\n@import C;\n")
+
+        XCTAssertEqual(found.map(\.commentCommands), [[.ignoreAll], [.ignoreAll], [.ignoreAll]])
+    }
+
+    /// Clang takes form feed and vertical tab as whitespace between the tokens too.
+    func testFormFeedAndVerticalTabSeparateTheTokens() {
+        XCTAssertEqual(imports("@\u{0C}import WMF;\n").map(\.module), ["WMF"])
+        XCTAssertEqual(imports("@\u{0B}import WMF;\n").map(\.module), ["WMF"])
+        XCTAssertEqual(imports("@import\u{0C}WMF . \u{0B}Sub;\n").map(\.qualifiedModule), ["WMF.Sub"])
+        XCTAssertEqual(imports("@\u{0C}importWMF;\n").count, 0)
+    }
+
+    /// The same bytes may indent a directive, which still opens a conditional block.
+    func testFormFeedAndVerticalTabBeforeADirectiveStillOpenAConditional() {
+        let found = imports("\u{0B}#if FLAG\n@\u{0B}import A;\n\u{0C}#endif\n@import B;\n")
+
+        XCTAssertEqual(found.map(\.module), ["A", "B"])
+        XCTAssertEqual(found.map(\.isConditional), [true, false])
     }
 
     func testIgnoreCommandOnTheSameLine() throws {
