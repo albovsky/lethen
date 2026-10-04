@@ -192,6 +192,13 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("#pragma mark - @import X;\n@import B; // periphery:ignore\n").map(\.commentCommands), [[.ignore]])
     }
 
+    /// A comment between the `@` and the keyword is on the statement's line, so it keeps the import.
+    func testIgnoreCommandBetweenTheAtSignAndTheKeyword() throws {
+        XCTAssertEqual(imports("@ /* periphery:ignore */ import WMF;\n").first?.commentCommands, [.ignore])
+        XCTAssertEqual(imports("@/* periphery:ignore */import WMF;\n").first?.commentCommands, [.ignore])
+        XCTAssertEqual(imports("@ /* needed */ import WMF;\n").first?.commentCommands, [])
+    }
+
     func testIgnoreCommandOnTheSameLine() throws {
         let statement = try XCTUnwrap(imports("@import WMF; // periphery:ignore\n").first)
 

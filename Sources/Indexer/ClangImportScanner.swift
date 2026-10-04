@@ -69,7 +69,7 @@ enum ClangImportScanner {
                         isExported: false,
                         isConditional: conditionalDepth > 0,
                         location: location,
-                        commentCommands: commentCommands(forStatementAt: index, endingBefore: end, in: bytes)
+                        commentCommands: commentCommands(forStatementAt: index, keywordStart: afterKeyword - keyword.count, endingBefore: end, in: bytes)
                     ))
                     index = end
                 } else {
@@ -219,11 +219,17 @@ enum ClangImportScanner {
         return Location(file: file, line: line, column: index - lineStart + 1)
     }
 
-    /// The commands in comments that trail the statement on its line, and in the comment directly above
+    /// The commands in comments between its `@` and keyword, that trail the statement on its line, and in the comment directly above
     /// it, as Swift's leading and trailing trivia are read: a `//` line, or a block comment, which may
     /// span lines, that only whitespace separates from the statement's line.
-    private static func commentCommands(forStatementAt index: Int, endingBefore end: Int, in bytes: [UInt8]) -> [CommentCommand] {
-        var comments: [String] = []
+    private static func commentCommands(
+        forStatementAt index: Int,
+        keywordStart: Int,
+        endingBefore end: Int,
+        in bytes: [UInt8]
+    ) -> [CommentCommand] {
+        // Comments between the `@` and the keyword belong to the statement too.
+        var comments: [String] = [text(bytes[(index + 1) ..< keywordStart]).trimmingCharacters(in: .whitespacesAndNewlines)]
 
         var cursor = end
         while cursor < bytes.count {
