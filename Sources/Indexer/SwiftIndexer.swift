@@ -328,13 +328,13 @@ final class SwiftIndexer: Indexer {
             let file = IndexedFile(
                 syntax: multiplexingSyntaxVisitor.syntax,
                 locationBuilder: locationBuilder,
-                referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init)
+                declarations: declarations,
+                referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init),
+                graph: graph
             )
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
             }
-            let valueUses = ValueUseSyntaxVisitor(locations: locationBuilder)
-            valueUses.walk(multiplexingSyntaxVisitor.syntax)
             let literalTokens = StringLiteralTokenVisitor()
             literalTokens.walk(multiplexingSyntaxVisitor.syntax)
             evidence.add { $0.addLiteralTokens(literalTokens.tokens) }
@@ -353,46 +353,6 @@ final class SwiftIndexer: Indexer {
                         ),
                         modules: [module]
                     )
-                }
-            }
-            let referencesByLocation = file.referencesByLocation
-            for (call, arguments) in valueUses.arguments {
-                let values = Set(arguments.flatMap { referencesByLocation[$0, default: []] })
-                for reference in referencesByLocation[call, default: []] {
-                    reference.hasGenericValueArguments = !arguments.isDisjoint(with: valueUses.genericTypeLocations)
-                    reference.valueArgumentReferences = values
-                }
-            }
-            for (call, list) in valueUses.argumentLists {
-                let arguments = list.map { argument in
-                    ValueArgument(label: argument.label, references: Set(argument.origins.flatMap { referencesByLocation[$0, default: []] }))
-                }
-                for reference in referencesByLocation[call, default: []] {
-                    reference.valueArguments = arguments
-                }
-            }
-            for location in valueUses.specializationArgumentLocations {
-                for reference in referencesByLocation[location, default: []] {
-                    reference.isGenericSpecializationArgument = true
-                }
-            }
-            for (location, arguments) in valueUses.specializationArguments {
-                let resolved = arguments.map { Set($0.flatMap { referencesByLocation[$0, default: []] }) }
-                for reference in referencesByLocation[location, default: []] {
-                    reference.genericArguments = resolved
-                }
-            }
-            graph.withLock { _ in
-                for decl in declarations {
-                    if let names = valueUses.parameterTypeNames[decl.location] {
-                        decl.parameterTypeNames = names
-                    }
-                    if valueUses.accessorBodyLocations.contains(decl.location) {
-                        decl.hasAccessorBody = true
-                    }
-                    if valueUses.initializedConstantLocations.contains(decl.location) {
-                        decl.isInitializedConstant = true
-                    }
                 }
             }
             identifyUnusedParameters(using: multiplexingSyntaxVisitor)
