@@ -1,4 +1,5 @@
 import Foundation
+import SourceGraph
 import SwiftParser
 import SwiftSyntax
 @testable import SyntaxAnalysis
@@ -137,5 +138,51 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(uses.filter { $0.name == "first" }.map(\.line), [2])
         XCTAssertEqual(uses.filter { $0.name == "second" }.map(\.line), [3])
         XCTAssertThrowsError(try NameUseCollector.uses(inFileAt: FilePath(directory.appendingPathComponent("Missing.swift").path)))
+    }
+
+    func testRecordsLabelsTrailingClosureAndReceiverOfEachSpelling() {
+        let collector = collect("""
+        func f() {
+            show(title: t, 1)
+            run { }
+            animate(duration: 1) { } completion: { }
+            let g = show
+            let h = show(title:)
+            Store.shared.load()
+            _ = Store.shared
+            _ = Store.init(data: d)
+            _ = self.shared
+            _ = Self.shared
+            _ = T.shared
+        }
+        func make<T>() {}
+        """)
+        typealias Spelling = NameSites.Spelling
+        XCTAssertEqual(collector.spellings["show"], [
+            Spelling(labels: ["title", "_"], isMember: true),
+            Spelling(labels: nil),
+            Spelling(labels: ["title"]),
+        ])
+        XCTAssertEqual(collector.spellings["run"], [Spelling(labels: [], hasTrailingClosure: true, isMember: true)])
+        XCTAssertEqual(
+            collector.spellings["animate"],
+            [Spelling(labels: ["duration", "completion"], hasTrailingClosure: true, isMember: true)]
+        )
+        XCTAssertEqual(collector.spellings["load"], [Spelling(labels: [], isMember: true)], "`Store.shared` is not the receiver of `load`")
+        XCTAssertEqual(collector.spellings["init"], [Spelling(labels: ["data"], receiver: "Store", isMember: true)])
+        XCTAssertEqual(
+            collector.spellings["shared"],
+            [Spelling(receiver: "Store", isMember: true), Spelling(isMember: true)],
+            "`self.shared` and `Self.shared` name no type"
+        )
+    }
+
+    func testAGenericParameterIsNotAReceiver() {
+        typealias Spelling = NameSites.Spelling
+        let collector = collect("func make<T: Base>(_: T.Type) { _ = T.shared }\nfunc other() { _ = U.shared }")
+        XCTAssertEqual(
+            collector.spellings["shared"],
+            [Spelling(isMember: true), Spelling(receiver: "U", isMember: true)]
+        )
     }
 }

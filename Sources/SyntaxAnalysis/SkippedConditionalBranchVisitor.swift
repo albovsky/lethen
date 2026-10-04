@@ -23,6 +23,9 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
     /// is not constructing it, so an enum case is downgraded only by these.
     public private(set) var constructionNames: [String: String] = [:]
 
+    /// Every spelling of each used name with the smallest site that spells it that way.
+    public private(set) var spellings: [String: [NameSites.Spelling: String]] = [:]
+
     private let locationBuilder: SourceLocationBuilder
     private let evidence: Set<Location>
 
@@ -52,6 +55,11 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
             for (identifier, isMember) in content.uses {
                 if names[identifier].map({ $0 > site }) ?? true { names[identifier] = site }
                 if isMember, memberNames[identifier].map({ $0 > site }) ?? true { memberNames[identifier] = site }
+            }
+            for (identifier, spelled) in content.spellings {
+                for spelling in spelled where spellings[identifier, default: [:]][spelling].map({ $0 > site }) ?? true {
+                    spellings[identifier, default: [:]][spelling] = site
+                }
             }
             for identifier in content.constructionUses where constructionNames[identifier].map({ $0 > site }) ?? true {
                 constructionNames[identifier] = site
