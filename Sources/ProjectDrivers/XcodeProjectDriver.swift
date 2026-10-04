@@ -372,16 +372,11 @@
         private func reusableConfigurations() -> [String?] {
             guard !configuration.cleanBuild, !configuration.skipBuild, configuration.indexStorePath.isEmpty else { return [] }
             guard !project.hasUnenumerableBuildInputs else {
-                logger.debug("Building: a Run Script input cannot be resolved to a path")
+                logger.debug("Building: a Run Script phase reads or writes a path that cannot be resolved")
                 return []
             }
-            guard (try? project.targets.forEach { try $0.identifyFiles() }) != nil else { return [] }
+            guard let inputs = XcodeBuildInputs.scanInputs(of: project) else { return [] }
 
-            let kinds = ProjectFileKind.allCases
-            let roots = ([project.sourceRoot] + project.projectSourceRoots).map { $0.lexicallyNormalized() }.removingDuplicates()
-            // Declared files are compared themselves, inside the roots or not: the walk does not follow symlinks, so
-            // a file behind a symlinked directory, or outside every root like an external .xcconfig, is not reached by it.
-            let files = project.targets.flatMapSet { target in kinds.flatMapSet { target.files(kind: $0) } }.union(project.declaredInputFiles)
             return buildConfigurations.filter { buildConfiguration in
                 guard let dates = try? xcodebuild.completedBuildDates(
                     project: project,
@@ -389,8 +384,23 @@
                     configuration: buildConfiguration,
                     buildArguments: configuration.buildArguments
                 ) else { return false }
+                guard let recorded = try? xcodebuild.recordedBuildInputs(
+                    project: project,
+                    schemes: Array(schemes),
+                    configuration: buildConfiguration,
+                    buildArguments: configuration.buildArguments
+                ) else {
+                    logger.debug("Building: the last build recorded no list of its inputs")
+                    return false
+                }
 
-                if let change = XcodeBuildInputs.firstChange(roots: roots, files: files, started: dates.started, completed: dates.completed) {
+                if let change = XcodeBuildInputs.firstChange(
+                    roots: inputs.roots,
+                    files: inputs.files,
+                    recorded: recorded,
+                    started: dates.started,
+                    completed: dates.completed
+                ) {
                     logger.debug("Building: \(change) changed after the last build")
                     return false
                 }

@@ -106,21 +106,34 @@ Wikipedia iOS (`599e4a6`, `--project Wikipedia.xcodeproj --schemes Wikipedia`, d
 
 | Scan | Before | After |
 |---|---|---|
-| `--clean-build` | 203.1 s (build 194.0 s) | 204.4 s (build 194.5 s) |
-| Rescan 1 | 143.3 s (build 136.8 s) | 145.7 s (build 139.2 s) |
-| Rescan 2 | 24.2 s (build 17.2 s) | 24.0 s (build 17.5 s) |
+| `--clean-build` | 203.1 s | 199.7 s |
+| Rescan 1 (after the clean build) | 143.3 s | 147.2 s |
+| Rescan 2 | 24.2 s | 7.1 s |
+| Rescan 3 | 24.0 s | 7.0 s |
+| Rescan after editing `AppDelegate.swift` | not measured | 40.2 s |
 
-Every run's findings are byte-identical to the before run of the same row, and rescans 1 and 2 are
-identical to each other. Reuse did not apply to any row: the Wikipedia build rewrites
-`Localizable.strings` in `Wikipedia/Localizations` and `WMFLocalizations` after it starts, which
-changes those files and their directories, and its `swiftlint --fix` phase edits Swift sources on the
-first rebuild (rescan 1 pays for that). `--verbose` names the first changed path
-(`Wikipedia/Localizations/en.lproj`). Lethen therefore builds every time here, as before.
+Before is Lethen at 42a17ea, which never reused this build; after is this change. Rescans 2 and 3 run no
+`xcodebuild` (`--verbose` says it reuses the build) and their findings are byte-identical to each other, to the
+edited-file rescan, which builds again and takes it into account, and to the same rescans on the build that ran
+every time. Rescan 1 still builds: the `swiftlint --fix` phase edits Swift sources while the clean build runs, so
+the first rescan finds 14 indexed files newer than their units and rebuilds; every later one starts from a
+settled tree.
 
-A project whose builds leave its own folder alone skips `xcodebuild` on a rescan; the
-`XcodeBuildReuseTest` cases check this with real builds: a second build runs no `xcodebuild`, and
-an edit, an added file, a changed project file or a unit older than its file each bring the build
-back. On Wikipedia the most reuse could save is the 17 s of rescan 2.
+Two things kept Wikipedia from reusing its build before. The build rewrites `Localizable.strings` and the
+`.lproj` folders in `Wikipedia/Localizations` and `WMFLocalizations` after it starts, and Lethen required every file
+and folder to predate the start. And a Run Script phase is set to run on every build, which switched reuse off.
+Lethen now compares only the files a scan reads (sources, headers, project and build setting files, schemes,
+plists, nibs, Core Data models and declared Run Script inputs), records them when a build starts so an added,
+removed or renamed one is a change, and ignores folder times and the rest, so the strings rewrite no longer
+counts. A phase set to run on every build disables reuse only when it names a path Lethen cannot resolve or
+writes a source it cannot check. Wikipedia's declared outputs go to `$(TARGET_BUILD_DIR)`, the product folder, and
+its generated `OpenSourceDebug.xcconfig`, which `scripts/setup_bundle_id` writes and git ignores, does not exist
+in a fresh checkout; neither blocks reuse.
+
+The `XcodeBuildReuseTest` cases check this with real builds: a second build runs no `xcodebuild`, a strings file
+rewritten or added still reuses, and an edit, an added or deleted source, a rewritten header, a changed project
+file or a unit older than its file each bring the build back. On Wikipedia reuse saves the 17 s build of a
+no-change rescan, which is 24 s without it.
 
 ## Determinism
 

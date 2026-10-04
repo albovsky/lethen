@@ -1,4 +1,6 @@
+import Configuration
 @testable import Indexer
+import Logger
 import SourceGraph
 import SwiftParser
 import SwiftSyntax
@@ -9,8 +11,9 @@ import SystemPackage
 func makeIndexedFile(
     source: String,
     modules: Set<String> = ["T"],
+    declarations: [Declaration] = [],
     references: [(line: Int, column: Int, kind: Declaration.Kind, name: String)] = []
-) -> (file: IndexedFile, sourceFile: SourceFile) {
+) -> (file: IndexedFile, sourceFile: SourceFile, graph: SourceGraph) {
     let sourceFile = SourceFile(path: FilePath("/t/T.swift"), modules: modules)
     let syntax = Parser.parse(source: source)
     let converter = SourceLocationConverter(fileName: "/t/T.swift", tree: syntax)
@@ -22,5 +25,13 @@ func makeIndexedFile(
             Reference(name: reference.name, kind: .normal, declarationKind: reference.kind, usr: "s:ref\(index)", location: location)
         )
     }
-    return (IndexedFile(syntax: syntax, locationBuilder: builder, referencesByLocation: byLocation), sourceFile)
+    let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
+    let file = IndexedFile(
+        syntax: syntax,
+        locationBuilder: builder,
+        declarations: declarations,
+        referencesByLocation: byLocation,
+        graph: SourceGraphMutex(graph: graph)
+    )
+    return (file, sourceFile, graph)
 }

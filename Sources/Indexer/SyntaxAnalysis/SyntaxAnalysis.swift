@@ -11,5 +11,6 @@ enum SyntaxAnalysisList {
     /// The analyses `SwiftIndexer` runs after the prelude of phase two, in the order they run.
     static let all: [SyntaxAnalysis.Type] = [
         EnumCasePatternAnalysis.self,
+        ValueUseAnalysis.self,
     ]
 }
