@@ -234,28 +234,35 @@ public final class ConfidenceAssessor {
     /// `run` in a subclass of `Middle` names `Base.run` through `Middle`, which inherits `Base`. Built on first
     /// use, after indexing.
     private lazy var typeAliasNames: [String: Set<String>] = {
-        var direct: [String: Set<String>] = [:]
+        // Followed by declaration, not by name: two modules can each declare a `Shared`, and an alias of one
+        // is not an alias of the other. Names are projected only once the closure is done. A type that is not
+        // indexed, an external one, has no declaration and contributes nothing.
+        var direct: [Declaration: Set<Declaration>] = [:]
         for alias in graph.declarations(ofKind: .typealias) {
             for reference in alias.references where Self.typeKinds.contains(reference.declarationKind) {
-                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: alias.name))
+                guard let type = graph.declaration(withUsr: reference.usr) else { continue }
+
+                direct[type, default: []].insert(alias)
             }
         }
         for subclass in graph.declarations(ofKind: .class) {
             for reference in subclass.references where reference.role == .inheritedType && reference.declarationKind == .class {
-                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: subclass.name))
+                guard let superclass = graph.declaration(withUsr: reference.usr) else { continue }
+
+                direct[superclass, default: []].insert(subclass)
             }
         }
 
         var names: [String: Set<String>] = [:]
         for type in direct.keys {
-            var closure: Set<String> = []
+            var closure: Set<Declaration> = []
             var pending = Array(direct[type, default: []])
             while let alias = pending.popLast() {
                 guard alias != type, closure.insert(alias).inserted else { continue }
 
                 pending.append(contentsOf: direct[alias, default: []])
             }
-            names[type] = closure
+            names[SourceGraph.baseName(of: type.name), default: []].formUnion(closure.map { SourceGraph.baseName(of: $0.name) })
         }
         return names
     }()
