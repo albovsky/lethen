@@ -14,7 +14,7 @@ import SyntaxAnalysis
 enum ClangImportScanner {
     private static let semicolon = UInt8(ascii: ";")
     private static let dot = UInt8(ascii: ".")
-    private static let keyword = Array("@import".utf8)
+    private static let keyword = Array("import".utf8)
     private static let conditionalOpeners: Set<String> = ["if", "ifdef", "ifndef"]
 
     static func imports(in source: [UInt8], file: SourceFile) -> [ImportStatement] {
@@ -58,8 +58,9 @@ enum ClangImportScanner {
                 index = ClangLiteralScanner.anyStringLiteral(openingQuoteAt: index, in: bytes).next
             case ClangLiteralScanner.apostrophe:
                 index = ClangLiteralScanner.endOfCharacterLiteral(from: index + 1, in: bytes)
-            case ClangLiteralScanner.at where bytes[index...].starts(with: keyword):
-                if let (path, end) = modulePath(from: index + keyword.count, in: bytes) {
+            case ClangLiteralScanner.at where keywordEnd(after: index, in: bytes) != nil:
+                let afterKeyword = keywordEnd(after: index, in: bytes) ?? index + 1
+                if let (path, end) = modulePath(from: afterKeyword, in: bytes) {
                     let location = location(of: index, in: bytes, splices: splices, file: file)
                     statements.append(ImportStatement(
                         module: path.first ?? "",
@@ -72,7 +73,7 @@ enum ClangImportScanner {
                     ))
                     index = end
                 } else {
-                    index += keyword.count
+                    index = afterKeyword
                 }
             default:
                 index += 1
@@ -157,6 +158,14 @@ enum ClangImportScanner {
         }
 
         return text(bytes[start ..< cursor])
+    }
+
+    /// The index after the `import` keyword of the `@import` whose `@` is at `index`, or `nil` when the `@`
+    /// starts something else. Blanks and comments may stand between the `@` and the keyword, as the
+    /// preprocessor turns them into whitespace and the compiler reads `@ import` as one directive.
+    private static func keywordEnd(after index: Int, in bytes: [UInt8]) -> Int? {
+        let cursor = ClangLiteralScanner.skippingBlanksAndComments(from: index + 1, in: bytes)
+        return bytes[cursor...].starts(with: keyword) ? cursor + keyword.count : nil
     }
 
     /// The identifiers of the dotted path that follows `@import` at `index`, and the index after the

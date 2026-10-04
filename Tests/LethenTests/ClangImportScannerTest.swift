@@ -84,6 +84,29 @@ final class ClangImportScannerTest: XCTestCase {
         XCTAssertEqual(imports("/* a */ @import WMF; // b\n@import Other;\n").map(\.module), ["WMF", "Other"])
     }
 
+    /// Clang reads `@` and `import` as two tokens, so blanks, newlines and comments may stand between them.
+    func testBlanksAndCommentsBetweenTheAtSignAndTheKeywordAreAllowed() throws {
+        XCTAssertEqual(imports("@ import Foo;\n").map(\.module), ["Foo"])
+        XCTAssertEqual(imports("@\timport Foo;\n").map(\.module), ["Foo"])
+        XCTAssertEqual(imports("@/* note */import Foo;\n").map(\.module), ["Foo"])
+        XCTAssertEqual(imports("@ /* note */ import Foo.Bar;\n").map(\.qualifiedModule), ["Foo.Bar"])
+        XCTAssertEqual(imports("@\nimport Foo;\n").map(\.module), ["Foo"])
+
+        // The statement is located at its `@`, whatever follows it.
+        let statement = try XCTUnwrap(imports("int x;\n  @ import Foo;\n").first)
+        XCTAssertEqual(statement.location.line, 2)
+        XCTAssertEqual(statement.location.column, 3)
+    }
+
+    /// Controls: the keyword still has to stand apart from the module name, and another `@` keyword is not an import.
+    func testSpacedAtSignDoesNotMakeOtherTextAnImport() {
+        XCTAssertEqual(imports("@ importFoo;\n").count, 0)
+        XCTAssertEqual(imports("@/* note */importFoo;\n").count, 0)
+        XCTAssertEqual(imports("@ imports Foo;\n").count, 0)
+        XCTAssertEqual(imports("@ interface Foo;\n@ implementation Foo\n").count, 0)
+        XCTAssertEqual(imports("@ import;\n").count, 0)
+    }
+
     func testHeaderImportsAreNotModuleImports() {
         XCTAssertEqual(imports("#import <WMF/WMF.h>\n#import \"WMF.h\"\n#include <WMF/WMF.h>\n").count, 0)
     }
