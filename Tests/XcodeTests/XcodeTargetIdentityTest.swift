@@ -309,7 +309,7 @@ final class XcodeTargetIdentityTest: XCTestCase {
         }
     }
 
-    private func makeTarget(_ name: String, in project: XcodeProject, sources: [String], module: String? = nil, dependencies: [PBXTargetDependency] = []) throws -> XcodeTarget {
+    private func makeTarget(_ name: String, in project: XcodeProject, sources: [String], module: String? = nil, testTarget: Bool = false, dependencies: [PBXTargetDependency] = []) throws -> XcodeTarget {
         let pbxproj = project.xcodeProject.pbxproj
         var objects: [PBXObject] = []
         var buildFiles: [PBXBuildFile] = []
@@ -320,6 +320,9 @@ final class XcodeTargetIdentityTest: XCTestCase {
         }
         let phase = PBXSourcesBuildPhase(files: buildFiles)
         let target = PBXNativeTarget(name: name, buildPhases: [phase], dependencies: dependencies)
+        if testTarget {
+            target.productType = .unitTestBundle
+        }
         if let module {
             let debug = XCBuildConfiguration(name: "Debug", buildSettings: ["PRODUCT_MODULE_NAME": .string(module)])
             let list = XCConfigurationList(buildConfigurations: [debug])
@@ -386,6 +389,26 @@ final class XcodeTargetIdentityTest: XCTestCase {
 
         XCTAssertEqual(units[root.appending("Shared/Shared.swift").lexicallyNormalized()], ["BCore"])
         XCTAssertEqual(units[root.appending("Other/OnlyB.swift").lexicallyNormalized()], [], "A file only the excluded target compiles goes whole")
+    }
+
+    /// `--exclude-tests` leaves out a test target `Core` while a production `Core` shares its default module: the module
+    /// stays in the index, and the test target's own files are left out by file.
+    func testExcludeTestsKeepsTheUnitsOfAProductionTargetThatSharesTheModule() throws {
+        try writeSources([("Scanned", "CoreTests.swift"), ("Other", "Core.swift")])
+        let tests = try makeTarget("Core", in: scannedProject, sources: ["CoreTests.swift"], testTarget: true)
+        let production = try makeTarget("Core", in: load("Other"), sources: ["Core.swift"])
+        let targets: Set = [tests, production]
+        let excluded = targets.filter { XcodeProjectDriver.isExcluded($0, excludeTests: true, options: []) }
+
+        XCTAssertEqual(excluded, [tests])
+        XCTAssertEqual(XcodeProjectDriver.excludedTestModules(excluded: excluded, among: targets), [], "The module `Core` is the production target's too")
+        XCTAssertEqual(
+            XcodeProjectDriver.excludedUnits(excluded: excluded, among: targets, options: [], excludeTests: true),
+            [root.appending("Scanned/CoreTests.swift").lexicallyNormalized(): []]
+        )
+        // The control: a test target whose module nothing else uses is left out as a module, as before.
+        let lone = try makeTarget("LoneTests", in: scannedProject, sources: ["CoreTests.swift"], testTarget: true)
+        XCTAssertEqual(XcodeProjectDriver.excludedTestModules(excluded: [lone], among: [lone, production]), ["LoneTests"])
     }
 
     /// A target `Consumer` of `project` with a source file and a proxy dependency on `name` in the project at `path`.

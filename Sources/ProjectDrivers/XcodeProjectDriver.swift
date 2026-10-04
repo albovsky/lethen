@@ -186,10 +186,10 @@
 
             let targets = project.targets
             try targets.forEach { try $0.identifyFiles() }
-            let excludedTestTargets = configuration.excludeTests ? project.targets.filter(\.isTestTarget).mapSet(\.name) : []
             retainQualifiedPublicTargets(among: targets)
             let excludedTargets = targets.filter { Self.isExcluded($0, excludeTests: configuration.excludeTests, options: configuration.excludeTargets) }
-            let excludedUnits = Self.excludedUnits(excluded: excludedTargets, among: targets, options: configuration.excludeTargets)
+            let excludedTestTargets = configuration.excludeTests ? Self.excludedTestModules(excluded: excludedTargets, among: targets) : []
+            let excludedUnits = Self.excludedUnits(excluded: excludedTargets, among: targets, options: configuration.excludeTargets, excludeTests: configuration.excludeTests)
             func collector(requireFreshUnits: Bool) -> SourceFileCollector {
                 SourceFileCollector(
                     indexStorePaths: indexStorePaths,
@@ -546,12 +546,22 @@
             (excludeTests && target.isTestTarget) || options.contains(where: target.isNamed(by:))
         }
 
-        /// The units to leave out for the targets named by a qualified `--exclude-targets` option, which cannot be left
-        /// out by module as a plain name is when a same-named target shares it. A file only they compile is left out
+        /// The names `--exclude-tests` leaves out of the index as modules: those of the excluded test targets, but not one
+        /// a target that stays in the scan shares, which `excludedUnits` leaves out by file instead.
+        static func excludedTestModules(excluded: Set<XcodeTarget>, among targets: Set<XcodeTarget>) -> Set<String> {
+            let retainedModules = targets.subtracting(excluded).flatMapSet(\.moduleNames)
+            return excluded.filter { $0.isTestTarget && $0.moduleNames.isDisjoint(with: retainedModules) }.mapSet(\.name)
+        }
+
+        /// The units to leave out for the targets named by a qualified `--exclude-targets` option, and for test targets
+        /// that `--exclude-tests` leaves out, which cannot be left out by module as a plain name is when a same-named
+        /// target shares it. A file only they compile is left out
         /// whole (an empty set); one a retained target compiles too is left out only for the modules of the excluded
         /// target that the retained one does not share, and stays when no module tells them apart.
-        static func excludedUnits(excluded: Set<XcodeTarget>, among targets: Set<XcodeTarget>, options: [String]) -> [FilePath: Set<String>] {
-            let qualified = excluded.filter { target in options.contains { $0 != target.name && target.isNamedByQualifiedName($0) } }
+        static func excludedUnits(excluded: Set<XcodeTarget>, among targets: Set<XcodeTarget>, options: [String], excludeTests: Bool = false) -> [FilePath: Set<String>] {
+            let qualified = excluded.filter { target in
+                (excludeTests && target.isTestTarget) || options.contains { $0 != target.name && target.isNamedByQualifiedName($0) }
+            }
             func files(_ target: XcodeTarget) -> Set<FilePath> {
                 target.files(kind: .swiftSource).union(target.files(kind: .clangSource)).mapSet { $0.lexicallyNormalized() }
             }
