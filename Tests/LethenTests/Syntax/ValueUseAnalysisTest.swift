@@ -7,7 +7,7 @@ import XCTest
 final class ValueUseAnalysisTest: XCTestCase {
     func testCallReferenceGetsTheReferencesOfItsArguments() throws {
         let source = "struct S {}\nlet v: S = S()\nf(v)\n"
-        let (file, sourceFile, _) = makeIndexedFile(source: source, references: [
+        let (file, sourceFile, _, _) = makeIndexedFile(source: source, references: [
             (3, 1, .functionFree, "f(_:)"), // the call
             (2, 8, .struct, "S"), // the type the argument was declared with
             (9, 1, .functionFree, "nowhere"), // no syntax at this location
@@ -23,7 +23,7 @@ final class ValueUseAnalysisTest: XCTestCase {
 
     func testGenericParameterAmongTheArgumentsIsFlagged() throws {
         let source = "func g<T>(_ x: T) {\n    let y: T = x\n    h(y)\n}\n"
-        let (file, sourceFile, _) = makeIndexedFile(source: source, references: [
+        let (file, sourceFile, _, _) = makeIndexedFile(source: source, references: [
             (3, 5, .functionFree, "h(_:)"), // the call
             (2, 12, .genericTypeParam, "T"), // the generic parameter the argument was declared with
         ])
@@ -36,7 +36,7 @@ final class ValueUseAnalysisTest: XCTestCase {
 
     func testCallArgumentsKeepTheirLabelsAndSpecializationsResolveTheirTypes() throws {
         let source = "struct S {}\nlet v: S = S()\nf(a: v)\n"
-        let (file, sourceFile, _) = makeIndexedFile(source: source, references: [
+        let (file, sourceFile, _, _) = makeIndexedFile(source: source, references: [
             (3, 1, .functionFree, "f(a:)"),
             (2, 8, .struct, "S"),
         ])
@@ -56,7 +56,7 @@ final class ValueUseAnalysisTest: XCTestCase {
         let computed = declaration("p", line: 1)
         let constant = declaration("c", line: 2)
         let stored = declaration("stored", line: 3)
-        let (file, _, _) = makeIndexedFile(source: source, declarations: [computed, constant, stored])
+        let (file, _, _, _) = makeIndexedFile(source: source, declarations: [computed, constant, stored])
         try ValueUseAnalysis(configuration: Configuration()).apply(to: file)
 
         XCTAssertTrue(computed.hasAccessorBody)

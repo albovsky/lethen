@@ -13,7 +13,7 @@ func makeIndexedFile(
     modules: Set<String> = ["T"],
     declarations: [Declaration] = [],
     references: [(line: Int, column: Int, kind: Declaration.Kind, name: String)] = []
-) -> (file: IndexedFile, sourceFile: SourceFile, graph: SourceGraph) {
+) -> (file: IndexedFile, sourceFile: SourceFile, graph: SourceGraph, evidence: ConfidenceEvidenceCollector) {
     let sourceFile = SourceFile(path: FilePath("/t/T.swift"), modules: modules)
     let syntax = Parser.parse(source: source)
     let converter = SourceLocationConverter(fileName: "/t/T.swift", tree: syntax)
@@ -26,12 +26,14 @@ func makeIndexedFile(
         )
     }
     let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
+    let evidence = ConfidenceEvidenceCollector()
     let file = IndexedFile(
         syntax: syntax,
         locationBuilder: builder,
         declarations: declarations,
         referencesByLocation: byLocation,
-        graph: SourceGraphMutex(graph: graph)
+        graph: SourceGraphMutex(graph: graph),
+        evidence: evidence
     )
-    return (file, sourceFile, graph)
+    return (file, sourceFile, graph, evidence)
 }
