@@ -183,6 +183,7 @@ public final class ConfidenceAssessor {
         let baseName = SourceGraph.baseName(of: declaration.name)
         let file = declaration.location.file.path.lexicallyNormalized()
         let enclosingType = enclosingTypeName(of: declaration)
+        let aliasNames = enclosingTypeDeclaration(of: declaration).flatMap { typeAliasNames[$0] } ?? []
         var best: (site: String, target: String)?
         let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
         for (target, uses) in evidence.unscannedTargets.sorted(by: { $0.key < $1.key }) {
@@ -207,7 +208,7 @@ public final class ConfidenceAssessor {
                 }
                 // A use spelled through the type, `Store.shared` or `Store(...)`, places the match at this type's
                 // member rather than at the first use of any `shared` or `init`. A type alias names the type too.
-                let typeNames = enclosingType.map { [$0] + typeAliasNames[$0, default: []].sorted() } ?? []
+                let typeNames = enclosingType.map { [$0] + aliasNames.sorted() } ?? []
                 let qualifiedSite = typeNames.compactMap { names["\($0).\(baseName)"] }.min()
                 guard let site = qualifiedSite ?? names[baseName],
                       best.map({ site < $0.site }) ?? true,
@@ -233,7 +234,7 @@ public final class ConfidenceAssessor {
     /// does `typealias Shop = Store`; a class inherits the members of its superclasses, so a file that overrides
     /// `run` in a subclass of `Middle` names `Base.run` through `Middle`, which inherits `Base`. Built on first
     /// use, after indexing.
-    private lazy var typeAliasNames: [String: Set<String>] = {
+    private lazy var typeAliasNames: [Declaration: Set<String>] = {
         // Followed by declaration, not by name: two modules can each declare a `Shared`, and an alias of one
         // is not an alias of the other. Names are projected only once the closure is done. A type that is not
         // indexed, an external one, has no declaration and contributes nothing.
@@ -253,7 +254,7 @@ public final class ConfidenceAssessor {
             }
         }
 
-        var names: [String: Set<String>] = [:]
+        var names: [Declaration: Set<String>] = [:]
         for type in direct.keys {
             var closure: Set<Declaration> = []
             var pending = Array(direct[type, default: []])
@@ -262,10 +263,26 @@ public final class ConfidenceAssessor {
 
                 pending.append(contentsOf: direct[alias, default: []])
             }
-            names[SourceGraph.baseName(of: type.name), default: []].formUnion(closure.map { SourceGraph.baseName(of: $0.name) })
+            names[type] = Set(closure.map { SourceGraph.baseName(of: $0.name) })
         }
         return names
     }()
+
+    /// The declaration of the type that declares the declaration, through any extension, or `nil` for a
+    /// top-level one or one whose type is not indexed.
+    private func enclosingTypeDeclaration(of declaration: Declaration) -> Declaration? {
+        var current = declaration.parent
+        while let parent = current {
+            if Self.typeKinds.contains(parent.kind) { return parent }
+
+            if parent.kind.isExtensionKind {
+                let extended = parent.references.first { Self.typeKinds.contains($0.declarationKind) }
+                return extended.flatMap { graph.declaration(withUsr: $0.usr) }
+            }
+            current = parent.parent
+        }
+        return nil
+    }
 
     /// The base name of the type that declares the declaration, through any extension, or `nil` for a
     /// top-level one.

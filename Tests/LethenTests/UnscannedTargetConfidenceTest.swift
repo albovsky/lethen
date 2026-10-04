@@ -305,6 +305,32 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(assessor(graph).assess(shared).confidence, .certain)
     }
 
+    /// Two modules each declare `Model`, with aliases `AView` and `BView`: a use of `BView.shared` does not reach
+    /// `A`'s `Model.shared`.
+    func testTypesWithTheSameNameInDifferentModulesKeepTheirOwnAliases() {
+        let graph = makeGraph()
+        func make(_ name: String, kind: Declaration.Kind, usr: String, module: String, line: Int, parent: Declaration? = nil) -> Declaration {
+            let file = SourceFile(path: FilePath("/project/\(module)/\(module).swift"), modules: [module])
+            let declaration = Declaration(name: name, kind: kind, usrs: [usr], location: Location(file: file, line: line, column: 1))
+            declaration.accessibility = DeclarationAccessibility(value: .public, isExplicit: true)
+            declaration.parent = parent
+            return declaration
+        }
+        let modelA = make("Model", kind: .class, usr: "s:class:A.Model", module: "A", line: 1)
+        let sharedA = make("shared", kind: .varStatic, usr: "s:var:A.shared", module: "A", line: 2, parent: modelA)
+        let modelB = make("Model", kind: .class, usr: "s:class:B.Model", module: "B", line: 1)
+        let sharedB = make("shared", kind: .varStatic, usr: "s:var:B.shared", module: "B", line: 2, parent: modelB)
+        let aView = make("AView", kind: .typealias, usr: "s:typealias:AView", module: "A", line: 3)
+        aView.references.insert(Reference(name: "Model", kind: .normal, declarationKind: .class, usr: "s:class:A.Model", location: aView.location))
+        let bView = make("BView", kind: .typealias, usr: "s:typealias:BView", module: "B", line: 3)
+        bView.references.insert(Reference(name: "Model", kind: .normal, declarationKind: .class, usr: "s:class:B.Model", location: bView.location))
+        graph.add([modelA, sharedA, modelB, sharedB, aView, bView])
+        use(["BView", "BView.shared", "shared"], members: ["BView.shared", "shared"])
+
+        XCTAssertEqual(assessor(graph).assess(sharedB).confidence, .likely, "The control: B's own alias")
+        XCTAssertEqual(assessor(graph).assess(sharedA).confidence, .certain)
+    }
+
     /// An extension is reported only with its unused type, so it is as sure as the type.
     func testExtensionsFollowTheirType() {
         let graph = makeGraph()
