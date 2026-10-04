@@ -18,6 +18,7 @@
 
 ##### Bug Fixes
 
+- An Objective-C `@import` with blanks, a newline or a comment between the `@` and `import` (`@ import Foo;`, `@/* note */import Foo;`) is now read as an import, as the compiler reads it, so an unused one is reported and a used one is not missed.
 - A struct that conforms to `Decodable` without its own `init(from:)` no longer has its non-optional stored properties reported as assign-only when the type reaches a decoder, such as `JSONDecoder().decode(Model.self, from: data)`. The synthesized initializer requires those properties, so removing one relaxes the validation of the decoded shape. Optional properties, properties left out of a custom `CodingKeys`, and types with their own `init(from:)` are still reported, and `Type.self` is now recognized as a use of the type for the other value-flow rules.
 - `--verbose` writes its log lines to standard error, so `--format json --verbose` is valid JSON ([#95](https://github.com/albovsky/lethen/issues/95)).
 - Managed SwiftPM scans reuse the build of a package that has a target `swift build --build-tests` never compiles, such as an executable used only by a command plugin, instead of cleaning on every scan ([#89](https://github.com/albovsky/lethen/issues/89)). Lethen records such targets in the build stamp, warns that they are not scanned, and still cleans when one gains objects or units. The first scan after upgrading cleans once because the stamp format changed.

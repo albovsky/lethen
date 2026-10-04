@@ -176,8 +176,9 @@ enum ClangLiteralScanner {
         return stringLiteral(from: index + 1, in: bytes)
     }
 
+    /// Horizontal whitespace as clang reads it: space, tab, carriage return, form feed and vertical tab.
     static func isBlank(_ byte: UInt8) -> Bool {
-        byte == UInt8(ascii: " ") || byte == UInt8(ascii: "\t") || byte == UInt8(ascii: "\r")
+        byte == UInt8(ascii: " ") || byte == UInt8(ascii: "\t") || byte == UInt8(ascii: "\r") || byte == 0x0B || byte == 0x0C
     }
 
     static func endOfLine(from index: Int, in bytes: [UInt8]) -> Int {
