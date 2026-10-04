@@ -231,6 +231,24 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         }
     }
 
+    /// The unscanned `Derived: Middle` names `Middle` only; `Middle: Base` is scanned, so `Base.run` is reached through it.
+    func testOverrideThroughAnIntermediateSuperclassMakesTheBaseMemberLikely() {
+        let graph = makeGraph()
+        let base = declaration("Base", kind: .class, in: otherFile, accessibility: .open)
+        let run = declaration("run()", kind: .functionMethodInstance, in: otherFile, accessibility: .open, parent: base)
+        let middle = declaration("Middle", kind: .class, in: otherFile, accessibility: .open, line: 5)
+        let unrelated = declaration("Unrelated", kind: .class, in: otherFile, accessibility: .open, line: 8)
+        let unrelatedRun = declaration("run()", kind: .functionMethodInstance, in: otherFile, accessibility: .open, parent: unrelated, line: 9)
+        let inheritance = Reference(name: "Base", kind: .related, declarationKind: .class, usr: "s:class:Base", location: middle.location)
+        inheritance.role = .inheritedType
+        middle.references.insert(inheritance)
+        graph.add([base, run, middle, unrelated, unrelatedRun])
+        use(["Middle", "run"], members: ["run"])
+
+        XCTAssertEqual(assessor(graph).assess(run).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(unrelatedRun).confidence, .certain, "The control: a class that Middle does not inherit")
+    }
+
     /// `Handler()()` names `Handler` and a call, never `callAsFunction`.
     func testCallableValueMakesCallAsFunctionLikely() {
         let graph = makeGraph()

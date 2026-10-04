@@ -228,14 +228,21 @@ public final class ConfidenceAssessor {
         }
     }
 
-    /// The names of the type aliases of each type, by the type's base name, followed through other aliases:
-    /// `typealias Store = AppStore` lets a file name `AppStore`'s members as `Store.shared`, and so does
-    /// `typealias Shop = Store`. Built on first use, after indexing.
+    /// The other names a file can reach each type's members through, by the type's base name, followed through
+    /// each other: `typealias Store = AppStore` lets a file name `AppStore`'s members as `Store.shared`, and so
+    /// does `typealias Shop = Store`; a class inherits the members of its superclasses, so a file that overrides
+    /// `run` in a subclass of `Middle` names `Base.run` through `Middle`, which inherits `Base`. Built on first
+    /// use, after indexing.
     private lazy var typeAliasNames: [String: Set<String>] = {
         var direct: [String: Set<String>] = [:]
         for alias in graph.declarations(ofKind: .typealias) {
             for reference in alias.references where Self.typeKinds.contains(reference.declarationKind) {
                 direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: alias.name))
+            }
+        }
+        for subclass in graph.declarations(ofKind: .class) {
+            for reference in subclass.references where reference.role == .inheritedType && reference.declarationKind == .class {
+                direct[SourceGraph.baseName(of: reference.name), default: []].insert(SourceGraph.baseName(of: subclass.name))
             }
         }
 
