@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import precision  # noqa: E402
 import sample  # noqa: E402
 
-ROWS = [[f"Sources/File{i}.swift", i, 5, "function.free", f"f{i}()", ["unused"], [f"s:{i}"]] for i in range(1, 201)]
+ROWS = [[f"Sources/File{i}.swift", i, 5, "function.free", f"f{i}()", ["unused"], [f"s:{i}"], "likely" if i % 4 == 0 else "certain"]
+        for i in range(1, 201)]
 
 
 def verdict(row, value="TP", **extra):
@@ -116,6 +117,41 @@ class PrecisionTest(unittest.TestCase):
         self.corpus.write(ROWS, rate=0)
         self.assertIn("sample_rate", self.corpus.run(precision)[2])
 
+    def test_certain_precision_counts_only_certain_findings(self):
+        sampled = self.corpus.sampled()
+        certain = [row for row in sampled if row[7] == "certain"]
+        likely = [row for row in sampled if row[7] == "likely"]
+        self.assertTrue(certain and likely, "the synthetic sample must hold both confidences")
+        # Every likely finding is a false positive and exactly one certain one is.
+        verdicts = [verdict(row, "FP") for row in likely] + [verdict(row, "FP" if row is certain[0] else "TP") for row in certain]
+        self.corpus.write(ROWS, adjudications=verdicts)
+        result = precision.evaluate(self.corpus.root, "demo")
+        self.assertEqual((result["TP"], result["FP"]), (len(certain) - 1, len(likely) + 1))
+        self.assertEqual((result["certain_sampled"], result["certain_TP"], result["certain_FP"], result["certain_pending"]),
+                         (len(certain), len(certain) - 1, 1, 0))
+        self.assertGreater(precision.precision(result["certain_TP"], result["certain_FP"]), precision.precision(result["TP"], result["FP"]))
+        self.assertIn(f"{100 * (len(certain) - 1) / len(certain):.1f} %", self.corpus.run(precision, "--markdown", "--stdout")[1])
+
+    def test_certain_precision_waits_for_its_own_verdicts(self):
+        sampled = self.corpus.sampled()
+        likely = next(row for row in sampled if row[7] == "likely")
+        # A missing verdict on a likely finding holds back the all-findings figure but not the certain one.
+        self.corpus.write(ROWS, adjudications=[verdict(row) for row in sampled if row is not likely])
+        result = precision.evaluate(self.corpus.root, "demo")
+        self.assertEqual(result["certain_pending"], 0)
+        self.assertEqual(len(result["pending"]), 1)
+        out = self.corpus.run(precision, "--markdown", "--stdout")[1]
+        self.assertIn("| **pending** |", out)
+        self.assertIn("| **100.0 %** |", out)
+
+    def test_expectations_recorded_without_confidence_still_load(self):
+        old = [row[:7] for row in ROWS]
+        sampled = [row for row in old if precision.is_sampled("demo", precision.row_key(row), 0.1)]
+        self.corpus.write(old, adjudications=[verdict(row) for row in sampled])
+        result = precision.evaluate(self.corpus.root, "demo")
+        self.assertEqual((result["TP"], result["certain_sampled"]), (len(sampled), 0))
+        self.assertIn("| 0 | n/a |", self.corpus.run(precision, "--markdown", "--stdout")[1])
+
     def test_markdown_publishes_precision_only_for_a_complete_sample(self):
         sampled = self.corpus.sampled()
         self.corpus.write(ROWS, adjudications=[verdict(row) for row in sampled[1:]])
@@ -128,11 +164,14 @@ class PrecisionTest(unittest.TestCase):
         self.assertEqual(self.corpus.run(precision, "--verify")[0], 1, "--verify must notice the stale scorecard")
         self.corpus.run(precision, "--markdown")
         expected = f"{100 * (len(sampled) - 1) / len(sampled):.1f} %"
+        certain = [row for row in sampled if row[7] == "certain"]
+        certain_expected = f"{100 * (len(certain) - (sampled[0][7] == 'certain')) / len(certain):.1f} %"
         doc = (self.corpus.root / "docs/validation/precision-corpus.md").read_text()
-        self.assertIn(f"| demo | 200 | {len(sampled)} | {len(sampled) - 1} | 1 | 0 | 0 | {expected} |", doc)
+        self.assertIn(f"| demo | 200 | {len(sampled)} | {len(sampled) - 1} | 1 | 0 | 0 | {expected} | {len(certain)} | {certain_expected} |", doc)
         self.assertTrue(doc.endswith("<!-- precision-scorecard:end -->\n\nText.\n"))
         self.assertEqual((self.corpus.root / "README.md").read_text(),
-                         f"It is <!-- precision-figure:begin -->{expected} over {len(sampled)} sampled findings<!-- precision-figure:end -->.\n")
+                         f"It is <!-- precision-figure:begin -->{expected} over {len(sampled)} sampled findings, "
+                         f"{certain_expected} over `certain` findings<!-- precision-figure:end -->.\n")
         self.assertEqual(self.corpus.run(precision, "--verify")[0], 0)
         status, out, _ = self.corpus.run(precision, "--markdown", "--stdout")
         self.assertEqual(status, 0)

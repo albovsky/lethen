@@ -2219,6 +2219,99 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    /// A skipped clause makes likely only the declarations its spelling can name: a call by its argument labels,
+    /// a member reached through a type by that type.
+    func testConfidenceSkippedBranchNamesOnlyDeclarationsItCanBe() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureLabels5")) {
+                // Argument labels.
+                self.assertNotReferenced(.functionMethodInstance("show(title:)"))
+                self.assertConfidence(.functionMethodInstance("show(title:)"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("show(message:)"))
+                self.assertConfidence(.functionMethodInstance("show(message:)"), .certain)
+                // Labels that are some of the declared ones, in order: `animated` has a default.
+                self.assertConfidence(.functionMethodInstance("show(title:animated:)"), .likely)
+                // An unlabeled argument can only be passed to an unlabeled parameter.
+                self.assertConfidence(.functionMethodInstance("show(_:)"), .likely)
+                // A chain follows the declaration its labels name, and not the one they do not.
+                self.assertConfidence(.functionMethodInstance("titleHelper()"), .likely)
+                self.assertConfidence(.functionMethodInstance("messageHelper()"), .certain)
+                // A trailing closure fills a parameter the labels do not spell.
+                self.assertConfidence(.functionMethodInstance("run(completion:)"), .likely)
+                // A bare reference spells no labels, so any declaration of the name may be meant.
+                self.assertConfidence(.functionMethodInstance("pick(by:)"), .likely)
+                self.assertConfidence(.functionMethodInstance("pick(of:)"), .likely)
+                // `lookup(for:)` is named, `lookup(of:)` is not.
+                self.assertConfidence(.functionMethodInstance("lookup(for:)"), .likely)
+                self.assertConfidence(.functionMethodInstance("lookup(of:)"), .certain)
+                // Used-but-not-compared control: used in the clause this build compiled, so not reported,
+                // whatever labels the skipped clause spells.
+                self.assertReferenced(.functionMethodInstance("taken(title:)"))
+                self.assertReferenced(.functionMethodInstance("calledOnlyHere(title:)"))
+                // Labels no declaration has.
+                self.assertNotReferenced(.functionMethodInstance("neverNamed(title:)"))
+                self.assertConfidence(.functionMethodInstance("neverNamed(title:)"), .certain)
+            }
+            assertNotReferenced(.functionFree("freeShow5(title:)"))
+            assertConfidence(.functionFree("freeShow5(title:)"), .likely)
+            assertNotReferenced(.functionFree("freeShow5(message:)"))
+            assertConfidence(.functionFree("freeShow5(message:)"), .certain)
+            assertReferenced(.class("FixtureInit5")) {
+                self.assertReferenced(.functionConstructor("init(label:)"))
+                // `String.init(data:encoding:)` is not an initializer of this class; `FixtureInit5.init(other:)` is.
+                self.assertConfidence(.functionConstructor("init(other:)"), .likely)
+                self.assertConfidence(.functionConstructor("init(unrelated:)"), .certain)
+            }
+        }
+    }
+
+    func testConfidenceSkippedBranchReceiverTypeNarrowsMembers() throws {
+        try analyze(retainPublic: true) {
+            // Spelled through the type: `FixtureStoreA5.shared` is `FixtureStoreA5`'s.
+            assertReferenced(.class("FixtureStoreA5")) {
+                self.assertNotReferenced(.varStatic("shared"))
+                self.assertConfidence(.varStatic("shared"), .likely)
+                self.assertConfidence(.functionMethodStatic("make5()"), .likely)
+            }
+            assertReferenced(.class("FixtureStoreB5")) {
+                self.assertNotReferenced(.varStatic("shared"))
+                self.assertConfidence(.varStatic("shared"), .certain)
+                self.assertConfidence(.functionMethodStatic("make5()"), .certain)
+            }
+            // A type alias names the type it stands for.
+            assertReferenced(.class("FixtureStoreC5")) {
+                self.assertConfidence(.varStatic("shared"), .likely)
+            }
+            assertReferenced(.class("FixtureNeverNamed5")) {
+                self.assertConfidence(.varStatic("shared"), .certain)
+            }
+            // A subclass reaches what its superclass declares, and an override what it overrides.
+            assertReferenced(.class("FixtureBase5")) {
+                self.assertConfidence(.functionMethodClass("baseMake5()"), .likely)
+            }
+            assertReferenced(.class("FixtureOverride5")) {
+                self.assertConfidence(.functionMethodClass("baseMake5()"), .likely)
+            }
+            // A conforming type reaches the protocol extension's members: no type to narrow them to.
+            assertReferenced(.extensionProtocol("FixtureProtocol5")) {
+                self.assertConfidence(.functionMethodStatic("protocolMake5()"), .likely)
+            }
+            // A use that names no type can be of any type's member, as can a generic parameter's.
+            assertReferenced(.class("FixtureUnqualifiedA5")) {
+                self.assertConfidence(.varInstance("tick5"), .likely)
+            }
+            assertReferenced(.class("FixtureUnqualifiedB5")) {
+                self.assertConfidence(.varInstance("tick5"), .likely)
+            }
+            assertReferenced(.class("FixtureGenericA5")) {
+                self.assertConfidence(.varStatic("generic5"), .likely)
+            }
+            assertReferenced(.class("FixtureGenericB5")) {
+                self.assertConfidence(.varStatic("generic5"), .likely)
+            }
+        }
+    }
+
     func testConfidenceLikelyForOperatorsUsedInSkippedBranches() throws {
         try analyze(retainPublic: true) {
             assertNotReferenced(.functionOperatorInfix("<~~>(_:_:)"))

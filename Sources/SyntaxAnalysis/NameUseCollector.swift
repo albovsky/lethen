@@ -1,4 +1,5 @@
 import Foundation
+import SourceGraph
 import SwiftParser
 import SwiftSyntax
 import SystemPackage
@@ -27,6 +28,8 @@ public struct NameUseCollector {
     public private(set) var uses: [String: Bool] = [:]
     /// Names with a member access or call use outside every pattern.
     public private(set) var constructionUses: Set<String> = []
+    /// Each name's spellings: the labels, trailing closure and type of each use, beside the tiers above.
+    public private(set) var spellings: [String: Set<NameSites.Spelling>] = [:]
     /// Whether the syntax holds anything the index records an occurrence for, as opposed to nothing but
     /// imports, comments, or whitespace.
     public private(set) var hasIndexableSyntax = false
@@ -35,10 +38,14 @@ public struct NameUseCollector {
     public private(set) var testableModules: Set<String> = []
 
     private let onUse: ((Use) -> Void)?
+    /// The generic parameters and associated types the syntax declares: `T.make()` names whatever `T` is, so no
+    /// type narrows the member it uses.
+    private var placeholderTypeNames: Set<String> = []
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order.
     public init(_ node: Syntax, onUse: ((Use) -> Void)? = nil) {
         self.onUse = onUse
+        Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
         collect(node, inPattern: false)
     }
 
@@ -46,8 +53,20 @@ public struct NameUseCollector {
     /// spelling of a use already recorded by its bare name, and `init` or `subscript` for `Widget(...)` or
     /// `store[key]` would match every initializer or subscript of a module in a skipped `#if` clause, where
     /// no type name narrows the match as it does for a file of an unscanned target.
-    private mutating func record(_ name: String, isMember: Bool, isConstruction: Bool, at node: Syntax, forFileReaderOnly: Bool = false) {
+    private mutating func record(
+        _ name: String,
+        isMember: Bool,
+        isConstruction: Bool,
+        at node: Syntax,
+        forFileReaderOnly: Bool = false,
+        labels: [String]? = nil,
+        hasTrailingClosure: Bool = false,
+        receiver: String? = nil
+    ) {
         if !forFileReaderOnly {
+            spellings[name, default: []].insert(
+                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember)
+            )
             uses[name] = (uses[name] ?? false) || isMember
             if isConstruction { constructionUses.insert(name) }
         }
@@ -101,11 +120,18 @@ public struct NameUseCollector {
             let isMember = reference.parent?.as(MemberAccessExprSyntax.self)?.declName.id == reference.id
                 || isCalled
                 || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
-            record(name, isMember: isMember, isConstruction: isMember && !inPattern, at: node)
+            let call = Self.call(spelling: reference)
+            // A call spells labels, so does a reference such as `show(title:)`; a bare name spells none.
+            let labels = call.map { Self.labels(of: $0) } ?? reference.argumentNames?.arguments.map(\.name.text)
+            let access = reference.parent?.as(MemberAccessExprSyntax.self)
+            let receiver = access.flatMap { $0.declName.id == reference.id ? receiverName(of: $0) : nil }
+            record(
+                name, isMember: isMember, isConstruction: isMember && !inPattern, at: node,
+                labels: labels, hasTrailingClosure: call.map { $0.trailingClosure != nil } ?? false, receiver: receiver
+            )
             // `Widget(...)` calls an initializer of `Widget`, which the index records under `init`; a type name
             // starts with a capital letter, a function does not. The use is also recorded as `Widget.init`, so
             // a match can be placed at a use of this type's initializer rather than any type's.
-            let access = reference.parent?.as(MemberAccessExprSyntax.self)
             // `Framework.Widget<Int>()` wraps the access in a generic specialization before the call.
             let qualifiedCallee = access.map { access in
                 access.parent?.as(GenericSpecializationExprSyntax.self).flatMap { $0.expression.id == access.id ? Syntax($0) : nil } ?? Syntax(access)
@@ -143,6 +169,47 @@ public struct NameUseCollector {
         }
         for child in node.children(viewMode: .sourceAccurate) {
             collect(child, inPattern: inPattern)
+        }
+    }
+
+    /// The call whose callee is `reference`, spelled `foo(...)`, `base.foo(...)` or either with generic arguments.
+    private static func call(spelling reference: DeclReferenceExprSyntax) -> FunctionCallExprSyntax? {
+        var callee = Syntax(reference)
+        if let access = reference.parent?.as(MemberAccessExprSyntax.self), access.declName.id == reference.id {
+            callee = Syntax(access)
+        }
+        if let specialized = callee.parent?.as(GenericSpecializationExprSyntax.self), specialized.expression.id == callee.id {
+            callee = Syntax(specialized)
+        }
+        guard let call = callee.parent?.as(FunctionCallExprSyntax.self), call.calledExpression.id == callee.id else { return nil }
+
+        return call
+    }
+
+    /// The labels a call spells, `_` for an unlabeled argument, followed by those of its labeled trailing closures.
+    private static func labels(of call: FunctionCallExprSyntax) -> [String] {
+        call.arguments.map { $0.label?.text ?? "_" } + call.additionalTrailingClosures.map(\.label.text)
+    }
+
+    /// The type a member access is spelled through: `Store` in `Store.shared`. Anything else, `self.shared`,
+    /// `store.shared`, `Outer.Inner.shared`, or a name that stands for a type chosen elsewhere, names none.
+    private func receiverName(of access: MemberAccessExprSyntax) -> String? {
+        guard let base = access.base?.as(DeclReferenceExprSyntax.self), base.argumentNames == nil else { return nil }
+
+        let name = base.baseName.identifier?.name ?? base.baseName.text
+        guard name.first?.isUppercase == true, name != "Self", !placeholderTypeNames.contains(name) else { return nil }
+
+        return name
+    }
+
+    private static func collectPlaceholderTypeNames(_ node: Syntax, into names: inout Set<String>) {
+        if let parameter = node.as(GenericParameterSyntax.self) {
+            names.insert(parameter.name.text)
+        } else if let associated = node.as(AssociatedTypeDeclSyntax.self) {
+            names.insert(associated.name.text)
+        }
+        for child in node.children(viewMode: .sourceAccurate) {
+            collectPlaceholderTypeNames(child, into: &names)
         }
     }
 

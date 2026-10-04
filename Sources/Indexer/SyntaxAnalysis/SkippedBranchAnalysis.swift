@@ -21,7 +21,8 @@ struct SkippedBranchAnalysis: SyntaxAnalysis {
                     NameSites(
                         names: skippedBranches.names,
                         memberNames: skippedBranches.memberNames,
-                        constructionNames: skippedBranches.constructionNames
+                        constructionNames: skippedBranches.constructionNames,
+                        spellings: skippedBranches.spellings
                     ),
                     modules: [module]
                 )
