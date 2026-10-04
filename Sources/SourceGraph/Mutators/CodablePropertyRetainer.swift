@@ -55,8 +55,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// `print(_:)`, are not evidence.
     private func buildSynthesizedEncodeReads() {
         var synthesizedTypes: Set<Declaration> = []
-        for type in graph.declarations(ofKind: .struct) {
-            guard graph.isEncodable(type) else { continue }
+        // A class is covered like a struct; a subclass of an Encodable class is not, as Swift does not
+        // synthesize `encode(to:)` for it.
+        for type in graph.declarations(ofKinds: [.struct, .class]) {
+            guard graph.isEncodable(type), !hasEncodableSuperclass(type), !inheritsCustomEncoder(type) else { continue }
 
             let extensions = graph.extensions[type] ?? []
             let members = type.declarations.union(extensions.flatMap(\.declarations))
@@ -76,6 +78,30 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             guard mayEncode else { continue }
 
             markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
+        }
+    }
+
+    /// A class that declares `Encodable` but inherits `encode(to:)` from a superclass that does not conform
+    /// uses that method as its witness, so nothing is synthesized.
+    private func inheritsCustomEncoder(_ type: Declaration, seen: Set<Declaration> = []) -> Bool {
+        for reference in type.immediateInheritedTypeReferences where reference.declarationKind == .class {
+            guard let superclass = graph.declaration(withUsr: reference.usr), !seen.contains(superclass) else { continue }
+
+            let members = superclass.declarations.union((graph.extensions[superclass] ?? []).flatMap(\.declarations))
+            if members.contains(where: { isCustomCoder($0, named: "encode(to:)", parameterType: "Encoder") })
+                || inheritsCustomEncoder(superclass, seen: seen.union([type]))
+            {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func hasEncodableSuperclass(_ type: Declaration) -> Bool {
+        type.immediateInheritedTypeReferences.contains { reference in
+            guard reference.declarationKind == .class, let superclass = graph.declaration(withUsr: reference.usr) else { return false }
+
+            return graph.isEncodable(superclass)
         }
     }
 
