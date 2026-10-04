@@ -131,7 +131,20 @@
 		3CFFB5AA2AEF8FDE002EFB86 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3C3057562EAE72DB00D290DC /* Exceptions for "ExtraFolder" folder in "Target With Spaces" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Excluded.plist,
+			);
+			target = 3C1FED162556D91C0001BD58 /* Target With Spaces */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		3C3057552EAE72DB00D290DB /* ExtraFolder */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (
+			3C3057562EAE72DB00D290DC /* Exceptions for "ExtraFolder" folder in "Target With Spaces" target */,
+		); explicitFileTypes = {}; explicitFolders = (); path = ExtraFolder; sourceTree = "<group>"; };
 		3C3057542EAE72DB00D290DA /* FileSystemFolder */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = FileSystemFolder; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -244,6 +257,7 @@
 			children = (
 				3C3057572EAE734800D290DA /* XibViewController3.swift */,
 				3C3057542EAE72DB00D290DA /* FileSystemFolder */,
+				3C3057552EAE72DB00D290DB /* ExtraFolder */,
 				3C849666255405B000900DA9 /* Info.plist */,
 				3C9B06C325542F2500E45614 /* Launch Screen.storyboard */,
 				3C9B06E625547C3800E45614 /* StoryboardViewController.storyboard */,
@@ -363,6 +377,9 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				3C3057552EAE72DB00D290DB /* ExtraFolder */,
 			);
 			name = "Target With Spaces";
 			productName = "Target With Spaces";

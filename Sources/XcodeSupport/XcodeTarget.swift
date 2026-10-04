@@ -119,10 +119,9 @@ public final class XcodeTarget {
     public func identifyFiles() throws {
         guard !identifiedFiles else { return }
 
-        // A synchronized folder contributes compiled sources only to the targets that own it; resources
-        // keep the project-wide behavior.
-        try identifyFiles(in: project.fileSystemSynchronizedFiles(), kinds: ProjectFileKind.allCases.filter { !Self.compiledSourceKinds.contains($0) })
-        try identifyFiles(in: synchronizedSourceFiles(), kinds: Array(Self.compiledSourceKinds))
+        // A synchronized folder contributes every kind of file, sources and resources alike, only to the targets
+        // that own it.
+        try identifyFiles(in: synchronizedFiles(), kinds: ProjectFileKind.allCases)
 
         let sourcesBuildPhases = project.xcodeProject.pbxproj.sourcesBuildPhases
         let resourcesBuildPhases = project.xcodeProject.pbxproj.resourcesBuildPhases
@@ -141,8 +140,6 @@ public final class XcodeTarget {
     }
 
     // MARK: - Private
-
-    private static let compiledSourceKinds: Set<ProjectFileKind> = [.swiftSource, .clangSource]
 
     private func identifyFiles(kind: ProjectFileKind, in buildPhases: [PBXBuildPhase]) throws {
         let targetPhases = buildPhases.filter { target.buildPhases.contains($0) }
@@ -174,8 +171,8 @@ public final class XcodeTarget {
     }
 
     /// The files of the synchronized folders this target owns, less the files its membership exceptions
-    /// leave out. A folder another target owns compiles nothing into this one.
-    private func synchronizedSourceFiles() throws -> Set<FilePath> {
+    /// leave out. A folder another target owns contributes nothing to this one, and neither does one no target owns.
+    private func synchronizedFiles() throws -> Set<FilePath> {
         let root = project.sourceRoot.lexicallyNormalized()
         var result: Set<FilePath> = []
 
@@ -208,7 +205,7 @@ public final class XcodeTarget {
 
             return []
         } ?? []
-        files[.infoPlist] = plistFiles.mapSet { parseInfoPlistSetting($0) }
+        files[.infoPlist, default: []].formUnion(plistFiles.mapSet { parseInfoPlistSetting($0) })
     }
 
     private func parseInfoPlistSetting(_ setting: String) -> FilePath {

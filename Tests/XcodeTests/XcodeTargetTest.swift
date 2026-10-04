@@ -72,8 +72,36 @@ final class XcodeTargetTest: XCTestCase {
         let synchronized = folder.appending("SynchronizedFolderSource.swift")
         XCTAssertTrue(owner.files(kind: .swiftSource).contains(synchronized), "\(owner.files(kind: .swiftSource).sorted())")
         XCTAssertFalse(other.files(kind: .swiftSource).contains(synchronized))
-        // Resources keep the project-wide behavior.
         XCTAssertTrue(owner.files(kind: .interfaceBuilder).contains(folder.appending("XibViewController3.xib")))
+    }
+
+    /// Resources of a synchronized folder, like its sources, belong only to the target that owns it.
+    func testSynchronizedFolderResourcesBelongToTheirOwningTarget() throws {
+        let app = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        let extra = try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" })
+        try app.identifyFiles()
+        try extra.identifyFiles()
+        let appFolder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/FileSystemFolder")
+        let extraFolder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/ExtraFolder")
+
+        XCTAssertTrue(extra.files(kind: .interfaceBuilder).contains(extraFolder.appending("Extra.storyboard")), "\(extra.files(kind: .interfaceBuilder).sorted())")
+        XCTAssertFalse(app.files(kind: .interfaceBuilder).contains(extraFolder.appending("Extra.storyboard")), "The app does not own ExtraFolder")
+        XCTAssertTrue(app.files(kind: .interfaceBuilder).contains(appFolder.appending("XibViewController3.xib")))
+        XCTAssertFalse(extra.files(kind: .interfaceBuilder).contains(appFolder.appending("XibViewController3.xib")), "ExtraFolder's owner does not own FileSystemFolder")
+    }
+
+    /// A membership exception leaves a file out of its target's resources as well as its sources.
+    func testMembershipExceptionLeavesAPlistOutOfTheTargetsInfoPlists() throws {
+        let app = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        let extra = try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" })
+        try app.identifyFiles()
+        try extra.identifyFiles()
+        let extraFolder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/ExtraFolder")
+
+        XCTAssertTrue(extra.files(kind: .infoPlist).contains(extraFolder.appending("Extra.plist")), "\(extra.files(kind: .infoPlist).sorted())")
+        XCTAssertFalse(extra.files(kind: .infoPlist).contains(extraFolder.appending("Excluded.plist")), "Left out by the folder's membership exceptions for this target")
+        XCTAssertFalse(app.files(kind: .infoPlist).contains(extraFolder.appending("Extra.plist")))
+        XCTAssertTrue(extra.files(kind: .infoPlist).contains { $0.lastComponent?.string == "Info.plist" }, "The INFOPLIST_FILE setting still counts")
     }
 
     func testIsTestTarget() throws {
