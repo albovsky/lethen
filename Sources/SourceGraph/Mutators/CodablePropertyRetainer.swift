@@ -89,7 +89,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
             let members = superclass.declarations.union((graph.extensions[superclass] ?? []).flatMap(\.declarations))
             if members.contains(where: { isCustomCoder($0, named: "encode(to:)", parameterType: "Encoder") })
-                || inheritsCustomEncoder(superclass, seen: seen.union([type])) {
+                || inheritsCustomEncoder(superclass, seen: seen.union([type]))
+            {
                 return true
             }
         }
