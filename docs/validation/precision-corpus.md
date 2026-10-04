@@ -920,3 +920,15 @@ Verdict for every removed row (`FP fixed`: the old finding was a false positive;
 | `Wikipedia/Code/WMFWelcomePageViewController.swift:230` | var.parameter | `sender` | FP fixed | parameter of an `@objc` method, whose selector and callers (target-action, notification observers) fix it |
 | `Wikipedia/Code/WelcomePageViewController.swift:101` | var.parameter | `sender` | FP fixed | parameter of an `@objc` method, whose selector and callers (target-action, notification observers) fix it |
 | `Wikipedia/Code/WelcomePageViewController.swift:115` | var.parameter | `sender` | FP fixed | parameter of an `@objc` method, whose selector and callers (target-action, notification observers) fix it |
+
+### Synthesized `Encodable` reads through classes (#122)
+
+Alamofire and swift-nio re-scanned on Linux (Swift 6.4) with the change and with master `64cec5d`; the two results were compared with each other, since the committed expectations are macOS scans whose USRs differ from Linux's. swift-nio: identical. Alamofire: one row removed, `Tests/ParameterEncoderTests.swift:1149` var.instance `three` (`EncodableSuperclass`, Alamofire-19): FP fixed. The class is `Encodable` with synthesized `encode(to:)` and instances are encoded in `ParameterEncoderTests.swift` (`testThatEncodableSuperclassCanBeEncodedWithIndexInBrackets`), which asserts `three=1` in the output. The row is removed from `corpus/expected/Alamofire.json` by hand rather than by `corpus/accept.sh`, which would have replaced the expectation with Linux USRs.
+
+Wikipedia iOS re-scanned on the Mac (Xcode 27.0, Swift 6.4, `corpus/scan.sh wikipedia-ios`) with the change at `92a9020` and with master `64cec5d`: 9 rows removed, none added, no confidence moved (2,778 to 2,769 findings), and `corpus/expected/wikipedia-ios.json` is accepted at the new result. Every removed row is a fixed false positive, a property of a `Codable` class whose instances are encoded in production:
+
+| Row | Kind | Verdict | Evidence |
+| --- | --- | --- | --- |
+| `WMFData/.../Shared/WMFPageViewsDataController.swift:97` `latitude`, `:98` `longitude` | var.instance | FP fixed | `WMFLegacyPageView` instances are held in a stored property of `YearInReviewLocationSlideDataController` and encoded by `encoder.encode(legacyPageViews)` (:45). These are the two rows #108 added, filed as #122; they had no sampled verdict, so there is nothing to retire. |
+| `WMFData/.../Donor Experience/WMFDonateLocalHistory.swift:6` `donationType`, `:7` `donationAmount`, `:8` `currencyCode`, `:9` `isNative`, `:10` `isFirstDonation` | var.instance | FP fixed | `[WMFDonateLocalHistory]` is saved through `sharedCacheStore?.save(key:_:value:)` in `WMFDonateDataController.saveLocalDonationHistory` (:300) and loaded back at :325. |
+| `WMF Framework/Remote Notifications/Model/PushNotificationContentIdentifier.swift:10` `key`, `:11` `date` | var.instance | FP fixed | `save(_:to:)` encodes `[PushNotificationContentIdentifier]` with `JSONEncoder().encode` (:23), called from `NotificationService.swift:86`; the notification extension, not the scanned app, calls it, so these were `likely` and are now not reported at all. |
