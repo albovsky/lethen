@@ -14,5 +14,6 @@ enum SyntaxAnalysisList {
         ValueUseAnalysis.self,
         StringLiteralAnalysis.self,
         SkippedBranchAnalysis.self,
+        UnusedParameterAnalysis.self,
     ]
 }
