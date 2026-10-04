@@ -11,6 +11,8 @@ struct IndexedFile {
     /// The file's references from the index, by their location. Several references can share one location.
     let referencesByLocation: [Location: Set<Reference>]
     let graph: SourceGraphMutex
+    /// Where an analysis records what makes a report less certain.
+    let evidence: ConfidenceEvidenceCollector
 
     /// The references at the location; empty when no syntax node of the index reaches it, such as in code
     /// compiled out by `#if`.

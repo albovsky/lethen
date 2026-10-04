@@ -330,18 +330,11 @@ final class SwiftIndexer: Indexer {
                 locationBuilder: locationBuilder,
                 declarations: declarations,
                 referencesByLocation: Dictionary(grouping: indexedReferences, by: \.location).mapValues(Set.init),
-                graph: graph
+                graph: graph,
+                evidence: evidence
             )
             for analysis in SyntaxAnalysisList.all {
                 try analysis.init(configuration: configuration).apply(to: file)
-            }
-            let literalTokens = StringLiteralTokenVisitor()
-            literalTokens.walk(multiplexingSyntaxVisitor.syntax)
-            let reflectionLiterals = ReflectionLiteralVisitor(locationBuilder: locationBuilder)
-            reflectionLiterals.walk(multiplexingSyntaxVisitor.syntax)
-            evidence.add {
-                $0.addLiteralTokens(literalTokens.tokens)
-                $0.addReflectionSites(reflectionLiterals.sites)
             }
             // A module with no occurrence in the file, such as a file conditionally compiled out entirely,
             // has no evidence for any clause.
