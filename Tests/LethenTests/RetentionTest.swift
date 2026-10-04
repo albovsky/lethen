@@ -2308,6 +2308,32 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeReadsThroughStoredProperty() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass226Stored")) {
+                self.assertNotAssignOnlyProperty(.varInstance("classStoredEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct226Stored")) {
+                self.assertNotAssignOnlyProperty(.varInstance("structStoredEncoded"))
+            }
+            assertReferenced(.class("FixtureClass226Unencoded")) {
+                self.assertAssignOnlyProperty(.varInstance("classNeverEncoded"))
+            }
+            assertReferenced(.class("FixtureClass226Base")) {
+                self.assertNotAssignOnlyProperty(.varInstance("baseEncoded"))
+            }
+            assertReferenced(.class("FixtureClass226Sub")) {
+                self.assertAssignOnlyProperty(.varInstance("subNotEncoded"))
+            }
+            assertReferenced(.class("FixtureClass226InheritedEncoder")) {
+                self.assertAssignOnlyProperty(.varInstance("inheritedNotEncoded"))
+            }
+            assertReferenced(.class("FixtureClass226Read")) {
+                self.assertNotAssignOnlyProperty(.varInstance("classReadNormally"))
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeReads() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct312")) {

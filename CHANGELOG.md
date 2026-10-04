@@ -18,6 +18,7 @@
 
 ##### Bug Fixes
 
+- Properties of a class that conforms to `Encodable` are now read by its synthesized `encode(to:)`, as those of a struct are, when an instance reaches an encoder, including through a stored property such as `encoder.encode(storedArray)`. A subclass of an `Encodable` class is not covered, as Swift does not synthesize `encode(to:)` for it ([#122](https://github.com/albovsky/lethen/issues/122)).
 - Two projects of a workspace that define targets of the same name no longer collapse into one target. Each keeps its own files, and the unscanned-target warning and downgrade work per target and name it as `Project/Target` when the name is shared. `--exclude-targets Core` and `--retain-public-targets Core` still match every target of that name, and `Project/Core` names one ([#112](https://github.com/albovsky/lethen/issues/112)).
 - A declaration that a target the scanned schemes do not build uses through an `override` of it, a callable value (`Handler()()`), or a chain of type aliases (`typealias Second = First`) is now reported as `likely` instead of `certain`, like one it names directly. The set of findings does not change ([#113](https://github.com/albovsky/lethen/issues/113)).
 - An Objective-C `@import` with blanks, a newline or a comment between the `@` and `import` (`@ import Foo;`, `@/* note */import Foo;`) is now read as an import, as the compiler reads it, so an unused one is reported and a used one is not missed.
