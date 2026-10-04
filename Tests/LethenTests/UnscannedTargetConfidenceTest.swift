@@ -281,6 +281,80 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         XCTAssertEqual(assessor(graph).assess(unrelatedShared).confidence, .certain, "The control: an alias chain that does not end at its type")
     }
 
+    /// `typealias Shared = Original` in one module and `typealias Leaf = Shared` naming an unrelated `Shared` in another
+    /// share only a spelling: `Leaf.shared` does not reach `Original.shared`.
+    func testTypeAliasesWithTheSameNameInDifferentModulesAreNotJoined() {
+        let graph = makeGraph()
+        let original = declaration("Original", kind: .class, in: otherFile, accessibility: .public)
+        let shared = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: original)
+        let aliasShared = declaration("Shared", kind: .typealias, in: otherFile, accessibility: .public)
+        aliasShared.references.insert(Reference(name: "Original", kind: .normal, declarationKind: .class, usr: "s:class:Original", location: aliasShared.location))
+        let moduleFile = FilePath("/project/Other/Module.swift")
+        let unrelatedShared = Declaration(
+            name: "Shared", kind: .struct, usrs: ["s:struct:OtherShared"],
+            location: Location(file: SourceFile(path: moduleFile, modules: ["Other"]), line: 1, column: 1)
+        )
+        let leaf = Declaration(
+            name: "Leaf", kind: .typealias, usrs: ["s:typealias:Leaf"],
+            location: Location(file: SourceFile(path: moduleFile, modules: ["Other"]), line: 2, column: 1)
+        )
+        leaf.references.insert(Reference(name: "Shared", kind: .normal, declarationKind: .struct, usr: "s:struct:OtherShared", location: leaf.location))
+        graph.add([original, shared, aliasShared, unrelatedShared, leaf])
+        use(["Leaf", "Leaf.shared", "shared"], members: ["Leaf.shared", "shared"])
+
+        XCTAssertEqual(assessor(graph).assess(shared).confidence, .certain)
+    }
+
+    /// Two modules each declare `Model`, with aliases `AView` and `BView`: a use of `BView.shared` does not reach
+    /// `A`'s `Model.shared`.
+    func testTypesWithTheSameNameInDifferentModulesKeepTheirOwnAliases() {
+        let graph = makeGraph()
+        func make(_ name: String, kind: Declaration.Kind, usr: String, module: String, line: Int, parent: Declaration? = nil) -> Declaration {
+            let file = SourceFile(path: FilePath("/project/\(module)/\(module).swift"), modules: [module])
+            let declaration = Declaration(name: name, kind: kind, usrs: [usr], location: Location(file: file, line: line, column: 1))
+            declaration.accessibility = DeclarationAccessibility(value: .public, isExplicit: true)
+            declaration.parent = parent
+            return declaration
+        }
+        let modelA = make("Model", kind: .class, usr: "s:class:A.Model", module: "A", line: 1)
+        let sharedA = make("shared", kind: .varStatic, usr: "s:var:A.shared", module: "A", line: 2, parent: modelA)
+        let modelB = make("Model", kind: .class, usr: "s:class:B.Model", module: "B", line: 1)
+        let sharedB = make("shared", kind: .varStatic, usr: "s:var:B.shared", module: "B", line: 2, parent: modelB)
+        let aView = make("AView", kind: .typealias, usr: "s:typealias:AView", module: "A", line: 3)
+        aView.references.insert(Reference(name: "Model", kind: .normal, declarationKind: .class, usr: "s:class:A.Model", location: aView.location))
+        let bView = make("BView", kind: .typealias, usr: "s:typealias:BView", module: "B", line: 3)
+        bView.references.insert(Reference(name: "Model", kind: .normal, declarationKind: .class, usr: "s:class:B.Model", location: bView.location))
+        graph.add([modelA, sharedA, modelB, sharedB, aView, bView])
+        use(["BView", "BView.shared", "shared"], members: ["BView.shared", "shared"])
+
+        XCTAssertEqual(assessor(graph).assess(sharedB).confidence, .likely, "The control: B's own alias")
+        XCTAssertEqual(assessor(graph).assess(sharedA).confidence, .certain)
+    }
+
+    /// A protocol extension keeps no reference to its protocol once the graph is built, only the protocol's reference to
+    /// it: `extension P { var shared }` is still reached through `typealias Alias = P`.
+    func testProtocolExtensionMembersFollowAliasesOfTheProtocol() {
+        let graph = makeGraph()
+        let proto = declaration("P", kind: .protocol, in: otherFile, accessibility: .public)
+        let ext = declaration("P", kind: .extensionProtocol, in: otherFile, accessibility: .public, line: 2)
+        let member = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: ext, line: 3)
+        let other = declaration("Q", kind: .protocol, in: otherFile, accessibility: .public, line: 4)
+        let otherExt = declaration("Q", kind: .extensionProtocol, in: otherFile, accessibility: .public, line: 5)
+        let otherMember = declaration("shared", kind: .varStatic, in: otherFile, accessibility: .public, parent: otherExt, line: 6)
+        let alias = declaration("Alias", kind: .typealias, in: otherFile, accessibility: .public, line: 7)
+        alias.references.insert(Reference(name: "P", kind: .normal, declarationKind: .protocol, usr: "s:protocol:P", location: alias.location))
+        graph.add([proto, ext, member, other, otherExt, otherMember, alias])
+        for (type, extensionDeclaration) in [(proto, ext), (other, otherExt)] {
+            let reference = Reference(name: type.name, kind: .normal, declarationKind: .extensionProtocol, usr: extensionDeclaration.usrs.first!, location: extensionDeclaration.location)
+            reference.parent = type
+            graph.add(reference, from: type)
+        }
+        use(["Alias", "Alias.shared", "shared"], members: ["Alias.shared", "shared"])
+
+        XCTAssertEqual(assessor(graph).assess(member).confidence, .likely)
+        XCTAssertEqual(assessor(graph).assess(otherMember).confidence, .certain, "The control: another protocol's extension")
+    }
+
     /// An extension is reported only with its unused type, so it is as sure as the type.
     func testExtensionsFollowTheirType() {
         let graph = makeGraph()
