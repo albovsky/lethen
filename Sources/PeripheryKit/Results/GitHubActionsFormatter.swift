@@ -51,6 +51,8 @@ final class GitHubActionsFormatter: OutputFormatter {
         let column = location.column
         let title = Self.escapeProperty(describe(result.annotation))
 
-        return "::warning file=\(path),line=\(lineNum),col=\(column),title=\(title)::"
+        let command = result.confidence == .likely ? "notice" : "warning"
+
+        return "::\(command) file=\(path),line=\(lineNum),col=\(column),title=\(title)::"
     }
 }

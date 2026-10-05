@@ -344,6 +344,8 @@ lethen scan --min-confidence certain --strict
 
 The JSON format includes each declaration's kind, name, modules, modifiers, attributes, accessibility, symbol identifiers, hints, and location, a `confidence` of `certain` or `likely`, a `confidenceReason` that says why a result is `likely` (`null` for `certain` results), and a one-sentence `reason` such as `no references in the scanned modules` or `assigned but never read`; the CSV format ends with a `Confidence` column. Results are sorted with `certain` first. The `xcode`, `github-actions`, `github-markdown`, `gitlab-codequality`, and `codeclimate` formats append `[likely: <why>]` to `likely` results.
 
+In the CI formats a `likely` result is reported one severity lower than a `certain` one, so a pull request tells them apart: `github-actions` annotates it as a `::notice` instead of a `::warning`, `checkstyle` gives it `severity="info"` instead of `warning`, and `codeclimate` gives it `"severity": "minor"` instead of `major`. `gitlab-codequality` already uses its lowest severity, `info`, for every result, and the `xcode`, `json`, `csv`, and `github-markdown` formats are unchanged.
+
 ### Reusing a build in CI
 
 If the pipeline has already built the project, skip lethen's build and scan the existing index store:
@@ -393,7 +395,7 @@ Without the action, run the command yourself:
     lethen scan --format github-actions --relative-results --baseline baseline.json --strict --disable-update-check
 ```
 
-Add `--min-confidence certain` to fail only on `certain` results. Pass `--disable-update-check` in CI; the optional update check otherwise contacts GitHub's releases API once per scan and can be disabled permanently with `disable_update_check: true` in the configuration file.
+`likely` results annotate as notices, so a check with `strict` still fails on them, but the annotation reads as a notice. Add `--min-confidence certain` to fail only on `certain` results. Pass `--disable-update-check` in CI; the optional update check otherwise contacts GitHub's releases API once per scan and can be disabled permanently with `disable_update_check: true` in the configuration file.
 
 ### GitLab
 
