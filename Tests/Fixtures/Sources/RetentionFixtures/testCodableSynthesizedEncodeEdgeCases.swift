@@ -159,6 +159,52 @@ struct FixtureStruct227Marked: FixtureProtocol227Plain, FixtureProtocol227Marker
     }
 }
 
+fileprivate class FixtureClass227Mid: FixtureClass227FilePrivateBase {}
+
+fileprivate final class FixtureClass227Concrete: FixtureClass227Mid, Encodable {
+    // Same file as the fileprivate base: inherited through Mid, so it is the witness and nothing reads it.
+    let throughMid: Int
+
+    init(throughMid: Int) {
+        self.throughMid = throughMid
+    }
+}
+
+class FixtureClass227Base {}
+
+protocol FixtureProtocol227ClassConstrained: Encodable {}
+
+extension FixtureProtocol227ClassConstrained where Self: FixtureClass227Base {
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(0)
+    }
+}
+
+struct FixtureStruct227ClassConstrained: FixtureProtocol227ClassConstrained {
+    // The extension needs a FixtureClass227Base, which a struct is not, so the encoder is synthesized.
+    let classConstrained: Int
+
+    init(classConstrained: Int) {
+        self.classConstrained = classConstrained
+    }
+}
+
+protocol FixtureProtocol227Static: Encodable {}
+
+extension FixtureProtocol227Static {
+    static func encode(to encoder: Encoder) throws {}
+}
+
+struct FixtureStruct227Static: FixtureProtocol227Static {
+    // A static overload is not the witness, so the encoder is synthesized.
+    let staticOverload: Int
+
+    init(staticOverload: Int) {
+        self.staticOverload = staticOverload
+    }
+}
+
 final class FixtureClass227Read {
     // Used-but-not-encoded control: read normally in a type that is never encoded.
     var readNormally: Int = 0
@@ -188,6 +234,9 @@ public final class FixtureClass227EdgeRetainer {
             JSONEncoder().encode(FixtureClass227FilePrivateSub(inheritedInFile: 12)),
             JSONEncoder().encode(FixtureStruct227Unmarked(unmarked: 13)),
             JSONEncoder().encode(FixtureStruct227Marked(marked: 14)),
+            JSONEncoder().encode(FixtureClass227Concrete(throughMid: 15)),
+            JSONEncoder().encode(FixtureStruct227ClassConstrained(classConstrained: 16)),
+            JSONEncoder().encode(FixtureStruct227Static(staticOverload: 17)),
         ]
     }
 }

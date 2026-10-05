@@ -83,14 +83,16 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     /// A class that declares `Encodable` but inherits `encode(to:)` from a superclass that does not conform
     /// uses that method as its witness, so nothing is synthesized.
-    private func inheritsCustomEncoder(_ type: Declaration, seen: Set<Declaration> = []) -> Bool {
+    private func inheritsCustomEncoder(_ type: Declaration, seen: Set<Declaration> = [], from subclass: Declaration? = nil) -> Bool {
+        // Visibility is judged for the conforming class, not for the intermediate class the walk has reached.
+        let subclass = subclass ?? type
         for reference in type.immediateInheritedTypeReferences where reference.declarationKind == .class {
             guard let superclass = graph.declaration(withUsr: reference.usr), !seen.contains(superclass) else { continue }
 
             let members = superclass.declarations.union((graph.extensions[superclass] ?? []).flatMap(\.declarations))
             // A private method is not inherited, and a fileprivate one only by a subclass of the same file.
-            if members.contains(where: { isInheritableCustomEncoder($0, by: type) })
-                || inheritsCustomEncoder(superclass, seen: seen.union([type]))
+            if members.contains(where: { isInheritableCustomEncoder($0, by: subclass) })
+                || inheritsCustomEncoder(superclass, seen: seen.union([type]), from: subclass)
             {
                 return true
             }
@@ -99,11 +101,19 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     private func isInheritableCustomEncoder(_ member: Declaration, by subclass: Declaration) -> Bool {
-        guard isCustomCoder(member, named: "encode(to:)", parameterType: "Encoder") else { return false }
+        guard member.accessibility.value != .private else { return false }
+
+        return isWitnessCandidate(member, for: subclass)
+    }
+
+    /// An instance `encode(to:)` taking the coder, visible to the type: a private or fileprivate member is
+    /// taken as visible only from the same file. A static overload is not the witness.
+    private func isWitnessCandidate(_ member: Declaration, for type: Declaration) -> Bool {
+        guard member.kind == .functionMethodInstance,
+              isCustomCoder(member, named: "encode(to:)", parameterType: "Encoder") else { return false }
 
         switch member.accessibility.value {
-        case .private: return false
-        case .fileprivate: return member.location.file == subclass.location.file
+        case .private, .fileprivate: return member.location.file == type.location.file
         default: return true
         }
     }
@@ -124,13 +134,11 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                 // visible enough to witness the requirement.
                 let inherited = Set(graph.inheritedTypeReferences(of: type).map(\.usr))
                 let applies = extensionDeclaration.references
-                    .filter { $0.role == .genericRequirementType && $0.declarationKind == .protocol }
+                    .filter { $0.role == .genericRequirementType }
                     .allSatisfy { inherited.contains($0.usr) }
                 guard applies else { return false }
 
-                return extensionDeclaration.declarations.contains {
-                    isCustomCoder($0, named: "encode(to:)", parameterType: "Encoder") && ![.private, .fileprivate].contains($0.accessibility.value)
-                }
+                return extensionDeclaration.declarations.contains { isWitnessCandidate($0, for: type) }
             }
         }
     }
