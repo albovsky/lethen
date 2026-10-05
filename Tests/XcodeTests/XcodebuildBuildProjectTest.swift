@@ -44,4 +44,14 @@ final class XcodebuildBuildProjectTest: XCTestCase {
         XCTAssertEqual(configured.last { !$0.contains("=") }, "build-for-testing")
         XCTAssertFalse(try XCTUnwrap(commands.last).contains("-configuration"))
     }
+
+    func testBuildActionPassesBuildWithoutBuildForTesting() throws {
+        let shell = RecordingShell()
+        let recording = Xcodebuild(shell: shell, logger: Logger(quiet: true, verbose: false, colorMode: .never))
+        try recording.build(project: project, scheme: "Scheme", allSchemes: ["Scheme"], configuration: "Release", action: .build)
+
+        let command = try XCTUnwrap(shell.streamed.first)
+        XCTAssertEqual(command.last { !$0.contains("=") }, "build")
+        XCTAssertFalse(command.contains("build-for-testing"))
+    }
 }

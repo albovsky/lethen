@@ -3,6 +3,14 @@ import Logger
 import Shared
 import SystemPackage
 
+/// What `xcodebuild` is asked to do for a scheme.
+public enum BuildAction: String, Sendable {
+    /// Builds the app and its test targets, so tests stay in the index.
+    case buildForTesting = "build-for-testing"
+    /// Builds what the scheme's Run action builds, without test targets.
+    case build
+}
+
 public final class Xcodebuild {
     private let shell: Shell
     private let logger: Logger
@@ -32,15 +40,16 @@ public final class Xcodebuild {
         }
     }
 
-    /// Builds `scheme` for testing with indexing enabled, passing each line of build output to `onOutputLine`.
-    /// A `configuration` is passed as `-configuration`; without one, xcodebuild uses the scheme's Test action
-    /// configuration.
+    /// Builds `scheme` with indexing enabled, for testing unless `action` says otherwise, passing each line of build
+    /// output to `onOutputLine`. A `configuration` is passed as `-configuration`; without one, xcodebuild uses the
+    /// scheme's Test action configuration.
     @discardableResult
     public func build(
         project: XcodeProjectlike,
         scheme: String,
         allSchemes: [String],
         configuration: String? = nil,
+        action: BuildAction = .buildForTesting,
         additionalArguments: [String] = [],
         onOutputLine: @escaping @Sendable (String) -> Void = { _ in }
     ) throws -> String {
@@ -61,7 +70,7 @@ public final class Xcodebuild {
             "-parallelizeTargets",
             "-derivedDataPath", derivedDataPath.string,
             "-quiet",
-            "build-for-testing",
+            action.rawValue,
         ]
         let envs = [
             "CODE_SIGNING_ALLOWED=NO",
@@ -102,12 +111,13 @@ public final class Xcodebuild {
         project: XcodeProjectlike,
         schemes: [String],
         configuration: String? = nil,
-        buildArguments: [String] = []
+        buildArguments: [String] = [],
+        buildOnlySchemes: [String] = []
     ) throws {
         let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
         let marker = directory.appending(Self.completedBuildMarker)
         let reusable = try FileManager.default.contents(atPath: marker.string)
-            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes)
         try marker.removeIfPresent()
         if directory.exists, !reusable {
             logger.debug("\(directory) holds no completed build of these schemes; removing it.")
@@ -133,10 +143,11 @@ public final class Xcodebuild {
         project: XcodeProjectlike,
         schemes: [String],
         configuration: String? = nil,
-        buildArguments: [String] = []
+        buildArguments: [String] = [],
+        buildOnlySchemes: [String] = []
     ) throws {
         let directory = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        let contents = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+        let contents = try Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes)
         try contents.write(to: directory.appending(Self.completedBuildMarker).url, options: .atomic)
     }
 
@@ -175,12 +186,13 @@ public final class Xcodebuild {
         project: XcodeProjectlike,
         schemes: [String],
         configuration: String? = nil,
-        buildArguments: [String] = []
+        buildArguments: [String] = [],
+        buildOnlySchemes: [String] = []
     ) throws -> Bool {
         let marker = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
             .appending(Self.completedBuildMarker)
         return try FileManager.default.contents(atPath: marker.string)
-            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+            == Self.markerContents(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes)
     }
 
     /// When the last completed build of this DerivedData directory started and finished, which its index covers: an
@@ -191,9 +203,10 @@ public final class Xcodebuild {
         project: XcodeProjectlike,
         schemes: [String],
         configuration: String? = nil,
-        buildArguments: [String] = []
+        buildArguments: [String] = [],
+        buildOnlySchemes: [String] = []
     ) throws -> (started: Date, completed: Date)? {
-        guard try hasCompletedBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments),
+        guard try hasCompletedBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes),
               (try? indexStorePath(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)) != nil
         else { return nil }
 
@@ -239,14 +252,15 @@ public final class Xcodebuild {
     /// What the mark records. The directory's name is a hash of the project's name, the joined scheme names, the
     /// configuration and the build arguments, so different projects or scheme sets, such as `A, BC` and `AB, C`, can
     /// share it; the mark names exactly what was built.
-    static func markerContents(project: XcodeProjectlike, schemes: [String], configuration: String?, buildArguments: [String]) throws -> Data {
+    static func markerContents(project: XcodeProjectlike, schemes: [String], configuration: String?, buildArguments: [String], buildOnlySchemes: [String] = []) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(CompletedBuild(
             project: project.path.lexicallyNormalized().string,
             schemes: schemes.sorted(),
             configuration: configuration,
-            buildArguments: buildArguments
+            buildArguments: buildArguments,
+            buildOnlySchemes: buildOnlySchemes.isEmpty ? nil : buildOnlySchemes.sorted()
         ))
     }
 
@@ -255,6 +269,9 @@ public final class Xcodebuild {
         let schemes: [String]
         let configuration: String?
         let buildArguments: [String]
+        /// The schemes built with `build` rather than `build-for-testing`, so a store built for another plan is not
+        /// reused; left out when every scheme builds for testing, as every earlier build did.
+        let buildOnlySchemes: [String]?
     }
 
     func schemes(project: XcodeProjectlike, additionalArguments: [String]) throws -> Set<String> {
