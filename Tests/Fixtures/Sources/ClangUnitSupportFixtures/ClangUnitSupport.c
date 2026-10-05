@@ -8,3 +8,8 @@ int clangUnitSupportAnswer(void) {
 const char *clangUnitSupportName(void) {
     return "namedInClangLiteral";
 }
+
+// `NSClassFromString` loads any Swift class by its name, so this literal can name one.
+const char *clangUnitSupportClassName(void) {
+    return "FixtureClass240Loaded";
+}

@@ -6,3 +6,5 @@ public class FixtureClass240 {
         _ = "namedInSwiftLiteral"
     }
 }
+
+class FixtureClass240Loaded {}
