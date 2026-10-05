@@ -42,10 +42,13 @@ public struct NameUseCollector {
     /// type narrows the member it uses.
     private var placeholderTypeNames: Set<String> = []
 
-    /// Collects the uses in `node`, calling `onUse` for each one in source order.
+    /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
+    /// declaration, such as the elements of an `#if` clause; the generic parameters and associated types of the
+    /// declarations around it count as placeholders too.
     public init(_ node: Syntax, onUse: ((Use) -> Void)? = nil) {
         self.onUse = onUse
         Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
+        Self.collectEnclosingPlaceholderTypeNames(of: node, into: &placeholderTypeNames)
         collect(node, inPattern: false)
     }
 
@@ -219,6 +222,24 @@ public struct NameUseCollector {
         guard name.first?.isUppercase == true, name != "Self", !placeholderTypeNames.contains(name) else { return nil }
 
         return name
+    }
+
+    /// The generic parameters and associated types that declarations around `node` declare.
+    private static func collectEnclosingPlaceholderTypeNames(of node: Syntax, into names: inout Set<String>) {
+        var current = node.parent
+        while let ancestor = current {
+            for child in ancestor.children(viewMode: .sourceAccurate) {
+                if let clause = child.as(GenericParameterClauseSyntax.self) {
+                    for parameter in clause.parameters { names.insert(parameter.name.text) }
+                }
+            }
+            if let protocolDecl = ancestor.as(ProtocolDeclSyntax.self) {
+                for member in protocolDecl.memberBlock.members {
+                    if let associated = member.decl.as(AssociatedTypeDeclSyntax.self) { names.insert(associated.name.text) }
+                }
+            }
+            current = ancestor.parent
+        }
     }
 
     private static func collectPlaceholderTypeNames(_ node: Syntax, into names: inout Set<String>) {

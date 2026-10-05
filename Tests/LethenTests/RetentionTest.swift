@@ -2285,6 +2285,11 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureClosureWidget6")) {
                 self.assertConfidence(.functionConstructor("init(body:)"), .likely)
             }
+            // `T(tag: 1)` in a skipped clause of a generic function constructs whatever `T` is.
+            assertReferenced(.struct("FixtureGenericTarget6")) {
+                self.assertNotReferenced(.functionConstructor("init(tag:)"))
+                self.assertConfidence(.functionConstructor("init(tag:)"), .likely)
+            }
             // Another type's initializer with the same labels is not named.
             assertReferenced(.struct("FixtureGadget6")) {
                 self.assertNotReferenced(.functionConstructor("init(size:)"))

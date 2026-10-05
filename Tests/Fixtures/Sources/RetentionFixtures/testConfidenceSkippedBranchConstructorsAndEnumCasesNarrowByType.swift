@@ -60,3 +60,15 @@ public func fixtureConstructors6() {
         }
     #endif
 }
+
+struct FixtureGenericTarget6 {
+    init(tag: Int) {}
+}
+
+// `T` is a placeholder declared outside the skipped clause, so `T(tag: 1)` can construct any conforming type.
+public func fixtureGeneric6<T>(_: T.Type) {
+    _ = FixtureGenericTarget6.self
+    #if os(Windows)
+        _ = T(tag: 1)
+    #endif
+}
