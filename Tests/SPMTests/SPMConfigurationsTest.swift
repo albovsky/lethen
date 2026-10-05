@@ -34,8 +34,22 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
             }
 
             """.write(toFile: root.appending("Sources/TargetA/Conditional.swift").string, atomically: true, encoding: .utf8)
+            try """
+            #if DEBUG
+                public func branchedEntry(debugUsed: Int, releaseUsed: Int) { print(debugUsed) }
+            #else
+                public func branchedEntry(debugUsed: Int, releaseUsed: Int) { print(releaseUsed) }
+            #endif
+
+            #if DEBUG
+                public func unusedInBothEntry(kept: Int, dropped: Int) { print(kept) }
+            #else
+                public func unusedInBothEntry(kept: Int, dropped: Int) { print(kept + 1) }
+            #endif
+
+            """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -61,6 +75,20 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         try Self.index(configuration: configuration)
         assertReferenced(.functionFree("calledOnlyInDebug()"))
         assertReferenced(.functionFree("calledOnlyInRelease()"))
+    }
+
+    /// The same function declared in both branches of `#if DEBUG` is indexed from both configurations
+    /// with one USR per declaration. Each parameter is used in one configuration, so neither is reported.
+    func testSameUSRDeclarationsFromBothConfigurationsAreMerged() throws {
+        let configuration = Self.configuration(["debug", "release"])
+        try Self.build(projectPath: Self.root, configuration: configuration)
+        try Self.index(configuration: configuration)
+        let unusedParameters = Self.results.flatMap(\.usrs).filter { $0.contains("branchedEntry") || $0.contains("unusedInBothEntry") && !$0.hasPrefix("param-dropped") }.sorted()
+        XCTAssertEqual(unusedParameters, [String]())
+
+        // Control: a parameter unused in every configuration is still reported, once.
+        let droppedParameters = Self.results.flatMap(\.usrs).filter { $0.hasPrefix("param-dropped-unusedInBothEntry") }
+        XCTAssertEqual(droppedParameters.count, 1)
     }
 
     /// `swift package clean` removes every configuration's products. When a later configuration's
