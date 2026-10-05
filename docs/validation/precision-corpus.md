@@ -83,6 +83,41 @@ The scan is not deterministic: `SceneDelegate.swift` declares a method in both b
 configurations index it under one USR, and 3 of 21 identical rescans reported two more rows (`connectionOptions` and
 `session`, 2,576 findings). The expectation holds the 2,574-row result; see albovsky/lethen#158.
 
+### Wikipedia checks for #149, #151, #153, #155 and #156 (2026-10-05)
+
+Wikipedia iOS at `599e4a6`, single configuration (`--project Wikipedia.xcodeproj --schemes Wikipedia`), scanned with a
+release build of Lethen at each merge commit in turn, on Xcode 27.0 and Swift 6.4. The committed expectation before
+the third measurement equals the scan at `b3b84a1`, and the scan at `0b95cfb` equals the scan at `cb10001`. Rows are
+compared by path, kind, name and ids.
+
+| Change | Commit | Rows removed | Rows added | Confidence changed |
+| --- | --- | ---: | ---: | --- |
+| #151 Encodable reads | `dc630b1` | 0 | 0 | none |
+| #153 `#if` evidence spellings | `a0ca700` | 0 | 0 | 3 `certain` to `likely` |
+| #149 Run action build | `8442d21` | 0 | 0 | none |
+| #155 string-literal rule | `cb10001` | 0 | 0 | 125 `likely` to `certain` |
+| #156 synchronized-folder inclusions | `0b95cfb` | 0 | 0 | none |
+
+- **#151:** no Wikipedia row changed, so there is nothing to adjudicate on `Encodable` types.
+- **#156 and #149:** the finding set is identical.
+- **#155:** the finding set is identical and the rows whose `likely` reason is a string literal fall from 160 to 23. All
+  125 flipped rows had the reason "its name appears in a string literal": 110 properties, 8 instance methods, 4
+  structs, 2 enum cases and 1 static method. A sample of 20 flipped rows, drawn with `random.Random(3)` over the
+  flipped rows sorted by location, was checked by searching the C and Objective-C sources for a literal containing the
+  name. None is a runtime lookup of the Swift declaration: the literals are JSON and Mantle key paths of other
+  Objective-C classes (`@"content_urls.desktop.page"`, `@"imageURL"`, `@"id"`, `@"ns"` in `WMFFeedArticlePreview.m`,
+  `WMFAnnouncement.m`, `MWKSearchResult.m`), a URL path component (`@"theme"` in `WMFContentGroup+Extensions.m:510`),
+  or prose in assertions and log messages. The declarations are members of pure-Swift structs, protocols and view
+  models (`ReferenceShowing.articleURL`, `WMFArticlePreviewViewModel.imageURL`), not classes and not `@_cdecl`.
+  The acceptance holds: no flipped row in the sample is a genuine runtime lookup.
+- **#153:** the three rows are the `UIColor` extension initializers `init(_:alpha:)`, `init(_:)` and
+  `init(_:alpha:)` of `Theme.swift` (lines 8, 16 and 26), now `likely` with the reason "its name appears in `#if DEBUG`
+  at `EventPlatformClient.swift:339`". The clause there spells `String.init(data:encoding:)`, which constructs
+  `String`, not `UIColor`, and its labels `data:encoding:` are not labels of any of the three. The rows keep `likely`
+  because a member of an extension of an unscanned type is never narrowed, so this acceptance check fails for these
+  three rows: the rule is too wide for an initializer whose spelled receiver is a different type or whose labels do not
+  fit. It makes a result more conservative (`likely` rather than `certain`) and never hides one.
+
 ### Second measurement (2026-09-29)
 
 The first full adjudication of the hash sample: 68 TP and 13 FP over 81 sampled findings, 84.0 %
