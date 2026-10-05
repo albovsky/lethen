@@ -545,6 +545,43 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         XCTAssertFalse(leftover.exists, "Another scheme set must not inherit the units.")
     }
 
+    /// A configuration whose build action changes, such as `Release` after the list is reordered while the scheme's
+    /// Test configuration is unlisted, must not inherit the units, test references included, of the other plan.
+    func testBuildDoesNotReuseAStoreBuiltForAnotherBuildAction() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let buildArguments = ["LETHEN_TEST_IDENTITY=\(UUID().uuidString)"]
+        let schemes = ["ConfigurationsProject"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments)
+        let leftover = directory.appending("Index.noindex/DataStore/v5/units/leftover")
+        defer { try? FileManager.default.removeItem(atPath: directory.string) }
+
+        func build(buildOnly: [String]) throws {
+            try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: buildOnly)
+            try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: buildOnly)
+        }
+
+        func hasCompleted(buildOnly: [String]) throws -> Bool {
+            try xcodebuild.hasCompletedBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: buildOnly)
+        }
+
+        try build(buildOnly: [])
+        try FileManager.default.createDirectory(atPath: leftover.string, withIntermediateDirectories: true)
+        XCTAssertTrue(try hasCompleted(buildOnly: []))
+        XCTAssertFalse(try hasCompleted(buildOnly: schemes), "A store built for testing is not the store of a build action.")
+
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: [])
+        XCTAssertTrue(leftover.exists, "The same plan builds on its previous completed build.")
+        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments)
+
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: schemes)
+        XCTAssertFalse(leftover.exists, "Another build action must not inherit the units.")
+        try build(buildOnly: schemes)
+        XCTAssertTrue(try hasCompleted(buildOnly: schemes))
+        XCTAssertFalse(try hasCompleted(buildOnly: []))
+    }
+
     /// Building takes the configuration's DerivedData exclusively and reading it without a build takes it shared, so
     /// a scan never reads or marks a store that another scan is building.
     func testDerivedDataLocksExcludeBuildsFromReadsAndOtherBuilds() throws {

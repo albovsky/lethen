@@ -310,7 +310,8 @@
                     project: project,
                     schemes: Array(schemes),
                     configuration: buildConfiguration,
-                    buildArguments: configuration.buildArguments
+                    buildArguments: configuration.buildArguments,
+                    buildOnlySchemes: buildOnlySchemes(for: buildConfiguration)
                 )
             }
 
@@ -345,7 +346,8 @@
                     project: project,
                     schemes: Array(schemes),
                     configuration: buildConfiguration,
-                    buildArguments: configuration.buildArguments
+                    buildArguments: configuration.buildArguments,
+                    buildOnlySchemes: buildOnlySchemes(for: buildConfiguration)
                 )
             }
         }
@@ -459,7 +461,8 @@
                     project: project,
                     schemes: Array(schemes),
                     configuration: buildConfiguration,
-                    buildArguments: configuration.buildArguments
+                    buildArguments: configuration.buildArguments,
+                    buildOnlySchemes: buildOnlySchemes(for: buildConfiguration)
                 ) else { return false }
                 guard let recorded = try? xcodebuild.recordedBuildInputs(
                     project: project,
@@ -492,6 +495,17 @@
         }
 
         /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.
+        /// The schemes `configuration` builds with `build` instead of `build-for-testing`, which its completion mark
+        /// records: the same scheme tests in one listed configuration and only runs in the others.
+        private func buildOnlySchemes(for buildConfiguration: String?) -> [String] {
+            guard let buildConfiguration else { return [] }
+
+            return schemes.sorted().filter { scheme in
+                Self.buildActions(listed: listedConfigurations, schemeConfigurations: project.schemeConfigurations(named: scheme))
+                    .contains { $0.configuration == buildConfiguration && $0.action == .build }
+            }
+        }
+
         private var listedConfigurations: [String] {
             configuration.configurations.removingDuplicates()
         }
@@ -535,7 +549,8 @@
                         project: project,
                         schemes: Array(schemes),
                         configuration: buildConfiguration,
-                        buildArguments: configuration.buildArguments
+                        buildArguments: configuration.buildArguments,
+                        buildOnlySchemes: buildOnlySchemes(for: buildConfiguration)
                     )
                     guard completed else {
                         missing.append(buildConfiguration)
