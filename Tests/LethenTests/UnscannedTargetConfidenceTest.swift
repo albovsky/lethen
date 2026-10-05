@@ -437,7 +437,8 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         let graph = makeGraph()
         use(["Widget"])
         evidence.addClangLiteralTokens(["Widget"])
-        let widget = declaration("Widget")
+        // A class: an Objective-C file's literal can name only a class of a pure-Swift declaration.
+        let widget = declaration("Widget", kind: .class)
         let entry = declaration("Entry")
         let reference = Reference(name: "Entry", kind: .normal, declarationKind: .struct, usr: "s:struct:Entry", location: widget.location)
         reference.parent = widget
@@ -505,6 +506,6 @@ final class UnscannedTargetConfidenceTest: XCTestCase {
         use(["Widget"])
         evidence.addClangLiteralTokens(["Widget"])
 
-        XCTAssertEqual(assessor(graph).assess(declaration("Widget")).reason, "its name appears in a string literal")
+        XCTAssertEqual(assessor(graph).assess(declaration("Widget", kind: .class)).reason, "its name appears in a string literal")
     }
 }

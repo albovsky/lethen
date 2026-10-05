@@ -4,12 +4,25 @@ import XCTest
 
 final class ClangLiteralScannerTest: XCTestCase {
     private func tokens(_ source: String) -> Set<String> {
-        ClangLiteralScanner.tokens(in: Array(source.utf8))
+        ClangLiteralScanner.names(in: Array(source.utf8)).tokens
     }
 
-    func testSelectorStringsAreSplitAtColons() {
-        XCTAssertEqual(tokens(#"NSSelectorFromString(@"handleTap:");"#), ["handleTap"])
+    private func selectors(_ source: String) -> Set<String> {
+        ClangLiteralScanner.names(in: Array(source.utf8)).selectors
+    }
+
+    func testSelectorStringsAreKeptWhole() {
+        XCTAssertEqual(selectors(#"NSSelectorFromString(@"handleTap:");"#), ["handleTap:"])
+        XCTAssertEqual(tokens(#"NSSelectorFromString(@"handleTap:");"#), [])
+        XCTAssertEqual(selectors(#"NSSelectorFromString(@"setTitle:forState:");"#), ["setTitle:forState:"])
         XCTAssertEqual(tokens(#"[o valueForKey:@"kvcRead"];"#), ["kvcRead"])
+        XCTAssertEqual(selectors(#"[o valueForKey:@"kvcRead"];"#), [])
+    }
+
+    func testStringWithAColonAndNoIdentifierNamesNothing() {
+        XCTAssertEqual(selectors(#"a = @"a:b";"#), ["a:b"])
+        XCTAssertEqual(selectors(#"b = @":"; c = @"::"; d = @"1:";"#), [])
+        XCTAssertEqual(tokens(#"b = @":"; c = @"::"; d = @"1:";"#), [])
     }
 
     func testQualifiedNamesAreSplitAtDots() {
@@ -18,9 +31,10 @@ final class ClangLiteralScannerTest: XCTestCase {
     }
 
     func testSelectorExpressionsCount() {
-        XCTAssertEqual(tokens("SEL s = @selector(didTap:with:);"), ["didTap", "with"])
-        XCTAssertEqual(tokens("SEL s = @selector( didTap: );"), ["didTap"])
-        XCTAssertEqual(tokens("SEL s = @selector (plain);"), ["plain"])
+        XCTAssertEqual(selectors("SEL s = @selector(didTap:with:);"), ["didTap:with:"])
+        XCTAssertEqual(tokens("SEL s = @selector(didTap:with:);"), [])
+        XCTAssertEqual(selectors("SEL s = @selector( didTap: );"), ["didTap:"])
+        XCTAssertEqual(selectors("SEL s = @selector (plain);"), ["plain"])
     }
 
     func testProseStringsAreSkipped() {
@@ -30,7 +44,7 @@ final class ClangLiteralScannerTest: XCTestCase {
     /// Clang evaluates escapes, so the runtime sees `foo` however the source spells it.
     func testEscapesAreDecodedBeforeMatching() {
         XCTAssertEqual(tokens(#"NSSelectorFromString(@"f\x6fo");"#), ["foo"])
-        XCTAssertEqual(tokens(#"NSSelectorFromString(@"\146oo:");"#), ["foo"])
+        XCTAssertEqual(selectors(#"NSSelectorFromString(@"\146oo:");"#), ["foo:"])
         XCTAssertEqual(tokens(#"NSClassFromString(@"Caf\u00e9");"#), ["Café"])
         XCTAssertEqual(tokens(#"NSClassFromString(@"Caf\U000000e9");"#), ["Café"])
         // A tab is not part of a name, and an escape the compiler rejects stands for itself.
@@ -40,18 +54,18 @@ final class ClangLiteralScannerTest: XCTestCase {
     /// The preprocessor removes a backslash before a newline before it sees any token.
     func testEscapedNewlinesAreSpliced() {
         XCTAssertEqual(tokens("x = @\"renamed\\\nForObjC\";"), ["renamedForObjC"])
-        XCTAssertEqual(tokens("SEL s = @sel\\\nector(spliced);"), ["spliced"])
+        XCTAssertEqual(selectors("SEL s = @sel\\\nector(spliced);"), ["spliced"])
         XCTAssertEqual(tokens("x = @\"renamed\\\r\nForObjC\";"), ["renamedForObjC"])
     }
 
     /// Comments are whitespace to the preprocessor, inside a selector expression as well.
     func testCommentsInSelectorExpressionsAreWhitespace() {
-        XCTAssertEqual(tokens("SEL s = @selector /* note */ (commented:);"), ["commented"])
-        XCTAssertEqual(tokens("SEL s = @selector(inner /* note */ :with:);"), ["inner", "with"])
-        XCTAssertEqual(tokens("SEL s = @selector(first:\n    second:);"), ["first", "second"])
-        XCTAssertEqual(tokens("SEL s = @selector(\n    leadingNewline:);"), ["leadingNewline"])
+        XCTAssertEqual(selectors("SEL s = @selector /* note */ (commented:);"), ["commented:"])
+        XCTAssertEqual(selectors("SEL s = @selector(inner /* note */ :with:);"), ["inner:with:"])
+        XCTAssertEqual(selectors("SEL s = @selector(first:\n    second:);"), ["first:second:"])
+        XCTAssertEqual(selectors("SEL s = @selector(\n    leadingNewline:);"), ["leadingNewline:"])
         // A selector left open ends at a blank line and still counts, which errs towards likely.
-        XCTAssertEqual(tokens("SEL s = @selector(open\n\nSEL t = @selector(closed);"), ["open", "closed"])
+        XCTAssertEqual(selectors("SEL s = @selector(open\n\nSEL t = @selector(closed);"), ["open", "closed"])
     }
 
     /// A raw string in an Objective-C++ file has no escapes and its delimiters are not part of the text.
@@ -69,7 +83,7 @@ final class ClangLiteralScannerTest: XCTestCase {
     /// The compiler joins adjacent literals into one string.
     func testAdjacentLiteralsAreOneString() {
         XCTAssertEqual(tokens(#"NSClassFromString(@"Renamed" @"Class");"#), ["RenamedClass"])
-        XCTAssertEqual(tokens("x = \"split\"\n    \"Name:\";"), ["splitName"])
+        XCTAssertEqual(selectors("x = \"split\"\n    \"Name:\";"), ["splitName:"])
         // Comments are whitespace to the compiler.
         XCTAssertEqual(tokens(#"NSClassFromString(@"Renamed" /* note */ @"Class");"#), ["RenamedClass"])
         XCTAssertEqual(tokens("x = @\"Renamed\" // note\n    @\"Class\";"), ["RenamedClass"])
@@ -86,7 +100,8 @@ final class ClangLiteralScannerTest: XCTestCase {
         let missing = directory.appendingPathComponent("Missing.m")
 
         let result = ClangLiteralScanner.scan(files: [FilePath(readable.path), FilePath(missing.path)])
-        XCTAssertEqual(result.tokens, ["readableSelector"])
+        XCTAssertEqual(result.names.selectors, ["readableSelector"])
+        XCTAssertEqual(result.names.tokens, [])
         XCTAssertEqual(result.unreadFiles, [FilePath(missing.path)])
     }
 
@@ -96,9 +111,9 @@ final class ClangLiteralScannerTest: XCTestCase {
     }
 
     func testCommentsAreSkipped() {
-        XCTAssertEqual(tokens("// @selector(notMe)\nint x;"), [])
+        XCTAssertEqual(selectors("// @selector(notMe)\nint x;"), [])
         XCTAssertEqual(tokens(#"/* "notMe" */ int x;"#), [])
-        XCTAssertEqual(tokens("/* a\n @selector(notMe)\n */ SEL s = @selector(me);"), ["me"])
+        XCTAssertEqual(selectors("/* a\n @selector(notMe)\n */ SEL s = @selector(me);"), ["me"])
         XCTAssertEqual(tokens(#"int x; // "trailing"# + "\n" + #"a = @"kept";"#), ["kept"])
     }
 
@@ -117,19 +132,21 @@ final class ClangLiteralScannerTest: XCTestCase {
     func testUnterminatedConstructsDoNotHangOrCrash() {
         XCTAssertEqual(tokens(#"a = @"unterminated"#), ["unterminated"])
         XCTAssertEqual(tokens("a = @\"open\nb = @\"next\";"), ["open", "next"])
-        XCTAssertEqual(tokens("/* never closed @selector(x)"), [])
-        XCTAssertEqual(tokens("a = @selector(unclosed"), ["unclosed"])
-        XCTAssertEqual(tokens("a = @selector"), [])
+        XCTAssertEqual(selectors("/* never closed @selector(x)"), [])
+        XCTAssertEqual(selectors("a = @selector(unclosed"), ["unclosed"])
+        XCTAssertEqual(selectors("a = @selector"), [])
         XCTAssertEqual(tokens("'"), [])
         XCTAssertEqual(tokens("\\"), [])
         XCTAssertEqual(tokens(#"@""#), [])
-        XCTAssertEqual(tokens(""), [])
+        XCTAssertEqual(ClangLiteralScanner.names(in: []), ClangLiteralScanner.Names())
     }
 
     /// Clang compiles a file with a stray non-UTF-8 byte, so the scanner must not give up on it.
     func testBytesThatAreNotUTF8CostOnlyTheirOwnLiteral() {
         var bytes = Array("// caf".utf8) + [0xE9] + Array("\nSEL s = @selector(afterComment);\n".utf8)
         bytes += Array("a = @\"caf".utf8) + [0xE9] + Array("\"; b = @\"afterLiteral\";\n".utf8)
-        XCTAssertEqual(ClangLiteralScanner.tokens(in: bytes), ["afterComment", "afterLiteral"])
+        let names = ClangLiteralScanner.names(in: bytes)
+        XCTAssertEqual(names.selectors, ["afterComment"])
+        XCTAssertEqual(names.tokens, ["afterLiteral"])
     }
 }

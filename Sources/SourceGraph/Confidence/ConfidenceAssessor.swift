@@ -1,4 +1,5 @@
 import Configuration
+import Foundation
 
 /// Assesses how sure Lethen is that a reported declaration is unused, from the evidence indexing collected.
 ///
@@ -160,19 +161,53 @@ public final class ConfidenceAssessor {
 
     /// Why a string in the scanned sources may name the declaration at run time. Only the Objective-C runtime
     /// resolves a bare string to a declaration it exposes (a selector, a class name, a key-value coding key),
-    /// so a pure-Swift one counts only when a string is passed to a reflection API, or when an Objective-C
-    /// file holds the string, whose call is not read.
+    /// so a pure-Swift one counts only when a string is passed to a reflection API, or, for a class, when an
+    /// Objective-C file holds the string, whose call is not read: `NSClassFromString` loads any Swift class by
+    /// name, but no selector or key resolves to a pure-Swift function, member, struct, enum or protocol.
+    /// A selector-shaped literal (one with a colon) names only the method whose whole selector it spells.
     private func stringLiteralReason(for declaration: Declaration) -> String? {
         let names = Self.lookupNames(of: declaration)
         let isObjcReachable = declaration.isObjcAccessible
             || declaration.attributes.contains { ["objc", "objc.name", "objcMembers", "NSManaged"].contains($0.name) }
             || declaration.modifiers.contains("dynamic")
             || declaration.usrs.contains { Self.objcName(fromUSR: $0) != nil }
-        if !evidence.clangLiteralTokens.isDisjoint(with: names) || (isObjcReachable && !evidence.literalTokens.isDisjoint(with: names)) {
+        // `@_cdecl("name")` and `@_silgen_name("name")` export the function under that C symbol, which a C or
+        // Objective-C file can look up with `dlsym`, so its literal names the function.
+        let cSymbols = declaration.attributes
+            .filter { ["_cdecl", "_silgen_name"].contains($0.name) }
+            .compactMap { $0.arguments?.trimmingCharacters(in: CharacterSet(charactersIn: "()\" ")) }
+        let clangTokensCount = isObjcReachable || declaration.kind == .class
+        if (clangTokensCount && !evidence.clangLiteralTokens.isDisjoint(with: names))
+            || !evidence.clangLiteralTokens.isDisjoint(with: cSymbols)
+            || (isObjcReachable && !evidence.literalTokens.isDisjoint(with: names))
+        {
             return "its name appears in a string literal"
+        }
+        if !evidence.literalSelectors.isEmpty || !evidence.clangLiteralSelectors.isEmpty || !evidence.reflectionSelectorSites.isEmpty {
+            // A pure-Swift declaration has no selector to compare with, and neither does a method without a clang USR,
+            // so a literal whose first part is the name stays evidence for what a reflection API receives, as before.
+            let selectors = isObjcReachable ? Self.objcSelectors(of: declaration) : nil
+            let firstPartNames = selectors == nil && Self.selectorKinds.contains(declaration.kind) ? names : []
+            func isNamed(by literal: String) -> Bool {
+                if let selectors { return selectors.contains(literal) }
+                return literal.split(separator: ":").first.map { firstPartNames.contains(String($0)) } ?? false
+            }
+            if isObjcReachable,
+               evidence.literalSelectors.contains(where: isNamed) || evidence.clangLiteralSelectors.contains(where: isNamed)
+            {
+                return "its name appears in a string literal"
+            }
+            if let site = evidence.reflectionSelectorSites.filter({ isNamed(by: $0.key) }).values.min() {
+                return "its name appears in a string passed to \(site)"
+            }
         }
         return names.compactMap { evidence.reflectionSites[$0] }.min().map { "its name appears in a string passed to \($0)" }
     }
+
+    private static let selectorKinds: Set<Declaration.Kind> = [
+        .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .functionConstructor,
+        .varClass, .varInstance, .varStatic,
+    ]
 
     private static let memberKinds: Set<Declaration.Kind> = [
         .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .varClass, .varInstance, .varStatic, .enumelement,
@@ -481,6 +516,34 @@ public final class ConfidenceAssessor {
             }
         }
         return names
+    }
+
+    /// The whole selectors the Objective-C runtime knows the declaration by: the selector of a method or
+    /// initializer from its clang USR (`load:from:`), and the getter and setter of a property (`title`,
+    /// `setTitle:`), from its USR when it has one, since `@objc(name)` may rename it, else from its Swift name.
+    /// `nil` for a kind no selector names, and for a method whose clang USR is missing, since Swift's rules for
+    /// naming it depend on its labels and `@objc(name)`.
+    static func objcSelectors(of declaration: Declaration) -> Set<String>? {
+        let fromUSRs = Set(declaration.usrs.compactMap { objcSelector(fromUSR: $0) })
+        if declaration.kind.isVariableKind {
+            let getters = fromUSRs.isEmpty ? [SourceGraph.baseName(of: declaration.name)] : fromUSRs
+            return getters.reduce(into: getters) { selectors, getter in
+                if let first = getter.first { selectors.insert("set" + first.uppercased() + getter.dropFirst() + ":") }
+            }
+        }
+        guard selectorKinds.contains(declaration.kind) else { return nil }
+
+        return fromUSRs.isEmpty ? nil : fromUSRs
+    }
+
+    /// The whole selector of the method, initializer or property a clang USR names: `c:objc(cs)Store(im)load:from:`
+    /// is `load:from:`. `nil` for a USR that is not an Objective-C one, and for a class, protocol or category.
+    static func objcSelector(fromUSR usr: String) -> String? {
+        guard usr.hasPrefix("c:"), let close = usr.lastIndex(of: ")"), let open = usr[..<close].lastIndex(of: "(") else { return nil }
+        guard ["im", "cm", "py", "cpy"].contains(usr[usr.index(after: open) ..< close]) else { return nil }
+
+        let selector = usr[usr.index(after: close)...]
+        return selector.isEmpty ? nil : String(selector)
     }
 
     /// The Objective-C name a clang USR ends with: `c:objc(cs)Store(im)load:from:` names `load`, and

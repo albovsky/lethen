@@ -10,6 +10,9 @@ public final class ReflectionLiteralVisitor: SyntaxVisitor {
     /// Each identifier mapped to the lexicographically smallest description of a call site that
     /// passes it, such as `NSClassFromString at File.swift:12`.
     public private(set) var sites: [String: String] = [:]
+    /// The same for a literal with a colon, which is a selector: kept whole, and not split into `sites`, so
+    /// `NSSelectorFromString("load:")` names the method whose selector is `load:`, not every `load`.
+    public private(set) var selectorSites: [String: String] = [:]
 
     private let locationBuilder: SourceLocationBuilder
 
@@ -70,13 +73,18 @@ public final class ReflectionLiteralVisitor: SyntaxVisitor {
 
             text += segment.content.text
         }
-        guard let identifiers = StringLiteralTokenVisitor.symbolIdentifiers(in: text) else { return }
+        let selector = StringLiteralTokenVisitor.selector(in: text)
+        guard let identifiers = selector.map({ [$0] }) ?? StringLiteralTokenVisitor.symbolIdentifiers(in: text) else { return }
 
         let location = locationBuilder.location(at: literal.positionAfterSkippingLeadingTrivia)
         let file = location.file.path.lastComponent?.string ?? location.file.path.string
         let site = "\(kind) at \(file):\(location.line)"
-        for identifier in identifiers where sites[identifier].map({ $0 > site }) ?? true {
-            sites[identifier] = site
+        for identifier in identifiers {
+            if selector != nil {
+                if selectorSites[identifier].map({ $0 > site }) ?? true { selectorSites[identifier] = site }
+            } else if sites[identifier].map({ $0 > site }) ?? true {
+                sites[identifier] = site
+            }
         }
     }
 }

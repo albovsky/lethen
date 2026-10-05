@@ -24,14 +24,17 @@ final class ClangUnitTest: FixtureSourceGraphTestCase {
         try analyze(retainPublic: true, additionalFilesToIndex: [clangSourcePath, objcSourcePath]) {
             assertReferenced(.class("FixtureClass240")) {
                 // Named only in C and Objective-C string literals, which the index cannot show as a
-                // reference to this declaration; they are runtime lookups like Swift literals.
+                // reference to this declaration. No selector or key resolves to a pure-Swift method, so
+                // this one stays certain, while a Swift class, which `NSClassFromString` can load, is looked up by the literal.
                 self.assertNotReferenced(.functionMethodInstance("namedInClangLiteral()"))
-                if hasClangUnits {
-                    self.assertConfidence(.functionMethodInstance("namedInClangLiteral()"), .likely)
-                }
+                self.assertConfidence(.functionMethodInstance("namedInClangLiteral()"), .certain)
                 // A pure-Swift method named only by a bare Swift literal is not looked up by it.
                 self.assertNotReferenced(.functionMethodInstance("namedInSwiftLiteral()"))
                 self.assertConfidence(.functionMethodInstance("namedInSwiftLiteral()"), .certain)
+            }
+            assertNotReferenced(.class("FixtureClass240Loaded"))
+            if hasClangUnits {
+                assertConfidence(.class("FixtureClass240Loaded"), .likely)
             }
         }
     }

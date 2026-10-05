@@ -4,4 +4,5 @@
 - (NSString *)name {
     return @"namedInClangLiteral";
 }
+
 @end
