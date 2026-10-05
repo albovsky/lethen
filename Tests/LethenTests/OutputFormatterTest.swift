@@ -207,7 +207,7 @@ final class OutputFormatterTest: XCTestCase {
     func testGitHubActionsFormatEscapesMessage() throws {
         let likely = ScanResult(declaration: declaration(name: "Foo\r\n::error::100%", kind: .class, usr: "s:Foo"), annotation: .unused, confidence: .likely, confidenceReason: "50% of\nit")
         let output = try format(.githubActions, [likely], relativeResults: true)
-        XCTAssertEqual(output, "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Foo%0D%0A::error::100%25' [likely: 50%25 of%0Ait]")
+        XCTAssertEqual(output, "::notice file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Foo%0D%0A::error::100%25' [likely: 50%25 of%0Ait]")
         XCTAssertEqual(output.components(separatedBy: "\n").count, 1)
     }
 
@@ -224,10 +224,38 @@ final class OutputFormatterTest: XCTestCase {
         let output = try format(.githubActions, [unusedClass(), likely, redundantProtocol(inherited: ["Q", "R"])], relativeResults: true)
         XCTAssertEqual(output.components(separatedBy: "\n"), [
             "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Foo'",
-            "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Bar' [likely: its name appears in a string literal]",
+            "::notice file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Bar' [likely: its name appears in a string literal]",
             "::warning file=Sources/A.swift,line=3,col=5,title=redundantProtocol::Redundant protocol 'P' (never used as an existential type)",
             "::warning file=Sources/B.swift,line=9,col=1,title=redundantProtocol::Redundant protocol conformance 'P' (replace with 'Q, R')",
         ])
+    }
+
+    func testGitHubActionsFormatAnnotatesLikelyResultsAsNotices() throws {
+        let likely = ScanResult(declaration: declaration(name: "Bar", kind: .class, usr: "s:Bar"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        let output = try format(.githubActions, [unusedClass(), likely], relativeResults: true)
+        XCTAssertEqual(output.components(separatedBy: "\n"), [
+            "::warning file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Foo'",
+            "::notice file=Sources/A.swift,line=3,col=5,title=unused::Unused class 'Bar' [likely: its name appears in a string literal]",
+        ])
+    }
+
+    func testCheckstyleFormatReportsLikelyResultsAsInfo() throws {
+        let likely = ScanResult(declaration: declaration(name: "Bar", kind: .class, usr: "s:Bar"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        let output = try format(.checkstyle, [unusedClass(), likely], relativeResults: true)
+        XCTAssertTrue(output.contains("severity=\"warning\" message=\"Unused class &apos;Foo&apos;"))
+        XCTAssertTrue(output.contains("severity=\"info\" message=\"Unused class &apos;Bar&apos; [likely: its name appears in a string literal]"))
+    }
+
+    func testCodeClimateFormatReportsLikelyResultsAsMinor() throws {
+        let likely = ScanResult(declaration: declaration(name: "Bar", kind: .class, usr: "s:Bar"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        let objects = try json(format(.codeclimate, [unusedClass(), likely], relativeResults: true))
+        XCTAssertEqual(objects.compactMap { $0["severity"] as? String }, ["major", "minor"])
+    }
+
+    func testGitLabCodeQualityFormatKeepsInfoForLikelyResults() throws {
+        let likely = ScanResult(declaration: declaration(name: "Bar", kind: .class, usr: "s:Bar"), annotation: .unused, confidence: .likely, confidenceReason: "its name appears in a string literal")
+        let objects = try json(format(.gitlabCodeQuality, [unusedClass(), likely], relativeResults: true))
+        XCTAssertEqual(objects.compactMap { $0["severity"] as? String }, ["info", "info"])
     }
 
     func testCheckstyleFormatEscapesMarkup() throws {

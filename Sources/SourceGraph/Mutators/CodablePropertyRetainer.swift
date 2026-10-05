@@ -58,7 +58,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         // A class is covered like a struct; a subclass of an Encodable class is not, as Swift does not
         // synthesize `encode(to:)` for it.
         for type in graph.declarations(ofKinds: [.struct, .class]) {
-            guard graph.isEncodable(type), !hasEncodableSuperclass(type), !inheritsCustomEncoder(type) else { continue }
+            guard graph.isEncodable(type), !hasEncodableSuperclass(type), !inheritsCustomEncoder(type), !hasProtocolExtensionEncoder(type) else { continue }
 
             let extensions = graph.extensions[type] ?? []
             let members = type.declarations.union(extensions.flatMap(\.declarations))
@@ -83,18 +83,64 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     /// A class that declares `Encodable` but inherits `encode(to:)` from a superclass that does not conform
     /// uses that method as its witness, so nothing is synthesized.
-    private func inheritsCustomEncoder(_ type: Declaration, seen: Set<Declaration> = []) -> Bool {
+    private func inheritsCustomEncoder(_ type: Declaration, seen: Set<Declaration> = [], from subclass: Declaration? = nil) -> Bool {
+        // Visibility is judged for the conforming class, not for the intermediate class the walk has reached.
+        let subclass = subclass ?? type
         for reference in type.immediateInheritedTypeReferences where reference.declarationKind == .class {
             guard let superclass = graph.declaration(withUsr: reference.usr), !seen.contains(superclass) else { continue }
 
             let members = superclass.declarations.union((graph.extensions[superclass] ?? []).flatMap(\.declarations))
-            if members.contains(where: { isCustomCoder($0, named: "encode(to:)", parameterType: "Encoder") })
-                || inheritsCustomEncoder(superclass, seen: seen.union([type]))
+            // A private method is not inherited, and a fileprivate one only by a subclass of the same file.
+            if members.contains(where: { isInheritableCustomEncoder($0, by: subclass) })
+                || inheritsCustomEncoder(superclass, seen: seen.union([type]), from: subclass)
             {
                 return true
             }
         }
         return false
+    }
+
+    private func isInheritableCustomEncoder(_ member: Declaration, by subclass: Declaration) -> Bool {
+        guard member.accessibility.value != .private else { return false }
+
+        return isWitnessCandidate(member, for: subclass)
+    }
+
+    /// An instance `encode(to:)` taking the coder, visible to the type: a private or fileprivate member is
+    /// taken as visible only from the same file. A static overload is not the witness.
+    private func isWitnessCandidate(_ member: Declaration, for type: Declaration) -> Bool {
+        guard member.kind == .functionMethodInstance,
+              isCustomCoder(member, named: "encode(to:)", parameterType: "Encoder") else { return false }
+
+        switch member.accessibility.value {
+        case .private, .fileprivate: return member.location.file == type.location.file
+        default: return true
+        }
+    }
+
+    /// An `encode(to:)` supplied by an extension of a protocol the type conforms to, such as
+    /// `protocol P: Encodable {}` with `extension P { func encode(to:) }`, is the witness, so nothing is
+    /// synthesized. The members read are those of the protocol's extension declarations, which
+    /// `ProtocolExtensionReferenceBuilder` links from the protocol declaration and does not fold into it.
+    private func hasProtocolExtensionEncoder(_ type: Declaration) -> Bool {
+        graph.inheritedTypeReferences(of: type).contains { reference in
+            guard reference.declarationKind == .protocol, let proto = graph.declaration(withUsr: reference.usr) else { return false }
+
+            return proto.references.contains { extensionReference in
+                guard extensionReference.declarationKind == .extensionProtocol,
+                      let extensionDeclaration = graph.declaration(withUsr: extensionReference.usr) else { return false }
+
+                // Only an extension whose conformance requirements the type meets applies, and its member must be
+                // visible enough to witness the requirement.
+                let inherited = Set(graph.inheritedTypeReferences(of: type).map(\.usr))
+                let applies = extensionDeclaration.references
+                    .filter { $0.role == .genericRequirementType }
+                    .allSatisfy { inherited.contains($0.usr) }
+                guard applies else { return false }
+
+                return extensionDeclaration.declarations.contains { isWitnessCandidate($0, for: type) }
+            }
+        }
     }
 
     private func hasEncodableSuperclass(_ type: Declaration) -> Bool {
@@ -129,8 +175,11 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
         // Synthesized encoding writes every stored property, including a constant with an initial value.
-        let classify: (Declaration, Declaration) -> PropertyUse = { _, property in
-            !property.isImplicit && !property.hasAccessorBody ? .read : .skip
+        // An explicit CodingKeys enum limits the encoded properties, as it does the decoded ones.
+        let classify: (Declaration, Declaration) -> PropertyUse = { [self] type, property in
+            guard !property.isImplicit, !property.hasAccessorBody, !isOmittedByCodingKeys(property, in: type) else { return .skip }
+
+            return .read
         }
         markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classify)
     }
@@ -459,27 +508,27 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         return isCodingKey ? keys : nil
     }
 
+    /// Whether an explicit `CodingKeys` enum, or a typealias of one, leaves the property out of the synthesized
+    /// coding. A type whose keys cannot be resolved codes nothing that is modeled.
+    private func isOmittedByCodingKeys(_ property: Declaration, in type: Declaration) -> Bool {
+        let extensions = graph.extensions[type] ?? []
+        let nested = type.declarations.union(extensions.flatMap(\.declarations))
+        guard let codingKeys = nested.first(where: { $0.name == "CodingKeys" && !$0.isImplicit && [.enum, .typealias].contains($0.kind) }) else { return false }
+
+        // A typealias whose target is outside the scan cannot be inspected: every property stays eligible.
+        if codingKeys.kind == .typealias, resolveTypealias(codingKeys).map({ $0.declaration == nil }) == true { return false }
+        guard let keys = codingKeyEnum(for: codingKeys) else { return true }
+
+        return !keys.declarations.contains { $0.kind == .enumelement && $0.name == property.name }
+    }
+
     /// How the synthesized `init(from:)` treats a stored property.
     private func decodeUse(of property: Declaration, in type: Declaration) -> PropertyUse {
         // Computed properties, lazy properties and a `let` with an initial value are never decoded: the
         // synthesized initializer does not assign them.
         guard !property.isImplicit, !property.hasAccessorBody, !property.isInitializedConstant,
               !property.modifiers.contains("lazy") else { return .skip }
-
-        // An explicit CodingKeys enum, or a typealias of one, limits the properties the synthesized initializer decodes.
-        let extensions = graph.extensions[type] ?? []
-        let nested = type.declarations.union(extensions.flatMap(\.declarations))
-        if let codingKeys = nested.first(where: { $0.name == "CodingKeys" && !$0.isImplicit && [.enum, .typealias].contains($0.kind) }) {
-            // A typealias whose target is outside the scan cannot be inspected: every property stays eligible.
-            let external = codingKeys.kind == .typealias && resolveTypealias(codingKeys).map { $0.declaration == nil } == true
-            if !external {
-                guard let keys = codingKeyEnum(for: codingKeys) else { return .skip }
-
-                if !keys.declarations.contains(where: { $0.kind == .enumelement && $0.name == property.name }) {
-                    return .skip
-                }
-            }
-        }
+        guard !isOmittedByCodingKeys(property, in: type) else { return .skip }
 
         // `declaredType` is sanitized of `?` and `!`, so read optionality from the property's mangled
         // type: `Int?`, `Int!` and `Optional<Int>` all end in the `Sg` sugar before the `vp` suffix. An optional

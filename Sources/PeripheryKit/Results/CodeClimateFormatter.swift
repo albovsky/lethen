@@ -36,7 +36,7 @@ final class CodeClimateFormatter: OutputFormatter {
             let object: [AnyHashable: Any] = [
                 "description": description,
                 "fingerprint": fingerprint,
-                "severity": "major",
+                "severity": result.confidence == .likely ? "minor" : "major",
                 "location": locationDict,
             ]
 
