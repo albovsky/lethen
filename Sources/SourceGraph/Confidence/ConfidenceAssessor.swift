@@ -74,8 +74,8 @@ public final class ConfidenceAssessor {
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
                 return !isDistinct(receiver: receiver, from: enclosing)
             }
-            if let extended = unscannedExtendedTypeName(of: declaration) {
-                return !isDistinct(receiver: receiver, fromUnscanned: extended)
+            if let extended = unscannedExtendedType(of: declaration) {
+                return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
             }
         }
         return true
@@ -84,7 +84,7 @@ public final class ConfidenceAssessor {
     /// The name of the concrete type, `UIColor` or `String`, that a declaration of an extension adds a member
     /// to when the scan does not declare that type; `nil` for any other declaration. An extension of a protocol
     /// is not one, since every conforming type reaches its members.
-    private func unscannedExtendedTypeName(of declaration: Declaration) -> String? {
+    private func unscannedExtendedType(of declaration: Declaration) -> (name: String, isClass: Bool)? {
         var current = declaration.parent
         while let parent = current {
             if Self.typeKinds.contains(parent.kind) { return nil }
@@ -93,7 +93,7 @@ public final class ConfidenceAssessor {
                 guard [.extensionClass, .extensionStruct, .extensionEnum].contains(parent.kind) else { return nil }
 
                 let name = SourceGraph.baseName(of: parent.name)
-                return name.split(separator: ".").last.map(String.init) ?? name
+                return (name.split(separator: ".").last.map(String.init) ?? name, parent.kind == .extensionClass)
             }
             current = parent.parent
         }
@@ -105,13 +105,15 @@ public final class ConfidenceAssessor {
     /// SDK's may be, or a subclass of it, which a class of the scan may be. Any other name is another type, or a
     /// function that is called like one, as `DDLogDebug("...")` is. A name the scan does not declare could also be an unscanned
     /// subclass or alias this does not list; that is accepted, since ruling out every such name would leave nothing to narrow.
-    private func isDistinct(receiver: String, fromUnscanned extended: String) -> Bool {
+    private func isDistinct(receiver: String, fromUnscanned extended: String, isClass: Bool) -> Bool {
         if receiver == extended { return false }
 
         let receivers = typeDeclarationsByName[receiver, default: []]
         // A type of the scan with an SDK alias's name shadows the alias.
         if receivers.isEmpty, Self.sdkTypeAliases[receiver] == extended { return false }
-        return receivers.allSatisfy { ![.class, .typealias, .protocol, .associatedtype, .genericTypeParam].contains($0.kind) }
+        // Only a class can subclass an unscanned class; a struct or enum has no subclasses.
+        let compatible: Set<Declaration.Kind> = isClass ? [.class, .typealias, .protocol, .associatedtype, .genericTypeParam] : [.typealias, .protocol, .associatedtype, .genericTypeParam]
+        return receivers.allSatisfy { !compatible.contains($0.kind) }
     }
 
     /// The SDK's type aliases for a type another name also spells, which an unscanned extension adds members to

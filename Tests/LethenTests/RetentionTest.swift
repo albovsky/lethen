@@ -2315,6 +2315,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertConfidence(.functionConstructor("init(fixtureHex6:alpha:)"), .certain)
                 self.assertConfidence(.functionConstructor("init(fixtureOtherTint6:)"), .certain)
                 self.assertConfidence(.functionConstructor("init(_:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(fixtureClassTag6:)"), .certain)
                 self.assertConfidence(.functionConstructor("init(fixtureTint6:)"), .likely)
             }
             assertReferenced(.extensionStruct("Double")) {

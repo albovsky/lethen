@@ -84,6 +84,8 @@ extension URL {
     init(fixtureOtherTint6 _: Int) { self.init(string: "x")! }
     // A skipped `FixtureLog6("x")` is a call of a function, `DDLogDebug("...")` in Wikipedia, and constructs no `URL`.
     init(_ fixtureSeed6: Int) { self.init(string: "x")! }
+    // A skipped `FixtureScannedClass6(fixtureClassTag6:)` constructs a class of the scan, which is not a `URL`.
+    init(fixtureClassTag6 _: Int) { self.init(string: "x")! }
 }
 
 extension Int32 {
@@ -96,6 +98,11 @@ struct CFloat {}
 
 extension Float {
     init(_ fixtureSeed6: Substring) { self = 0 }
+}
+
+// A class of the scan cannot be `URL`, a struct, nor a subclass of it.
+class FixtureScannedClass6 {
+    init(fixtureClassTag6 _: Int) {}
 }
 
 extension Double {
@@ -112,6 +119,7 @@ public func fixtureExternalExtensions6() {
         FixtureLog6("x")
         _ = CInt(Substring("1"))
         _ = CFloat(Substring("1"))
+        _ = FixtureScannedClass6(fixtureClassTag6: 1)
         _ = TimeInterval(Substring("1"))
     #endif
 }
