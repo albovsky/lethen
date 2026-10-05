@@ -115,9 +115,23 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
     /// The scheme's Test configuration builds for testing and the others build its Run action; the tests do not
     /// compile in every configuration, and are indexed once.
     func testTheSchemesTestConfigurationBuildsForTestingAndTheOthersBuild() throws {
+        // A build setting of its own keys these builds apart from any completed one a real scan left, which a rescan
+        // would reuse without running xcodebuild.
+        let buildArguments = ["LETHEN_TEST_ACTIONS=\(UUID().uuidString)"]
+        defer {
+            let xcodebuild = Xcodebuild(shell: RecordingShell(), logger: Self.logger)
+            for scheme in ["ConfigurationsProject", "ReleaseTests"] {
+                for name in ["Debug", "Release"] {
+                    try? xcodebuild.removeDerivedData(for: Self.project(), allSchemes: [scheme], configuration: name, buildArguments: buildArguments)
+                }
+            }
+        }
+
         func actions(_ scheme: String, _ configurations: [String]) throws -> [String: String] {
             let shell = RecordingShell()
-            let driver = try Self.recordingDriver(Self.configuration(configurations, scheme: scheme), shell: shell)
+            let configuration = Self.configuration(configurations, scheme: scheme)
+            configuration.buildArguments = buildArguments
+            let driver = try Self.recordingDriver(configuration, shell: shell)
             try driver.build()
             return try Dictionary(uniqueKeysWithValues: shell.streamed.map { command in
                 let index = try XCTUnwrap(command.firstIndex(of: "-configuration"))
@@ -343,15 +357,18 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         // A build setting of its own keys this copy's DerivedData apart from the fixture's.
         let buildArguments = ["LETHEN_TEST_COPY=\(UUID().uuidString)"]
         let xcodebuild = Xcodebuild(shell: Self.shell, logger: Self.logger)
+        // The scheme tests in Release, so Release builds for testing alone and with Debug alike and its completion mark
+        // is the same in both scans; Debug builds the Run action and stays as it was.
+        let scheme = "ReleaseTests"
         defer {
             for name in ["Debug", "Release"] {
-                try? xcodebuild.removeDerivedData(for: Self.project(at: project), allSchemes: ["ConfigurationsProject"], configuration: name, buildArguments: buildArguments)
+                try? xcodebuild.removeDerivedData(for: Self.project(at: project), allSchemes: [scheme], configuration: name, buildArguments: buildArguments)
             }
             try? FileManager.default.removeItem(atPath: root.string)
         }
 
         func configuration(_ configurations: [String], skipBuild: Bool) -> Configuration {
-            let configuration = Self.configuration(configurations)
+            let configuration = Self.configuration(configurations, scheme: scheme)
             configuration.buildArguments = buildArguments
             configuration.skipBuild = skipBuild
             return configuration
@@ -376,7 +393,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try (text + "\n// edited after indexing\n").write(to: conditional.url, atomically: true, encoding: .utf8)
         try Self.build(projectPath: project, configuration: configuration(["Release"], skipBuild: false))
 
-        let debugStore = try xcodebuild.indexStorePath(project: Self.project(at: project), schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: buildArguments)
+        let debugStore = try xcodebuild.indexStorePath(project: Self.project(at: project), schemes: [scheme], configuration: "Debug", buildArguments: buildArguments)
         XCTAssertThrowsError(try project.chdir {
             let driver = try XcodeProjectDriver(projectPath: project, configuration: skipBuild, shell: Self.shell, logger: Self.logger)
             _ = try driver.plan(logger: Self.logger.contextualized(with: "index"))
