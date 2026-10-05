@@ -135,6 +135,22 @@ rewritten or added still reuses, and an edit, an added or deleted source, a rewr
 file or a unit older than its file each bring the build back. On Wikipedia reuse saves the 17 s build of a
 no-change rescan, which is 24 s without it.
 
+### Two configurations
+
+The same app with `--configurations Test Debug` (Lethen at 0b95cfb, `swift build -c release`, same Xcode and
+destination), one scan per row, with the single-configuration figures above beside them:
+
+| Scan | `--configurations Test Debug` | Single configuration |
+|---|---|---|
+| `--clean-build` (clean scan, each configuration in its own DerivedData) | 349.4 s | 199.7 s |
+| Rescan 1 (the `swiftlint --fix` phase edited 14 sources, so it builds) | 138.7 s | 147.2 s |
+| Rescan 2 | 7.6 s | 7.1 s |
+| Rescan 3 | 7.8 s | 7.0 s |
+
+Rescans 2 and 3 run no `xcodebuild`. The first clean two-configuration scan ran with a cold DerivedData for both
+configurations and no other load; the corpus scan after it took 2 min 23 s because it reused the DerivedData of the
+Debug build. The nightly `Precision corpus` job has `timeout-minutes: 60` and scans from a fresh checkout.
+
 ## Determinism
 
 The same app's index was scanned six times with an explicit `--index-store-path`. Before

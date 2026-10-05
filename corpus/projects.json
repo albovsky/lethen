@@ -22,11 +22,18 @@
     "url": "https://github.com/wikimedia/wikipedia-ios.git",
     "commit": "599e4a634b8f24f324c9def932b75f03d57b87e7",
     "kind": "xcode",
+    "setup": [
+      "scripts/setup_bundle_id",
+      "ci"
+    ],
     "arguments": [
       "--project",
       "Wikipedia.xcodeproj",
       "--schemes",
       "Wikipedia",
+      "--configurations",
+      "Test",
+      "Debug",
       "--",
       "-destination",
       "generic/platform=iOS Simulator"

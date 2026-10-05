@@ -56,7 +56,7 @@ CI scan gates pass `--disable-update-check`, so this never affected scan validat
 ## Precision corpus
 
 `corpus/projects.json` pins open-source projects that every analysis change re-scans:
-`corpus/scan.sh <name>` scans one at its pinned commit and canonicalizes the findings,
+`corpus/scan.sh <name>` scans one at its pinned commit and canonicalizes the findings (a project entry may set `"setup"`, an argv array run inside the checkout after the pinned commit is checked out and before the scan, such as `["scripts/setup_bundle_id", "ci"]` for Wikipedia iOS; a failing setup fails the run),
 `corpus/diff.sh <name>` compares them with the committed expectation in `corpus/expected/`, and
 `corpus/accept.sh <name>` records a new expectation once the diff has been adjudicated. Each expected row is `[path, line, column, kind, name, hints, ids, confidence]`; the scorecard reports precision over the sampled `certain` rows beside the all-rows figure, and `corpus/diff.sh` compares an older expectation without the confidence field. A project
 that fails to clone, build, or scan, or that yields no findings, fails the run. The expectations
