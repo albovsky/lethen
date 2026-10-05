@@ -12,6 +12,16 @@
 		BB8BC2FA4326E7FA55B451FD /* ConfigurationsProjectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C13CBB10C5FE117F5FA0672B /* ConfigurationsProjectTests.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		7D2A41C95E0B8F36A1C4D720 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 80338C7C3D47845267D8C355 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6B4910E03A8E8DEE34391B54;
+			remoteInfo = ConfigurationsProject;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		0309825AF95471F9EF88FD8A /* Conditional.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conditional.swift; sourceTree = "<group>"; };
 		1F12F5507E8715ADCA9215B5 /* ConfigurationsProject */ = {isa = PBXFileReference; includeInIndex = 0; path = ConfigurationsProject; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -85,6 +95,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				E4B07A5C2D913F68B0A1C537 /* PBXTargetDependency */,
 			);
 			name = ConfigurationsProjectTests;
 			packageProductDependencies = (
@@ -143,6 +154,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E4B07A5C2D913F68B0A1C537 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6B4910E03A8E8DEE34391B54 /* ConfigurationsProject */;
+			targetProxy = 7D2A41C95E0B8F36A1C4D720 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0399770213FC18D983770076 /* Release */ = {

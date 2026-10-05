@@ -38,16 +38,16 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         assertReferenced(.functionFree("calledOnlyInRelease()"))
     }
 
-    /// The tests build with `build-for-testing` in Debug, where the scheme tests, so `calledOnlyFromTests()` is
+    /// The tests build with `build-for-testing` in Debug, where the scheme tests, so `ReferencedOnlyFromTests` is
     /// referenced and the test target counts as scanned although Release only builds the Run action.
     func testTestTargetsAreScannedFromTheConfigurationThatBuildsThem() throws {
         let configuration = Self.configuration(["Debug", "Release"])
         try Self.build(projectPath: ConfigurationsProjectPath, configuration: configuration)
         try Self.index(configuration: configuration)
-        assertReferenced(.functionFree("calledOnlyFromTests()"))
+        assertReferenced(.struct("ReferencedOnlyFromTests"))
         XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
         // The tests are not built in Release, which only builds the Run action, so what they use only there is unused.
-        assertNotReferenced(.functionFree("calledOnlyFromReleaseTests()"))
+        assertNotReferenced(.struct("ReferencedOnlyFromReleaseTests"))
     }
 
     /// The control: the only listed configuration builds for testing, so the tests still build.
@@ -55,8 +55,8 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         let configuration = Self.configuration(["Release"])
         try Self.build(projectPath: ConfigurationsProjectPath, configuration: configuration)
         try Self.index(configuration: configuration)
-        assertReferenced(.functionFree("calledOnlyFromTests()"))
-        assertReferenced(.functionFree("calledOnlyFromReleaseTests()"))
+        assertReferenced(.struct("ReferencedOnlyFromTests"))
+        assertReferenced(.struct("ReferencedOnlyFromReleaseTests"))
         XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
     }
 

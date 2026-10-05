@@ -8,5 +8,5 @@ func conditionalEntry() {
         calledOnlyInRelease()
     #endif
 }
-func calledOnlyFromTests() {}
-func calledOnlyFromReleaseTests() {}
+struct ReferencedOnlyFromTests {}
+struct ReferencedOnlyFromReleaseTests {}
