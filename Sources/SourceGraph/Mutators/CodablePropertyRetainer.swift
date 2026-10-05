@@ -506,7 +506,6 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         // synthesized initializer does not assign them.
         guard !property.isImplicit, !property.hasAccessorBody, !property.isInitializedConstant,
               !property.modifiers.contains("lazy") else { return .skip }
-
         guard !isOmittedByCodingKeys(property, in: type) else { return .skip }
 
         // `declaredType` is sanitized of `?` and `!`, so read optionality from the property's mangled
