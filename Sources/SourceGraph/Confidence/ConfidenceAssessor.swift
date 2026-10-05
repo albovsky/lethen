@@ -521,7 +521,6 @@ public final class ConfidenceAssessor {
     /// is `load:from:`. `nil` for a USR that is not an Objective-C one, and for a class, protocol or category.
     static func objcSelector(fromUSR usr: String) -> String? {
         guard usr.hasPrefix("c:"), let close = usr.lastIndex(of: ")"), let open = usr[..<close].lastIndex(of: "(") else { return nil }
-
         guard ["im", "cm", "py", "cpy"].contains(usr[usr.index(after: open) ..< close]) else { return nil }
 
         let selector = usr[usr.index(after: close)...]
