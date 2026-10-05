@@ -70,11 +70,53 @@ public final class ConfidenceAssessor {
         {
             return false
         }
-        if declaration.kind != .functionFree, let receiver = spelling.receiver, let enclosing = enclosingTypeDeclaration(of: declaration) {
-            return !isDistinct(receiver: receiver, from: enclosing)
+        if declaration.kind != .functionFree, let receiver = spelling.receiver {
+            if let enclosing = enclosingTypeDeclaration(of: declaration) {
+                return !isDistinct(receiver: receiver, from: enclosing)
+            }
+            if let extended = unscannedExtendedTypeName(of: declaration) {
+                return !isDistinct(receiver: receiver, fromUnscanned: extended)
+            }
         }
         return true
     }
+
+    /// The name of the concrete type, `UIColor` or `String`, that a declaration of an extension adds a member
+    /// to when the scan does not declare that type; `nil` for any other declaration. An extension of a protocol
+    /// is not one, since every conforming type reaches its members.
+    private func unscannedExtendedTypeName(of declaration: Declaration) -> String? {
+        var current = declaration.parent
+        while let parent = current {
+            if Self.typeKinds.contains(parent.kind) { return nil }
+
+            if parent.kind.isExtensionKind {
+                guard [.extensionClass, .extensionStruct, .extensionEnum].contains(parent.kind) else { return nil }
+
+                let name = SourceGraph.baseName(of: parent.name)
+                return name.split(separator: ".").last.map(String.init) ?? name
+            }
+            current = parent.parent
+        }
+        return nil
+    }
+
+    /// Whether a use spelled through the type `receiver` cannot reach a member of `extended`, a type the scan does
+    /// not declare. It can when it is that type, a type alias of it, which a type alias of the scan or one of the
+    /// SDK's may be, or a subclass of it, which a class of the scan may be. Any other name is another type, or a
+    /// function that is called like one, as `DDLogDebug("...")` is.
+    private func isDistinct(receiver: String, fromUnscanned extended: String) -> Bool {
+        if receiver == extended || Self.sdkTypeAliases[receiver] == extended { return false }
+
+        let receivers = typeDeclarationsByName[receiver, default: []]
+        return receivers.allSatisfy { ![.class, .typealias, .protocol, .associatedtype, .genericTypeParam].contains($0.kind) }
+    }
+
+    /// The SDK's type aliases for a type another name also spells, which an unscanned extension adds members to
+    /// under either name.
+    private static let sdkTypeAliases: [String: String] = [
+        "TimeInterval": "Double", "CFTimeInterval": "Double", "CFAbsoluteTime": "Double", "Float64": "Double",
+        "Float32": "Float", "NSInteger": "Int", "NSUInteger": "UInt",
+    ]
 
     /// The argument labels of a function's declared name, `_` for an unlabeled parameter: `["title", "_"]` for
     /// `show(title:_:)`. `nil` for a name that spells none.
