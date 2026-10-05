@@ -91,6 +91,8 @@ extension URL {
 extension Int32 {
     // A skipped `CInt(...)` constructs an `Int32`: `CInt` is another name for it.
     init(_ fixtureSeed6: Substring) { self = 0 }
+    // A skipped `CLong(...)` constructs an `Int32` where `long` is 32 bits, as on Windows.
+    init(fixtureLong6 _: Substring) { self = 0 }
 }
 
 // Shadows the SDK's `CFloat`, so a skipped `CFloat(...)` constructs this and no `Float`.
@@ -118,6 +120,7 @@ public func fixtureExternalExtensions6() {
         _ = String(fixtureOtherTint6: 1)
         FixtureLog6("x")
         _ = CInt(Substring("1"))
+        _ = CLong(fixtureLong6: Substring("1"))
         _ = CFloat(Substring("1"))
         _ = FixtureScannedClass6(fixtureClassTag6: 1)
         _ = TimeInterval(Substring("1"))

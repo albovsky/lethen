@@ -110,20 +110,23 @@ public final class ConfidenceAssessor {
 
         let receivers = typeDeclarationsByName[receiver, default: []]
         // A type of the scan with an SDK alias's name shadows the alias.
-        if receivers.isEmpty, Self.sdkTypeAliases[receiver] == extended { return false }
+        if receivers.isEmpty, Self.sdkTypeAliases[receiver]?.contains(extended) == true { return false }
         // Only a class can subclass an unscanned class; a struct or enum has no subclasses.
         let compatible: Set<Declaration.Kind> = isClass ? [.class, .typealias, .protocol, .associatedtype, .genericTypeParam] : [.typealias, .protocol, .associatedtype, .genericTypeParam]
         return receivers.allSatisfy { !compatible.contains($0.kind) }
     }
 
-    /// The SDK's type aliases for a type another name also spells, which an unscanned extension adds members to
-    /// under either name.
-    private static let sdkTypeAliases: [String: String] = [
-        "TimeInterval": "Double", "CFTimeInterval": "Double", "CFAbsoluteTime": "Double", "Float64": "Double",
-        "Float32": "Float", "NSInteger": "Int", "NSUInteger": "UInt",
-        "CInt": "Int32", "CUnsignedInt": "UInt32", "CShort": "Int16", "CUnsignedShort": "UInt16", "CLong": "Int", "CUnsignedLong": "UInt",
-        "CLongLong": "Int64", "CUnsignedLongLong": "UInt64", "CChar": "Int8", "CUnsignedChar": "UInt8", "CSignedChar": "Int8",
-        "CFloat": "Float", "CDouble": "Double", "CBool": "Bool", "CWideChar": "Unicode.Scalar", "CChar16": "UInt16", "CChar32": "Unicode.Scalar",
+    /// The types each SDK type alias can stand for, which an unscanned extension adds members to under either name.
+    /// An alias of a C type is platform-dependent, `CLong` is `Int` where `long` is 64 bits and `Int32` on Windows, and
+    /// the skipped branch is for another platform than the scanned one, so each lists every type it can be.
+    private static let sdkTypeAliases: [String: Set<String>] = [
+        "TimeInterval": ["Double"], "CFTimeInterval": ["Double"], "CFAbsoluteTime": ["Double"], "Float64": ["Double"],
+        "Float32": ["Float"], "NSInteger": ["Int"], "NSUInteger": ["UInt"],
+        "CInt": ["Int32"], "CUnsignedInt": ["UInt32"], "CShort": ["Int16"], "CUnsignedShort": ["UInt16"],
+        "CLong": ["Int", "Int32"], "CUnsignedLong": ["UInt", "UInt32"], "CLongLong": ["Int64"], "CUnsignedLongLong": ["UInt64"],
+        "CChar": ["Int8", "UInt8"], "CUnsignedChar": ["UInt8"], "CSignedChar": ["Int8"],
+        "CFloat": ["Float"], "CDouble": ["Double"], "CBool": ["Bool"],
+        "CWideChar": ["Scalar", "UInt16", "Int32"], "CChar16": ["UInt16"], "CChar32": ["Scalar"],
     ]
 
     /// The argument labels of a function's declared name, `_` for an unlabeled parameter: `["title", "_"]` for
