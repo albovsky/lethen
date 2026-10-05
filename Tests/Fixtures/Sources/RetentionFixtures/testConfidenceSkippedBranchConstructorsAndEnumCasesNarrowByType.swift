@@ -91,6 +91,13 @@ extension Int32 {
     init(_ fixtureSeed6: Substring) { self = 0 }
 }
 
+// Shadows the SDK's `CFloat`, so a skipped `CFloat(...)` constructs this and no `Float`.
+struct CFloat {}
+
+extension Float {
+    init(_ fixtureSeed6: Substring) { self = 0 }
+}
+
 extension Double {
     // A skipped `TimeInterval(1)` constructs a `Double`: `TimeInterval` is another name for it.
     init(_ fixtureSeed6: Substring) { self = 0 }
@@ -104,6 +111,7 @@ public func fixtureExternalExtensions6() {
         _ = String(fixtureOtherTint6: 1)
         FixtureLog6("x")
         _ = CInt(Substring("1"))
+        _ = CFloat(Substring("1"))
         _ = TimeInterval(Substring("1"))
     #endif
 }

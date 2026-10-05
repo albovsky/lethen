@@ -106,9 +106,11 @@ public final class ConfidenceAssessor {
     /// function that is called like one, as `DDLogDebug("...")` is. A name the scan does not declare could also be an unscanned
     /// subclass or alias this does not list; that is accepted, since ruling out every such name would leave nothing to narrow.
     private func isDistinct(receiver: String, fromUnscanned extended: String) -> Bool {
-        if receiver == extended || Self.sdkTypeAliases[receiver] == extended { return false }
+        if receiver == extended { return false }
 
         let receivers = typeDeclarationsByName[receiver, default: []]
+        // A type of the scan with an SDK alias's name shadows the alias.
+        if receivers.isEmpty, Self.sdkTypeAliases[receiver] == extended { return false }
         return receivers.allSatisfy { ![.class, .typealias, .protocol, .associatedtype, .genericTypeParam].contains($0.kind) }
     }
 

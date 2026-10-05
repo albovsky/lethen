@@ -2320,6 +2320,10 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.extensionStruct("Double")) {
                 self.assertConfidence(.functionConstructor("init(_:)"), .likely)
             }
+            // The scan's own `CFloat` shadows the SDK alias, so the skipped `CFloat(...)` is not a `Float`.
+            assertReferenced(.extensionStruct("Float")) {
+                self.assertConfidence(.functionConstructor("init(_:)"), .certain)
+            }
             assertReferenced(.extensionStruct("Int32")) {
                 self.assertConfidence(.functionConstructor("init(_:)"), .likely)
             }
