@@ -12,6 +12,16 @@ final class StringLiteralAnalysisTest: XCTestCase {
         XCTAssertEqual(evidence.snapshot().literalTokens, ["loadData", "MyApp", "Cache"])
     }
 
+    func testSelectorShapedLiteralsAreKeptWholeAndNotSplit() throws {
+        let source = "let a = \"setTitle:forState:\"\nlet b = \"user.name\"\nlet c = \"a:b\"\nlet d = \":\"\n"
+        let (file, _, _, evidence) = makeIndexedFile(source: source)
+        try StringLiteralAnalysis(configuration: Configuration()).apply(to: file)
+
+        XCTAssertEqual(evidence.snapshot().literalSelectors, ["setTitle:forState:", "a:b"])
+        // A key path keeps matching by its pieces; a selector names no piece of itself.
+        XCTAssertEqual(evidence.snapshot().literalTokens, ["user", "name"])
+    }
+
     func testReflectionCallsRecordTheirSite() throws {
         let source = "let a = \"plain\"\nlet b = NSClassFromString(\"MyApp.Store\")\n"
         let (file, _, _, evidence) = makeIndexedFile(source: source)

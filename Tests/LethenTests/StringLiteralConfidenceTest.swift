@@ -55,9 +55,64 @@ final class StringLiteralConfidenceTest: XCTestCase {
         XCTAssertEqual(assessment.reason, "its name appears in a string passed to a Mirror label comparison at Dump.swift:9")
     }
 
-    func testObjectiveCFileLiteralKeepsNamingEveryDeclaration() {
-        // The call that receives an Objective-C file's literal is not read, so it may be `NSClassFromString`.
+    func testObjectiveCFileLiteralNamesAPureSwiftClassButNothingElse() {
+        // `NSClassFromString` loads any Swift class by its runtime name, so the literal may name it.
         XCTAssertEqual(assess(name: "Foo", kind: .class) { $0.addClangLiteralTokens(["Foo"]) }.confidence, .likely)
+        // No selector, key or key path resolves to a pure-Swift member, function, struct, enum or protocol.
+        XCTAssertEqual(assess(name: "title", kind: .varInstance) { $0.addClangLiteralTokens(["title"]) }.confidence, .certain)
+        XCTAssertEqual(assess(name: "load()") { $0.addClangLiteralTokens(["load"]) }.confidence, .certain)
+        XCTAssertEqual(assess(name: "Foo", kind: .struct) { $0.addClangLiteralTokens(["Foo"]) }.confidence, .certain)
+        XCTAssertEqual(assess(name: "Foo", kind: .enum) { $0.addClangLiteralTokens(["Foo"]) }.confidence, .certain)
+        XCTAssertEqual(assess(name: "Foo", kind: .protocol) { $0.addClangLiteralTokens(["Foo"]) }.confidence, .certain)
+        XCTAssertEqual(assess(name: "ready", kind: .enumelement) { $0.addClangLiteralTokens(["ready"]) }.confidence, .certain)
+        XCTAssertEqual(assess(name: "load()") { $0.addClangLiteralSelectors(["load:"]) }.confidence, .certain)
+    }
+
+    func testObjectiveCFileLiteralStillNamesWhatTheObjectiveCRuntimeReaches() {
+        XCTAssertEqual(assess(name: "title", kind: .varInstance, attributes: ["objc"]) { $0.addClangLiteralTokens(["title"]) }.confidence, .likely)
+        XCTAssertEqual(assess(name: "handleTap()", attributes: ["objc"]) { $0.addClangLiteralTokens(["handleTap"]) }.confidence, .likely)
+        let managed = assess(name: "title", kind: .varInstance, attributes: ["NSManaged"]) { $0.addClangLiteralTokens(["title"]) }
+        XCTAssertEqual(managed.confidence, .likely)
+    }
+
+    func testSelectorLiteralNamesTheMethodWhoseWholeSelectorItSpells() {
+        let usrs: Set<String> = ["s:swiftLoad", "c:@M@App@objc(cs)Store(im)load:from:"]
+        func method(_ selectors: Set<String>) -> ConfidenceAssessment {
+            assess(name: "load(_:from:)", usrs: usrs, attributes: ["objc"]) { $0.addClangLiteralSelectors(selectors) }
+        }
+        XCTAssertEqual(method(["load:from:"]), ConfidenceAssessment(confidence: .likely, reason: "its name appears in a string literal"))
+        XCTAssertEqual(method(["load:"]).confidence, .certain)
+        XCTAssertEqual(method(["setTitle:forState:"]).confidence, .certain)
+        // The same holds for a selector a Swift literal spells.
+        let swiftLiteral = assess(name: "load(_:from:)", usrs: usrs, attributes: ["objc"]) { $0.addLiteralSelectors(["load:from:"]) }
+        XCTAssertEqual(swiftLiteral.confidence, .likely)
+        let swiftPiece = assess(name: "load(_:from:)", usrs: usrs, attributes: ["objc"]) { $0.addLiteralSelectors(["load:"]) }
+        XCTAssertEqual(swiftPiece.confidence, .certain)
+    }
+
+    func testSelectorLiteralNamesAnObjcPropertyByItsGetterOrSetterOnly() {
+        func property(_ configure: @escaping (inout ConfidenceEvidence) -> Void) -> ConfidenceAssessment {
+            assess(name: "title", kind: .varInstance, attributes: ["objc"], evidence: configure)
+        }
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["setTitle:"]) }.confidence, .likely)
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["title"]) }.confidence, .likely)
+        XCTAssertEqual(property { $0.addClangLiteralTokens(["title"]) }.confidence, .likely)
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["setTitle:forState:"]) }.confidence, .certain)
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["title:"]) }.confidence, .certain)
+    }
+
+    func testNSManagedPropertyKeepsMatchingItsKey() {
+        let managed = assess(name: "title", kind: .varInstance, attributes: ["NSManaged"]) { $0.addClangLiteralTokens(["title"]) }
+        XCTAssertEqual(managed.confidence, .likely)
+        let selector = assess(name: "title", kind: .varInstance, attributes: ["NSManaged"]) { $0.addClangLiteralSelectors(["setTitle:"]) }
+        XCTAssertEqual(selector.confidence, .likely)
+    }
+
+    func testObjcMethodWithoutAClangUSRIsStillNamedByItsFirstSelectorPart() {
+        // Without a selector to compare with, the first part stands for it, which errs towards `likely`.
+        let named = assess(name: "load(_:from:)", attributes: ["objc"]) { $0.addClangLiteralSelectors(["load:from:"]) }
+        XCTAssertEqual(named.confidence, .likely)
+        XCTAssertEqual(assess(name: "load(_:from:)", attributes: ["objc"]) { $0.addClangLiteralSelectors(["other:"]) }.confidence, .certain)
     }
 
     func testUnrelatedLiteralsAndSitesLeaveAnyDeclarationCertain() {

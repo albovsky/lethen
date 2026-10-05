@@ -156,19 +156,39 @@ public final class ConfidenceAssessor {
 
     /// Why a string in the scanned sources may name the declaration at run time. Only the Objective-C runtime
     /// resolves a bare string to a declaration it exposes (a selector, a class name, a key-value coding key),
-    /// so a pure-Swift one counts only when a string is passed to a reflection API, or when an Objective-C
-    /// file holds the string, whose call is not read.
+    /// so a pure-Swift one counts only when a string is passed to a reflection API, or, for a class, when an
+    /// Objective-C file holds the string, whose call is not read: `NSClassFromString` loads any Swift class by
+    /// name, but no selector or key resolves to a pure-Swift function, member, struct, enum or protocol.
+    /// A selector-shaped literal (one with a colon) names only the method whose whole selector it spells.
     private func stringLiteralReason(for declaration: Declaration) -> String? {
         let names = Self.lookupNames(of: declaration)
         let isObjcReachable = declaration.isObjcAccessible
             || declaration.attributes.contains { ["objc", "objc.name", "objcMembers", "NSManaged"].contains($0.name) }
             || declaration.modifiers.contains("dynamic")
             || declaration.usrs.contains { Self.objcName(fromUSR: $0) != nil }
-        if !evidence.clangLiteralTokens.isDisjoint(with: names) || (isObjcReachable && !evidence.literalTokens.isDisjoint(with: names)) {
+        let clangTokensCount = isObjcReachable || declaration.kind == .class
+        if (clangTokensCount && !evidence.clangLiteralTokens.isDisjoint(with: names))
+            || (isObjcReachable && !evidence.literalTokens.isDisjoint(with: names))
+        {
             return "its name appears in a string literal"
+        }
+        let literalSelectors = evidence.literalSelectors.union(evidence.clangLiteralSelectors)
+        if isObjcReachable, !literalSelectors.isEmpty {
+            if let selectors = Self.objcSelectors(of: declaration, names: names) {
+                if !literalSelectors.isDisjoint(with: selectors) { return "its name appears in a string literal" }
+            } else if Self.selectorKinds.contains(declaration.kind) {
+                // No selector to compare with, so a literal whose first part is the name stays evidence.
+                let firstParts = Set(literalSelectors.compactMap { $0.split(separator: ":").first.map(String.init) })
+                if !firstParts.isDisjoint(with: names) { return "its name appears in a string literal" }
+            }
         }
         return names.compactMap { evidence.reflectionSites[$0] }.min().map { "its name appears in a string passed to \($0)" }
     }
+
+    private static let selectorKinds: Set<Declaration.Kind> = [
+        .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .functionConstructor,
+        .varClass, .varInstance, .varStatic,
+    ]
 
     private static let memberKinds: Set<Declaration.Kind> = [
         .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .varClass, .varInstance, .varStatic, .enumelement,
@@ -477,6 +497,35 @@ public final class ConfidenceAssessor {
             }
         }
         return names
+    }
+
+    /// The whole selectors the Objective-C runtime knows the declaration by: the selector of a method or
+    /// initializer from its clang USR (`load:from:`), and the getter and setter of a property (`title`,
+    /// `setTitle:`). `nil` for a kind no selector names, and for a method whose clang USR is missing, since
+    /// Swift's rules for naming it depend on its labels and `@objc(name)`.
+    static func objcSelectors(of declaration: Declaration, names: Set<String>) -> Set<String>? {
+        if declaration.kind.isVariableKind {
+            var selectors = names
+            for name in names {
+                if let first = name.first { selectors.insert("set" + first.uppercased() + name.dropFirst() + ":") }
+            }
+            return selectors
+        }
+        guard selectorKinds.contains(declaration.kind) else { return nil }
+
+        let selectors = Set(declaration.usrs.compactMap { objcSelector(fromUSR: $0) })
+        return selectors.isEmpty ? nil : selectors
+    }
+
+    /// The whole selector of the method, initializer or property a clang USR names: `c:objc(cs)Store(im)load:from:`
+    /// is `load:from:`. `nil` for a USR that is not an Objective-C one, and for a class, protocol or category.
+    static func objcSelector(fromUSR usr: String) -> String? {
+        guard usr.hasPrefix("c:"), let close = usr.lastIndex(of: ")"), let open = usr[..<close].lastIndex(of: "(") else { return nil }
+
+        guard ["im", "cm", "py", "cpy"].contains(usr[usr.index(after: open) ..< close]) else { return nil }
+
+        let selector = usr[usr.index(after: close)...]
+        return selector.isEmpty ? nil : String(selector)
     }
 
     /// The Objective-C name a clang USR ends with: `c:objc(cs)Store(im)load:from:` names `load`, and

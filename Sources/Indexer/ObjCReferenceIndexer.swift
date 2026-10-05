@@ -103,8 +103,10 @@ final class ObjCReferenceIndexer: Indexer {
         let headerLiterals = ClangLiteralScanner.scan(
             files: Set(records.map(\.file.path)).subtracting(sourcesByPath.keys).sorted()
         )
+        var literalNames = sourceLiterals.names
+        literalNames.formUnion(headerLiterals.names)
         let literals = (
-            tokens: sourceLiterals.tokens.union(headerLiterals.tokens),
+            names: literalNames,
             unreadFiles: (sourceLiterals.unreadFiles + headerLiterals.unreadFiles).sorted()
         )
         for file in literals.unreadFiles {
@@ -142,7 +144,10 @@ final class ObjCReferenceIndexer: Indexer {
             }
 
             graph.add(references)
-            evidence.add { $0.addClangLiteralTokens(literals.tokens) }
+            evidence.add {
+                $0.addClangLiteralTokens(literals.names.tokens)
+                $0.addClangLiteralSelectors(literals.names.selectors)
+            }
 
             // Not `addIndexedModules`: the app target's clang units name no module, and a module written
             // in Objective-C must not become one the Swift imports of are checked.

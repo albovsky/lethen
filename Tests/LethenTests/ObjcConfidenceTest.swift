@@ -134,4 +134,16 @@ final class ObjcConfidenceTest: XCTestCase {
         XCTAssertNil(ConfidenceAssessor.objcName(fromUSR: "s:3App5StoreC4loadyyF"))
         XCTAssertNil(ConfidenceAssessor.objcName(fromUSR: "c:@M@App@objc(cs)"))
     }
+
+    func testObjcSelectorFromUSRIsTheWholeSelectorOfAMethodOrProperty() {
+        XCTAssertEqual(ConfidenceAssessor.objcSelector(fromUSR: "c:objc(cs)Store(im)load:from:"), "load:from:")
+        XCTAssertEqual(ConfidenceAssessor.objcSelector(fromUSR: "c:@M@App@objc(cs)Store(cm)shared"), "shared")
+        XCTAssertEqual(ConfidenceAssessor.objcSelector(fromUSR: "c:@CM@App@@objc(cs)NSObject(py)wmf_value"), "wmf_value")
+        XCTAssertEqual(ConfidenceAssessor.objcSelector(fromUSR: "c:objc(cs)Store(im)initWithFoo:"), "initWithFoo:")
+        XCTAssertNil(ConfidenceAssessor.objcSelector(fromUSR: "c:@M@App@objc(cs)RenamedClassForObjC"))
+        XCTAssertNil(ConfidenceAssessor.objcSelector(fromUSR: "c:objc(pl)Delegate"))
+        XCTAssertNil(ConfidenceAssessor.objcSelector(fromUSR: "s:3App5StoreC4loadyyF"))
+        XCTAssertNil(ConfidenceAssessor.objcSelector(fromUSR: "c:@M@App@objc(cs)"))
+        XCTAssertNil(ConfidenceAssessor.objcSelector(fromUSR: "c:objc(cs)Store(im)"))
+    }
 }

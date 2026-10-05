@@ -9,7 +9,8 @@ import SystemPackage
 ///
 /// A single pass over the bytes that skips comments, character literals, and `#import` and `#include`
 /// lines, whose quoted file names are not symbol names. Only literals shaped like a symbol reference
-/// count, as in `StringLiteralTokenVisitor`. It does not expand macros or follow `#if`, so a literal
+/// count, as in `StringLiteralTokenVisitor`: one with a colon, or an `@selector`, is kept whole as a selector,
+/// any other is split into its identifiers. It does not expand macros or follow `#if`, so a literal
 /// in any branch counts.
 enum ClangLiteralScanner {
     static let newline = UInt8(ascii: "\n")
@@ -24,42 +25,55 @@ enum ClangLiteralScanner {
     static let closeParen = UInt8(ascii: ")")
     private static let selectorKeyword = Array("@selector".utf8)
 
-    /// The tokens of every file that can be read, and the files that cannot: a file compiled into the
+    /// What the string literals of a source spell: identifiers, and whole selectors.
+    struct Names: Equatable {
+        var tokens: Set<String> = []
+        var selectors: Set<String> = []
+
+        mutating func formUnion(_ other: Names) {
+            tokens.formUnion(other.tokens)
+            selectors.formUnion(other.selectors)
+        }
+    }
+
+    /// The names of every file that can be read, and the files that cannot: a file compiled into the
     /// index but gone or unreadable since may spell a lookup the scan then cannot see. `visit` receives
     /// each file's bytes, so a caller that scans the same files for something else reads them once.
     static func scan(
         files: [FilePath],
         visiting visit: (FilePath, [UInt8]) -> Void = { _, _ in }
-    ) -> (tokens: Set<String>, unreadFiles: [FilePath]) {
-        var tokens: Set<String> = []
+    ) -> (names: Names, unreadFiles: [FilePath]) {
+        var names = Names()
         var unreadFiles: [FilePath] = []
         for file in files {
             if let data = FileManager.default.contents(atPath: file.string) {
                 let bytes = Array(data)
-                tokens.formUnion(self.tokens(in: bytes))
+                names.formUnion(self.names(in: bytes))
                 visit(file, bytes)
             } else {
                 unreadFiles.append(file)
             }
         }
-        return (tokens, unreadFiles)
+        return (names, unreadFiles)
     }
 
     /// Scans the file's bytes, so a byte that is not UTF-8 in a comment or a prose string costs only
     /// that literal, never the rest of the file.
-    static func tokens(in source: [UInt8]) -> Set<String> {
+    static func names(in source: [UInt8]) -> Names {
         // The preprocessor removes every backslash-newline pair before it sees tokens.
         let bytes = splicingLines(source).bytes
-        var tokens: Set<String> = []
+        var names = Names()
         var index = 0
         var atLineStart = true
 
         func add(_ literal: [UInt8]) {
-            guard let text = String(bytes: literal, encoding: .utf8),
-                  let identifiers = StringLiteralTokenVisitor.symbolIdentifiers(in: text)
-            else { return }
+            guard let text = String(bytes: literal, encoding: .utf8) else { return }
 
-            tokens.formUnion(identifiers)
+            if let selector = StringLiteralTokenVisitor.selector(in: text) {
+                names.selectors.insert(selector)
+            } else if let identifiers = StringLiteralTokenVisitor.symbolIdentifiers(in: text) {
+                names.tokens.formUnion(identifiers)
+            }
         }
 
         while index < bytes.count {
@@ -89,8 +103,9 @@ enum ClangLiteralScanner {
                 index = endOfCharacterLiteral(from: index + 1, in: bytes)
             case at where bytes[index...].starts(with: selectorKeyword):
                 let (selector, next) = selectorName(from: index + selectorKeyword.count, in: bytes)
-                if let selector {
-                    add(selector)
+                if let selector, let text = String(bytes: selector, encoding: .utf8) {
+                    // `@selector(refresh)` is a whole selector without a colon, which a bare token matches as well.
+                    if StringLiteralTokenVisitor.symbolIdentifiers(in: text) != nil { names.selectors.insert(text) }
                 }
                 index = next
             default:
@@ -98,7 +113,7 @@ enum ClangLiteralScanner {
             }
         }
 
-        return tokens
+        return names
     }
 
     // MARK: - Private

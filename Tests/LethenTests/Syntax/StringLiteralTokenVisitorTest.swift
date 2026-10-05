@@ -4,14 +4,29 @@ import XCTest
 
 final class StringLiteralTokenVisitorTest: XCTestCase {
     func testCollectsIdentifiersFromSymbolShapedLiterals() {
-        let tokens = collect("""
+        let visitor = walk("""
         let a = "handleTap:"
         let b = "Module.ClassName"
         let c = "tableView:didSelectRowAtIndexPath:"
         let d = "user.name"
         let e = "plain_1"
+        let f = "a:b"
+        let g = ":"
         """)
-        XCTAssertEqual(tokens, ["handleTap", "Module", "ClassName", "tableView", "didSelectRowAtIndexPath", "user", "name", "plain_1"])
+        XCTAssertEqual(visitor.tokens, ["Module", "ClassName", "user", "name", "plain_1"])
+    }
+
+    /// A selector names the one method whose whole selector it spells, so it is kept whole and its parts
+    /// are not recorded: `title` is not named by `setTitle:forState:`.
+    func testSelectorShapedLiteralsAreKeptWholeAndNotSplit() {
+        let visitor = walk("""
+        let a = "handleTap:"
+        let b = "tableView:didSelectRowAtIndexPath:"
+        let c = "user.name"
+        let d = ":"
+        """)
+        XCTAssertEqual(visitor.selectors, ["handleTap:", "tableView:didSelectRowAtIndexPath:"])
+        XCTAssertEqual(visitor.tokens, ["user", "name"])
     }
 
     /// Log messages and other prose name words, not symbols; counting them would mark most
@@ -30,9 +45,14 @@ final class StringLiteralTokenVisitorTest: XCTestCase {
         XCTAssertEqual(tokens, [])
     }
 
-    private func collect(_ source: String) -> Set<String> {
+    private func walk(_ source: String) -> StringLiteralTokenVisitor {
         let visitor = StringLiteralTokenVisitor()
         visitor.walk(Parser.parse(source: source))
-        return visitor.tokens
+        return visitor
+    }
+
+    private func collect(_ source: String) -> Set<String> {
+        let visitor = walk(source)
+        return visitor.tokens.union(visitor.selectors)
     }
 }
