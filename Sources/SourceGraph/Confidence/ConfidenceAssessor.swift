@@ -103,7 +103,8 @@ public final class ConfidenceAssessor {
     /// Whether a use spelled through the type `receiver` cannot reach a member of `extended`, a type the scan does
     /// not declare. It can when it is that type, a type alias of it, which a type alias of the scan or one of the
     /// SDK's may be, or a subclass of it, which a class of the scan may be. Any other name is another type, or a
-    /// function that is called like one, as `DDLogDebug("...")` is.
+    /// function that is called like one, as `DDLogDebug("...")` is. A name the scan does not declare could also be an unscanned
+    /// subclass or alias this does not list; that is accepted, since ruling out every such name would leave nothing to narrow.
     private func isDistinct(receiver: String, fromUnscanned extended: String) -> Bool {
         if receiver == extended || Self.sdkTypeAliases[receiver] == extended { return false }
 
@@ -116,6 +117,9 @@ public final class ConfidenceAssessor {
     private static let sdkTypeAliases: [String: String] = [
         "TimeInterval": "Double", "CFTimeInterval": "Double", "CFAbsoluteTime": "Double", "Float64": "Double",
         "Float32": "Float", "NSInteger": "Int", "NSUInteger": "UInt",
+        "CInt": "Int32", "CUnsignedInt": "UInt32", "CShort": "Int16", "CUnsignedShort": "UInt16", "CLong": "Int", "CUnsignedLong": "UInt",
+        "CLongLong": "Int64", "CUnsignedLongLong": "UInt64", "CChar": "Int8", "CUnsignedChar": "UInt8", "CSignedChar": "Int8",
+        "CFloat": "Float", "CDouble": "Double", "CBool": "Bool", "CWideChar": "Unicode.Scalar", "CChar16": "UInt16", "CChar32": "Unicode.Scalar",
     ]
 
     /// The argument labels of a function's declared name, `_` for an unlabeled parameter: `["title", "_"]` for

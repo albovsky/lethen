@@ -86,6 +86,11 @@ extension URL {
     init(_ fixtureSeed6: Int) { self.init(string: "x")! }
 }
 
+extension Int32 {
+    // A skipped `CInt(...)` constructs an `Int32`: `CInt` is another name for it.
+    init(_ fixtureSeed6: Substring) { self = 0 }
+}
+
 extension Double {
     // A skipped `TimeInterval(1)` constructs a `Double`: `TimeInterval` is another name for it.
     init(_ fixtureSeed6: Substring) { self = 0 }
@@ -98,6 +103,7 @@ public func fixtureExternalExtensions6() {
         _ = URL(fixtureTint6: 1)
         _ = String(fixtureOtherTint6: 1)
         FixtureLog6("x")
+        _ = CInt(Substring("1"))
         _ = TimeInterval(Substring("1"))
     #endif
 }

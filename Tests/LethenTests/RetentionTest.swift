@@ -2320,6 +2320,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.extensionStruct("Double")) {
                 self.assertConfidence(.functionConstructor("init(_:)"), .likely)
             }
+            assertReferenced(.extensionStruct("Int32")) {
+                self.assertConfidence(.functionConstructor("init(_:)"), .likely)
+            }
         }
     }
 
