@@ -54,6 +54,61 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(collector.uses["makeWidget"], true, "A call to a function records only the function")
     }
 
+    func testConstructorCallsSpellInitThroughTheTypeBeside() {
+        typealias Spelling = NameSites.Spelling
+        let collector = collect("""
+        func f() {
+            _ = Widget(size: 1)
+            _ = Widget { }
+            _ = Framework.Gadget<Int>(name: n)
+            _ = T(size: 1)
+            _ = Self()
+            _ = Widget.make(size: 1)
+        }
+        func g<T>() {}
+        """)
+        XCTAssertEqual(collector.spellings["init"], [
+            Spelling(labels: ["size"], receiver: "Widget", isMember: true),
+            Spelling(labels: [], hasTrailingClosure: true, receiver: "Widget", isMember: true),
+            Spelling(labels: ["name"], receiver: "Gadget", isMember: true),
+            Spelling(labels: ["size"], isMember: true),
+            Spelling(labels: [], isMember: true),
+        ])
+        XCTAssertNil(collector.uses["init"], "`init` is not named for every type")
+        XCTAssertNil(collector.constructionUses.first { $0 == "init" })
+    }
+
+    /// A clause is collected without the declaration around it, whose generic parameters still stand for any type.
+    func testGenericParametersOfTheEnclosingDeclarationAreNotReceivers() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: "func f<T: P>() {\n #if os(Windows)\n _ = T(size: 1)\n _ = Widget(size: 1)\n #endif\n}")
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        let collector = NameUseCollector(Syntax(elements))
+        XCTAssertEqual(collector.spellings["init"], [
+            Spelling(labels: ["size"], isMember: true),
+            Spelling(labels: ["size"], receiver: "Widget", isMember: true),
+        ])
+    }
+
+    private func findIfConfig(_ node: Syntax) -> IfConfigDeclSyntax? {
+        if let found = node.as(IfConfigDeclSyntax.self) { return found }
+        for child in node.children(viewMode: .sourceAccurate) {
+            if let found = findIfConfig(child) { return found }
+        }
+        return nil
+    }
+
+    func testEnumCaseUsesInAPatternAreMarked() {
+        typealias Spelling = NameSites.Spelling
+        let collector = collect("func f(a: A) {\n _ = A.ready\n _ = .go\n switch a { case .go: break; case A.ready: break }\n}")
+        XCTAssertEqual(collector.spellings["ready"], [
+            Spelling(receiver: "A", isMember: true),
+            Spelling(receiver: "A", isMember: true, isPattern: true),
+        ])
+        XCTAssertEqual(collector.spellings["go"], [Spelling(isMember: true), Spelling(isMember: true, isPattern: true)])
+    }
+
     /// An `override` names the base member, so its name is a member use; the same declaration without `override`
     /// is a new member and uses nothing.
     func testOverridesUseTheNamesTheyOverride() {

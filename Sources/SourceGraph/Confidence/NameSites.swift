@@ -16,12 +16,21 @@ public struct NameSites: Equatable {
         public var receiver: String?
         /// Whether the use is a member access or a call.
         public var isMember: Bool
+        /// Whether the use is inside a pattern, `case .ready:`, where an enum case is matched, not constructed.
+        public var isPattern: Bool
 
-        public init(labels: [String]? = nil, hasTrailingClosure: Bool = false, receiver: String? = nil, isMember: Bool = false) {
+        public init(
+            labels: [String]? = nil,
+            hasTrailingClosure: Bool = false,
+            receiver: String? = nil,
+            isMember: Bool = false,
+            isPattern: Bool = false
+        ) {
             self.labels = labels
             self.hasTrailingClosure = hasTrailingClosure
             self.receiver = receiver
             self.isMember = isMember
+            self.isPattern = isPattern
         }
     }
 

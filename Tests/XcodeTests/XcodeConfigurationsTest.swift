@@ -38,6 +38,28 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         assertReferenced(.functionFree("calledOnlyInRelease()"))
     }
 
+    /// The tests build with `build-for-testing` in Debug, where the scheme tests, so `ReferencedOnlyFromTests` is
+    /// referenced and the test target counts as scanned although Release only builds the Run action.
+    func testTestTargetsAreScannedFromTheConfigurationThatBuildsThem() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        try Self.build(projectPath: ConfigurationsProjectPath, configuration: configuration)
+        try Self.index(configuration: configuration)
+        assertReferenced(.struct("ReferencedOnlyFromTests"))
+        XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
+        // The tests are not built in Release, which only builds the Run action, so what they use only there is unused.
+        assertNotReferenced(.struct("ReferencedOnlyFromReleaseTests"))
+    }
+
+    /// The control: the only listed configuration builds for testing, so the tests still build.
+    func testASingleListedConfigurationStillBuildsTheTests() throws {
+        let configuration = Self.configuration(["Release"])
+        try Self.build(projectPath: ConfigurationsProjectPath, configuration: configuration)
+        try Self.index(configuration: configuration)
+        assertReferenced(.struct("ReferencedOnlyFromTests"))
+        assertReferenced(.struct("ReferencedOnlyFromReleaseTests"))
+        XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
+    }
+
     // MARK: - Driver
 
     func testEachConfigurationBuildsIntoItsOwnDerivedData() throws {
@@ -52,7 +74,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             return command[index + 1]
         }
         XCTAssertEqual(configurations, ["Debug", "Release"])
-        XCTAssertTrue(builds.allSatisfy { $0.contains("build-for-testing") })
+        XCTAssertEqual(builds.map(Self.action), ["build-for-testing", "build"])
         XCTAssertEqual(Set(shell.derivedDataPaths).count, 2, "\(shell.derivedDataPaths)")
     }
 
@@ -86,7 +108,62 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             guard case LethenError.shellCommandFailed = error else { return XCTFail("\(error)") }
         }
         XCTAssertEqual(shell.streamed.count, 2)
-        XCTAssertTrue(shell.streamed.allSatisfy { $0.contains("-configuration") && $0.contains("build-for-testing") })
+        XCTAssertTrue(shell.streamed.allSatisfy { $0.contains("-configuration") })
+        XCTAssertEqual(shell.streamed.map(Self.action), ["build-for-testing", "build"])
+    }
+
+    /// The scheme's Test configuration builds for testing and the others build its Run action; the tests do not
+    /// compile in every configuration, and are indexed once.
+    func testTheSchemesTestConfigurationBuildsForTestingAndTheOthersBuild() throws {
+        // A build setting of its own keys these builds apart from any completed one a real scan left, which a rescan
+        // would reuse without running xcodebuild.
+        let buildArguments = ["LETHEN_TEST_ACTIONS=\(UUID().uuidString)"]
+        defer {
+            let xcodebuild = Xcodebuild(shell: RecordingShell(), logger: Self.logger)
+            for scheme in ["ConfigurationsProject", "ReleaseTests"] {
+                for name in ["Debug", "Release"] {
+                    try? xcodebuild.removeDerivedData(for: Self.project(), allSchemes: [scheme], configuration: name, buildArguments: buildArguments)
+                }
+            }
+        }
+
+        func actions(_ scheme: String, _ configurations: [String]) throws -> [String: String] {
+            let shell = RecordingShell()
+            let configuration = Self.configuration(configurations, scheme: scheme)
+            configuration.buildArguments = buildArguments
+            let driver = try Self.recordingDriver(configuration, shell: shell)
+            try driver.build()
+            return try Dictionary(uniqueKeysWithValues: shell.streamed.map { command in
+                let index = try XCTUnwrap(command.firstIndex(of: "-configuration"))
+                return (command[index + 1], Self.action(command))
+            })
+        }
+
+        XCTAssertEqual(try actions("ConfigurationsProject", ["Debug", "Release"]), ["Debug": "build-for-testing", "Release": "build"])
+        XCTAssertEqual(try actions("ReleaseTests", ["Debug", "Release"]), ["Debug": "build", "Release": "build-for-testing"])
+        // The scheme's Test configuration is not listed, so the first listed one builds for testing.
+        XCTAssertEqual(try actions("ConfigurationsProject", ["Release"]), ["Release": "build-for-testing"])
+    }
+
+    func testBuildActionsChooseOneConfigurationToBuildForTesting() {
+        let debugTests = XcodeSchemeConfigurations(test: "Debug", launch: "Release")
+
+        func actions(_ listed: [String], _ configurations: XcodeSchemeConfigurations?) -> [String] {
+            XcodeProjectDriver.buildActions(listed: listed, schemeConfigurations: configurations).map { "\($0.configuration) \($0.action.rawValue)" }
+        }
+
+        XCTAssertEqual(actions(["Release", "Debug"], debugTests), ["Release build", "Debug build-for-testing"])
+        XCTAssertEqual(actions(["Debug", "Release"], debugTests), ["Debug build-for-testing", "Release build"])
+        XCTAssertEqual(actions(["Release", "Staging"], debugTests), ["Release build-for-testing", "Staging build"])
+        XCTAssertEqual(actions(["Release", "Staging"], nil), ["Release build-for-testing", "Staging build"])
+        XCTAssertEqual(actions(["Release", "Staging"], XcodeSchemeConfigurations(test: nil, launch: "Release")), ["Release build-for-testing", "Staging build"])
+        XCTAssertEqual(actions(["Debug"], debugTests), ["Debug build-for-testing"])
+        XCTAssertEqual(actions([], debugTests), [])
+    }
+
+    func testABuildDescriptionSaysWhenTheTestsAreNotBuilt() {
+        let description = XcodeProjectDriver.buildDescription(scheme: "App", listedConfiguration: "Debug", schemeConfigurations: nil, buildArguments: [], action: .build)
+        XCTAssertEqual(description, "Building App with configuration Debug (its tests are not built in this configuration)")
     }
 
     // MARK: - Scheme configurations
@@ -280,15 +357,18 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         // A build setting of its own keys this copy's DerivedData apart from the fixture's.
         let buildArguments = ["LETHEN_TEST_COPY=\(UUID().uuidString)"]
         let xcodebuild = Xcodebuild(shell: Self.shell, logger: Self.logger)
+        // The scheme tests in Release, so Release builds for testing alone and with Debug alike and its completion mark
+        // is the same in both scans; Debug builds the Run action and stays as it was.
+        let scheme = "ReleaseTests"
         defer {
             for name in ["Debug", "Release"] {
-                try? xcodebuild.removeDerivedData(for: Self.project(at: project), allSchemes: ["ConfigurationsProject"], configuration: name, buildArguments: buildArguments)
+                try? xcodebuild.removeDerivedData(for: Self.project(at: project), allSchemes: [scheme], configuration: name, buildArguments: buildArguments)
             }
             try? FileManager.default.removeItem(atPath: root.string)
         }
 
         func configuration(_ configurations: [String], skipBuild: Bool) -> Configuration {
-            let configuration = Self.configuration(configurations)
+            let configuration = Self.configuration(configurations, scheme: scheme)
             configuration.buildArguments = buildArguments
             configuration.skipBuild = skipBuild
             return configuration
@@ -313,7 +393,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try (text + "\n// edited after indexing\n").write(to: conditional.url, atomically: true, encoding: .utf8)
         try Self.build(projectPath: project, configuration: configuration(["Release"], skipBuild: false))
 
-        let debugStore = try xcodebuild.indexStorePath(project: Self.project(at: project), schemes: ["ConfigurationsProject"], configuration: "Debug", buildArguments: buildArguments)
+        let debugStore = try xcodebuild.indexStorePath(project: Self.project(at: project), schemes: [scheme], configuration: "Debug", buildArguments: buildArguments)
         XCTAssertThrowsError(try project.chdir {
             let driver = try XcodeProjectDriver(projectPath: project, configuration: skipBuild, shell: Self.shell, logger: Self.logger)
             _ = try driver.plan(logger: Self.logger.contextualized(with: "index"))
@@ -402,12 +482,12 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
         }
         for name in ["Debug", "Release"] {
-            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, name))
         }
 
         func completed() throws -> [Bool] {
             try ["Debug", "Release"].map {
-                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, $0))
             }
         }
 
@@ -483,6 +563,43 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try complete(["A", "BC"])
         try begin(["AB", "C"])
         XCTAssertFalse(leftover.exists, "Another scheme set must not inherit the units.")
+    }
+
+    /// A configuration whose build action changes, such as `Release` after the list is reordered while the scheme's
+    /// Test configuration is unlisted, must not inherit the units, test references included, of the other plan.
+    func testBuildDoesNotReuseAStoreBuiltForAnotherBuildAction() throws {
+        let shell = RecordingShell()
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let project = try Self.project(shell: shell)
+        let buildArguments = ["LETHEN_TEST_IDENTITY=\(UUID().uuidString)"]
+        let schemes = ["ConfigurationsProject"]
+        let directory = try xcodebuild.derivedDataPath(for: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments)
+        let leftover = directory.appending("Index.noindex/DataStore/v5/units/leftover")
+        defer { try? FileManager.default.removeItem(atPath: directory.string) }
+
+        func build(buildOnly: [String]) throws {
+            try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: buildOnly)
+            try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: buildOnly)
+        }
+
+        func hasCompleted(buildOnly: [String]) throws -> Bool {
+            try xcodebuild.hasCompletedBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: buildOnly)
+        }
+
+        try build(buildOnly: [])
+        try FileManager.default.createDirectory(atPath: leftover.string, withIntermediateDirectories: true)
+        XCTAssertTrue(try hasCompleted(buildOnly: []))
+        XCTAssertFalse(try hasCompleted(buildOnly: schemes), "A store built for testing is not the store of a build action.")
+
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: [])
+        XCTAssertTrue(leftover.exists, "The same plan builds on its previous completed build.")
+        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments)
+
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: "Release", buildArguments: buildArguments, buildOnlySchemes: schemes)
+        XCTAssertFalse(leftover.exists, "Another build action must not inherit the units.")
+        try build(buildOnly: schemes)
+        XCTAssertTrue(try hasCompleted(buildOnly: schemes))
+        XCTAssertFalse(try hasCompleted(buildOnly: []))
     }
 
     /// Building takes the configuration's DerivedData exclusively and reading it without a build takes it shared, so
@@ -584,13 +701,13 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
 
         func completed() throws -> [Bool] {
             try ["Debug", "Release"].map {
-                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, $0))
             }
         }
 
         // Release's index cannot be removed, so the clean build fails part way through that directory.
         for name in ["Debug", "Release"] {
-            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, name))
         }
         let stuck = directories[1].appending("Index.noindex")
         try FileManager.default.createDirectory(atPath: stuck.appending("DataStore/v5/units").string, withIntermediateDirectories: true)
@@ -607,6 +724,11 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
     }
 
     // MARK: - Private
+
+    /// The `xcodebuild` action of a recorded build command.
+    private static func action(_ command: [String]) -> String {
+        command.first { $0 == "build" || $0 == "build-for-testing" } ?? "none"
+    }
 
     private static func configuration(_ configurations: [String], scheme: String = "ConfigurationsProject") -> Configuration {
         let configuration = Configuration()
@@ -631,9 +753,17 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         )
     }
 
-    private static func markComplete(_ xcodebuild: Xcodebuild, project: XcodeProject, schemes: [String], configuration: String, buildArguments: [String]) throws {
-        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+    private static func markComplete(_ xcodebuild: Xcodebuild, project: XcodeProject, schemes: [String], configuration: String, buildArguments: [String], buildOnlySchemes: [String] = []) throws {
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes)
+        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes)
+    }
+
+    /// The schemes the driver builds with `build` in `name`, which its completion mark records.
+    private static func buildOnlySchemes(_ project: XcodeProject, _ configuration: Configuration, _ name: String) -> [String] {
+        configuration.schemes.sorted().filter { scheme in
+            XcodeProjectDriver.buildActions(listed: configuration.configurations, schemeConfigurations: project.schemeConfigurations(named: scheme))
+                .contains { $0.configuration == name && $0.action == .build }
+        }
     }
 
     /// A driver whose builds are recorded rather than run.

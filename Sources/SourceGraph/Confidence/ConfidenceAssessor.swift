@@ -30,6 +30,10 @@ public final class ConfidenceAssessor {
             if Self.spellingMatchedKinds.contains(declaration.kind), let spelled = sites.spellings[baseName] {
                 return spelled.filter { canBeUse(of: declaration, spelledAs: $0.key) }.values.min()
             }
+            // An enum case is reached through its type like any member, but only a construction is a use of it.
+            if declaration.kind == .enumelement, let spelled = sites.spellings[baseName] {
+                return spelled.filter { !$0.key.isPattern && canBeUse(of: declaration, spelledAs: $0.key) }.values.min()
+            }
             let names = if declaration.kind == .enumelement {
                 sites.constructionNames
             } else if Self.memberKinds.contains(declaration.kind) {
