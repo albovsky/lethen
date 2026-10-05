@@ -42,30 +42,43 @@ public struct NameUseCollector {
     /// type narrows the member it uses.
     private var placeholderTypeNames: Set<String> = []
 
-    /// Collects the uses in `node`, calling `onUse` for each one in source order.
+    /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
+    /// declaration, such as the elements of an `#if` clause; the generic parameters and associated types of the
+    /// declarations around it count as placeholders too.
     public init(_ node: Syntax, onUse: ((Use) -> Void)? = nil) {
         self.onUse = onUse
         Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
+        Self.collectEnclosingPlaceholderTypeNames(of: node, into: &placeholderTypeNames)
         collect(node, inPattern: false)
     }
 
     /// Records a use. A name `forFileReaderOnly` reaches `onUse` but not `uses`: `Store.shared` is a second
     /// spelling of a use already recorded by its bare name, and `init` or `subscript` for `Widget(...)` or
     /// `store[key]` would match every initializer or subscript of a module in a skipped `#if` clause, where
-    /// no type name narrows the match as it does for a file of an unscanned target.
+    /// no type name narrows the match as it does for a file of an unscanned target. A name `spellingOnly` is kept
+    /// as a spelling and nowhere else, so a skipped clause that constructs `Widget` can narrow `init` to
+    /// `Widget`'s initializers without naming `init` for every type.
     private mutating func record(
         _ name: String,
         isMember: Bool,
         isConstruction: Bool,
         at node: Syntax,
         forFileReaderOnly: Bool = false,
+        spellingOnly: Bool = false,
+        inPattern: Bool = false,
         labels: [String]? = nil,
         hasTrailingClosure: Bool = false,
         receiver: String? = nil
     ) {
+        if spellingOnly {
+            spellings[name, default: []].insert(
+                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isPattern: inPattern)
+            )
+            return
+        }
         if !forFileReaderOnly {
             spellings[name, default: []].insert(
-                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember)
+                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isPattern: inPattern)
             )
             uses[name] = (uses[name] ?? false) || isMember
             if isConstruction { constructionUses.insert(name) }
@@ -126,7 +139,7 @@ public struct NameUseCollector {
             let access = reference.parent?.as(MemberAccessExprSyntax.self)
             let receiver = access.flatMap { $0.declName.id == reference.id ? receiverName(of: $0) : nil }
             record(
-                name, isMember: isMember, isConstruction: isMember && !inPattern, at: node,
+                name, isMember: isMember, isConstruction: isMember && !inPattern, at: node, inPattern: inPattern,
                 labels: labels, hasTrailingClosure: call.map { $0.trailingClosure != nil } ?? false, receiver: receiver
             )
             // `Widget(...)` calls an initializer of `Widget`, which the index records under `init`; a type name
@@ -141,6 +154,15 @@ public struct NameUseCollector {
             if (isCalled && access == nil) || isQualifiedTypeCall, name.first?.isUppercase == true {
                 record("init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
                 record("\(name).init", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
+                // The construction also spells `init` through the type, with the call's labels, which narrows a
+                // skipped use to this type's initializers. A generic parameter or `Self` stands for any type.
+                if let call = Self.call(spelling: reference) {
+                    let constructed = name == "Self" || placeholderTypeNames.contains(name) ? nil : name
+                    record(
+                        "init", isMember: true, isConstruction: !inPattern, at: node, spellingOnly: true, inPattern: inPattern,
+                        labels: Self.labels(of: call), hasTrailingClosure: call.trailingClosure != nil, receiver: constructed
+                    )
+                }
             }
             // `Store.shared` names the member through its type; recorded as `Store.shared` as well.
             if let access, access.declName.id == reference.id,
@@ -200,6 +222,26 @@ public struct NameUseCollector {
         guard name.first?.isUppercase == true, name != "Self", !placeholderTypeNames.contains(name) else { return nil }
 
         return name
+    }
+
+    /// The generic parameters and associated types that declarations around `node` declare.
+    private static func collectEnclosingPlaceholderTypeNames(of node: Syntax, into names: inout Set<String>) {
+        var current = node.parent
+        while let ancestor = current {
+            for child in ancestor.children(viewMode: .sourceAccurate) {
+                if let clause = child.as(GenericParameterClauseSyntax.self) {
+                    for parameter in clause.parameters {
+                        names.insert(parameter.name.text)
+                    }
+                }
+            }
+            if let protocolDecl = ancestor.as(ProtocolDeclSyntax.self) {
+                for member in protocolDecl.memberBlock.members {
+                    if let associated = member.decl.as(AssociatedTypeDeclSyntax.self) { names.insert(associated.name.text) }
+                }
+            }
+            current = ancestor.parent
+        }
     }
 
     private static func collectPlaceholderTypeNames(_ node: Syntax, into names: inout Set<String>) {
