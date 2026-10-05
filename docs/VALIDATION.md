@@ -1,6 +1,6 @@
 # Initial fork validation — 2026-09-19
 
-For the current development release, see [3.8.1-dev.1](releases/3.8.1-dev.1.md) and the [verified combinations](validation/swift-6.4-xcode-27.md#verified-combinations). The initial observations below are historical.
+For the latest release, see the [3.10.0 release notes](releases/3.10.0.md), the [precision corpus](validation/precision-corpus.md) and the [verified combinations](validation/swift-6.4-xcode-27.md#verified-combinations). The initial observations below are historical.
 
 Upstream base: `56a0eb6` (README update following the 3.8.0 release at `a2db299`). Original history, tags, and MIT license are preserved.
 
