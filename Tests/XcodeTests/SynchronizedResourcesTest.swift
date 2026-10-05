@@ -46,3 +46,35 @@ final class SynchronizedResourcesExcludedOwnerTest: XcodeSourceGraphTestCase {
         assertNotReferenced(.class("ExtraController"))
     }
 }
+
+/// `Inclusion.storyboard` sits in the folder `Target With Spaces` owns, and the app's exception set for that folder
+/// includes it, so excluding the owner leaves the app compiling it: the class it names is still referenced.
+final class SynchronizedInclusionExcludedOwnerTest: XcodeSourceGraphTestCase {
+    override static func setUp() {
+        super.setUp()
+
+        let configuration = Configuration()
+        configuration.schemes = ["UIKitProject"]
+        configuration.excludeTargets = ["Target With Spaces"]
+
+        setupState.capture {
+            try build(projectPath: UIKitProjectPath, configuration: configuration)
+            try index(configuration: configuration)
+        }
+    }
+
+    func testRetainsClassReferencedByAStoryboardTheAppIncludesFromAnotherTargetsFolder() {
+        assertReferenced(.class("InclusionController")) {
+            self.assertReferenced(.functionMethodInstance("inclusionAction(_:)"))
+        }
+    }
+
+    /// `Shared.swift` is compiled into the app only through the exception set, since its owner is excluded: the
+    /// declaration the app calls is retained, and the one nothing calls is reported.
+    func testReadsTheSourcesTheAppIncludesFromAnotherTargetsFolder() {
+        assertReferenced(.enum("SharedFromAnotherTargetsFolder")) {
+            self.assertReferenced(.functionMethodStatic("used()"))
+            self.assertNotReferenced(.functionMethodStatic("unused()"))
+        }
+    }
+}

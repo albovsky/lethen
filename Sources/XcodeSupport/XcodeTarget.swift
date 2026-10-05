@@ -171,12 +171,35 @@ public final class XcodeTarget {
     }
 
     /// The files of the synchronized folders this target owns, less the files its membership exceptions
-    /// leave out. A folder another target owns contributes nothing to this one, and neither does one no target owns.
+    /// leave out, and the files of another target's folder that an exception set for this target lists: ticking a
+    /// file of a folder this target does not own adds it to this target. A folder no target owns contributes nothing.
     private func synchronizedFiles() throws -> Set<FilePath> {
         let root = project.sourceRoot.lexicallyNormalized()
         var result: Set<FilePath> = []
+        let ownedGroups = target.fileSystemSynchronizedGroups ?? []
 
-        for group in target.fileSystemSynchronizedGroups ?? [] {
+        for group in project.xcodeProject.pbxproj.fileSystemSynchronizedRootGroups where !ownedGroups.contains(where: { $0 === group }) {
+            guard let groupPath = try group.fullPath(sourceRoot: root.string) else { continue }
+
+            let groupRoot = FilePath(groupPath)
+            let included = (group.exceptions ?? [])
+                .compactMap { $0 as? PBXFileSystemSynchronizedBuildFileExceptionSet }
+                .filter { $0.target === target }
+                .flatMap { $0.membershipExceptions ?? [] }
+                .mapSet { groupRoot.appending($0).lexicallyNormalized() }
+            // An entry names a file or a folder, which takes everything below it along.
+            for path in included {
+                guard FileManager.default.fileExists(atPath: path.string) else { continue }
+
+                result.insert(path)
+                // The folder is listed by its literal name, which may hold glob characters such as `[`.
+                for relative in FileManager.default.enumerator(atPath: path.string)?.compactMap({ $0 as? String }) ?? [] {
+                    result.insert(path.appending(relative).lexicallyNormalized())
+                }
+            }
+        }
+
+        for group in ownedGroups {
             guard let groupPath = try group.fullPath(sourceRoot: root.string) else { continue }
 
             let groupRoot = FilePath(groupPath)
