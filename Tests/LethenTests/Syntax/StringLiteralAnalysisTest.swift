@@ -22,6 +22,16 @@ final class StringLiteralAnalysisTest: XCTestCase {
         XCTAssertEqual(evidence.snapshot().literalTokens, ["user", "name"])
     }
 
+    func testSelectorPassedToAReflectionCallIsRecordedWholeAndNotSplit() throws {
+        let source = "let a = NSSelectorFromString(\"load:\")\nlet b = NSSelectorFromString(\"load\")\n"
+        let (file, _, _, evidence) = makeIndexedFile(source: source)
+        try StringLiteralAnalysis(configuration: Configuration()).apply(to: file)
+
+        XCTAssertEqual(evidence.snapshot().reflectionSelectorSites, ["load:": "NSSelectorFromString at T.swift:1"])
+        XCTAssertEqual(evidence.snapshot().reflectionSites, ["load": "NSSelectorFromString at T.swift:2"])
+        XCTAssertEqual(evidence.snapshot().literalSelectors, ["load:"])
+    }
+
     func testReflectionCallsRecordTheirSite() throws {
         let source = "let a = \"plain\"\nlet b = NSClassFromString(\"MyApp.Store\")\n"
         let (file, _, _, evidence) = makeIndexedFile(source: source)

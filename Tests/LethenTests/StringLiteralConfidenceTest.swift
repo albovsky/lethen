@@ -101,6 +101,40 @@ final class StringLiteralConfidenceTest: XCTestCase {
         XCTAssertEqual(property { $0.addClangLiteralSelectors(["title:"]) }.confidence, .certain)
     }
 
+    func testPropertySelectorsComeFromItsObjcUSRWhenItHasOne() {
+        let indexed: Set<String> = ["s:swiftTitle", "c:@M@A@objc(cs)Store(py)title"]
+        func property(_ configure: @escaping (inout ConfidenceEvidence) -> Void) -> ConfidenceAssessment {
+            assess(name: "title", kind: .varInstance, usrs: indexed, attributes: ["objc"], evidence: configure)
+        }
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["setTitle:"]) }.confidence, .likely)
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["title"]) }.confidence, .likely)
+        // The colonless `setTitle` is a name the lookup tokens hold, never the setter's selector.
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["setTitle"]) }.confidence, .certain)
+        // `@objc(displayTitle)` renames the getter, so the Swift name no longer spells a selector of it.
+        let renamed: Set<String> = ["s:swiftTitle", "c:@M@A@objc(cs)Store(py)displayTitle"]
+        func renamedProperty(_ selectors: Set<String>) -> ConfidenceAssessment {
+            assess(name: "title", kind: .varInstance, usrs: renamed, attributes: ["objc"]) { $0.addClangLiteralSelectors(selectors) }
+        }
+        XCTAssertEqual(renamedProperty(["title"]).confidence, .certain)
+        XCTAssertEqual(renamedProperty(["setTitle:"]).confidence, .certain)
+        XCTAssertEqual(renamedProperty(["displayTitle"]).confidence, .likely)
+        XCTAssertEqual(renamedProperty(["setDisplayTitle:"]).confidence, .likely)
+    }
+
+    func testSelectorPassedToAReflectionAPINamesOnlyTheMethodWhoseSelectorItSpells() {
+        let usrs: Set<String> = ["s:swiftLoad", "c:@M@App@objc(cs)Store(im)load:from:"]
+        func method(_ selector: String) -> ConfidenceAssessment {
+            assess(name: "load(_:from:)", usrs: usrs, attributes: ["objc"]) {
+                $0.addReflectionSelectorSites([selector: "NSSelectorFromString at Loader.swift:4"])
+            }
+        }
+        XCTAssertEqual(method("load:from:"), ConfidenceAssessment(
+            confidence: .likely,
+            reason: "its name appears in a string passed to NSSelectorFromString at Loader.swift:4"
+        ))
+        XCTAssertEqual(method("load:").confidence, .certain)
+    }
+
     func testNSManagedPropertyKeepsMatchingItsKey() {
         let managed = assess(name: "title", kind: .varInstance, attributes: ["NSManaged"]) { $0.addClangLiteralTokens(["title"]) }
         XCTAssertEqual(managed.confidence, .likely)

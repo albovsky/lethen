@@ -16,6 +16,7 @@ struct StringLiteralAnalysis: SyntaxAnalysis {
             $0.addLiteralTokens(literals.tokens)
             $0.addLiteralSelectors(literals.selectors)
             $0.addReflectionSites(reflection.sites)
+            $0.addReflectionSelectorSites(reflection.selectorSites)
         }
     }
 }

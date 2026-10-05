@@ -20,7 +20,6 @@ final class ReflectionLiteralVisitorTest: XCTestCase {
         XCTAssertEqual(sites, [
             "App": "NSClassFromString at Test.swift:1",
             "Foo": "NSClassFromString at Test.swift:1",
-            "handleTap": "NSSelectorFromString at Test.swift:2",
             "refresh": "Selector at Test.swift:3",
             "Bar": "classNamed at Test.swift:4",
             "title": "value(forKey:) at Test.swift:5",
@@ -29,6 +28,16 @@ final class ReflectionLiteralVisitorTest: XCTestCase {
             "DetailController": "instantiateViewController(withIdentifier:) at Test.swift:7",
             "CardView": "UINib(nibName:) at Test.swift:8",
         ])
+    }
+
+    /// A selector is kept whole: `NSSelectorFromString("load:")` names the method whose selector is `load:`.
+    func testSelectorsArePassedToReflectionAPIsWholeAndNotSplit() {
+        let visitor = walk("""
+        let a = NSSelectorFromString("handleTap:")
+        let b = NSSelectorFromString("refresh")
+        """)
+        XCTAssertEqual(visitor.selectorSites, ["handleTap:": "NSSelectorFromString at Test.swift:1"])
+        XCTAssertEqual(visitor.sites, ["refresh": "NSSelectorFromString at Test.swift:2"])
     }
 
     func testMirrorLabelComparisonIsCollected() {
@@ -60,6 +69,10 @@ final class ReflectionLiteralVisitorTest: XCTestCase {
     }
 
     private func collect(_ source: String) -> [String: String] {
+        walk(source).sites
+    }
+
+    private func walk(_ source: String) -> ReflectionLiteralVisitor {
         let file = SourceFile(path: FilePath("/tmp/Test.swift"), modules: ["Test"])
         let syntax = Parser.parse(source: source)
         let locationBuilder = SourceLocationBuilder(
@@ -67,6 +80,6 @@ final class ReflectionLiteralVisitorTest: XCTestCase {
         )
         let visitor = ReflectionLiteralVisitor(locationBuilder: locationBuilder)
         visitor.walk(syntax)
-        return visitor.sites
+        return visitor
     }
 }

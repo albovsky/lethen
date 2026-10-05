@@ -172,14 +172,22 @@ public final class ConfidenceAssessor {
         {
             return "its name appears in a string literal"
         }
-        let literalSelectors = evidence.literalSelectors.union(evidence.clangLiteralSelectors)
-        if isObjcReachable, !literalSelectors.isEmpty {
-            if let selectors = Self.objcSelectors(of: declaration, names: names) {
-                if !literalSelectors.isDisjoint(with: selectors) { return "its name appears in a string literal" }
-            } else if Self.selectorKinds.contains(declaration.kind) {
-                // No selector to compare with, so a literal whose first part is the name stays evidence.
-                let firstParts = Set(literalSelectors.compactMap { $0.split(separator: ":").first.map(String.init) })
-                if !firstParts.isDisjoint(with: names) { return "its name appears in a string literal" }
+        if !evidence.literalSelectors.isEmpty || !evidence.clangLiteralSelectors.isEmpty || !evidence.reflectionSelectorSites.isEmpty {
+            // A pure-Swift declaration has no selector to compare with, and neither does a method without a clang USR,
+            // so a literal whose first part is the name stays evidence for what a reflection API receives, as before.
+            let selectors = isObjcReachable ? Self.objcSelectors(of: declaration) : nil
+            let firstPartNames = selectors == nil && Self.selectorKinds.contains(declaration.kind) ? names : []
+            func isNamed(by literal: String) -> Bool {
+                if let selectors { return selectors.contains(literal) }
+                return literal.split(separator: ":").first.map { firstPartNames.contains(String($0)) } ?? false
+            }
+            if isObjcReachable,
+               evidence.literalSelectors.contains(where: isNamed) || evidence.clangLiteralSelectors.contains(where: isNamed)
+            {
+                return "its name appears in a string literal"
+            }
+            if let site = evidence.reflectionSelectorSites.filter({ isNamed(by: $0.key) }).values.min() {
+                return "its name appears in a string passed to \(site)"
             }
         }
         return names.compactMap { evidence.reflectionSites[$0] }.min().map { "its name appears in a string passed to \($0)" }
@@ -501,20 +509,20 @@ public final class ConfidenceAssessor {
 
     /// The whole selectors the Objective-C runtime knows the declaration by: the selector of a method or
     /// initializer from its clang USR (`load:from:`), and the getter and setter of a property (`title`,
-    /// `setTitle:`). `nil` for a kind no selector names, and for a method whose clang USR is missing, since
-    /// Swift's rules for naming it depend on its labels and `@objc(name)`.
-    static func objcSelectors(of declaration: Declaration, names: Set<String>) -> Set<String>? {
+    /// `setTitle:`), from its USR when it has one, since `@objc(name)` may rename it, else from its Swift name.
+    /// `nil` for a kind no selector names, and for a method whose clang USR is missing, since Swift's rules for
+    /// naming it depend on its labels and `@objc(name)`.
+    static func objcSelectors(of declaration: Declaration) -> Set<String>? {
+        let fromUSRs = Set(declaration.usrs.compactMap { objcSelector(fromUSR: $0) })
         if declaration.kind.isVariableKind {
-            var selectors = names
-            for name in names {
-                if let first = name.first { selectors.insert("set" + first.uppercased() + name.dropFirst() + ":") }
+            let getters = fromUSRs.isEmpty ? [SourceGraph.baseName(of: declaration.name)] : fromUSRs
+            return getters.reduce(into: getters) { selectors, getter in
+                if let first = getter.first { selectors.insert("set" + first.uppercased() + getter.dropFirst() + ":") }
             }
-            return selectors
         }
         guard selectorKinds.contains(declaration.kind) else { return nil }
 
-        let selectors = Set(declaration.usrs.compactMap { objcSelector(fromUSR: $0) })
-        return selectors.isEmpty ? nil : selectors
+        return fromUSRs.isEmpty ? nil : fromUSRs
     }
 
     /// The whole selector of the method, initializer or property a clang USR names: `c:objc(cs)Store(im)load:from:`

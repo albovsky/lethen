@@ -9,6 +9,9 @@ public struct ConfidenceEvidence: Equatable {
     /// Identifier-like words found in the string literals of the scanned C and Objective-C sources. The call that
     /// receives such a literal is not read, so it may name any declaration.
     public private(set) var clangLiteralTokens: Set<String> = []
+    /// Selector-shaped literals passed to a reflection or dynamic-lookup API (`NSSelectorFromString("load:from:")`),
+    /// whole, each with the smallest such call site. Like `literalSelectors`, one names only the method whose selector it spells.
+    public private(set) var reflectionSelectorSites: [String: String] = [:]
     /// Selector-shaped literals (`"load:from:"`) of the scanned Swift sources, whole. One names only the method
     /// whose Objective-C selector it spells, so it is not split into `literalTokens`.
     public private(set) var literalSelectors: Set<String> = []
@@ -47,6 +50,12 @@ public struct ConfidenceEvidence: Equatable {
     public mutating func addReflectionSites(_ sites: [String: String]) {
         for (name, site) in sites where reflectionSites[name].map({ $0 > site }) ?? true {
             reflectionSites[name] = site
+        }
+    }
+
+    public mutating func addReflectionSelectorSites(_ sites: [String: String]) {
+        for (selector, site) in sites where reflectionSelectorSites[selector].map({ $0 > site }) ?? true {
+            reflectionSelectorSites[selector] = site
         }
     }
 
