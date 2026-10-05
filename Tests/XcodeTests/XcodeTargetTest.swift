@@ -113,6 +113,8 @@ final class XcodeTargetTest: XCTestCase {
 
         XCTAssertTrue(app.files(kind: .swiftSource).contains(folder.appending("Nested/Inner.swift")), "\(app.files(kind: .swiftSource).sorted())")
         XCTAssertFalse(app.files(kind: .swiftSource).contains(folder.appending("Other/OtherInner.swift")), "A folder the exception set does not list")
+        XCTAssertTrue(app.files(kind: .swiftSource).contains(folder.appending("Bracket[Old]/Bracketed.swift")), "A folder named with glob characters is listed literally")
+        XCTAssertFalse(app.files(kind: .swiftSource).contains(folder.appending("BracketO/Sibling.swift")), "The name is not a pattern")
     }
 
     /// The control: a file of that folder the exception set does not list stays out of the including target, and

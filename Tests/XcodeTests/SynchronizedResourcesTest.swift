@@ -68,4 +68,13 @@ final class SynchronizedInclusionExcludedOwnerTest: XcodeSourceGraphTestCase {
             self.assertReferenced(.functionMethodInstance("inclusionAction(_:)"))
         }
     }
+
+    /// `Shared.swift` is compiled into the app only through the exception set, since its owner is excluded: the
+    /// declaration the app calls is retained, and the one nothing calls is reported.
+    func testReadsTheSourcesTheAppIncludesFromAnotherTargetsFolder() {
+        assertReferenced(.enum("SharedFromAnotherTargetsFolder")) {
+            self.assertReferenced(.functionMethodStatic("used()"))
+            self.assertNotReferenced(.functionMethodStatic("unused()"))
+        }
+    }
 }

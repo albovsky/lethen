@@ -189,8 +189,13 @@ public final class XcodeTarget {
                 .mapSet { groupRoot.appending($0).lexicallyNormalized() }
             // An entry names a file or a folder, which takes everything below it along.
             for path in included {
-                result.formUnion(FilePath.glob(path.appending("**/*").string).map { $0.lexicallyNormalized() })
-                if FileManager.default.fileExists(atPath: path.string) { result.insert(path) }
+                guard FileManager.default.fileExists(atPath: path.string) else { continue }
+
+                result.insert(path)
+                // The folder is listed by its literal name, which may hold glob characters such as `[`.
+                for relative in FileManager.default.enumerator(atPath: path.string)?.compactMap({ $0 as? String }) ?? [] {
+                    result.insert(path.appending(relative).lexicallyNormalized())
+                }
             }
         }
 

@@ -143,6 +143,7 @@
 		3C3057602EAE72DB00D290DC /* Exceptions for "InclusionFolder" folder in "UIKitProject" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Bracket[Old]",
 				Inclusion.storyboard,
 				Nested,
 				Shared.swift,
