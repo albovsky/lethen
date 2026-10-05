@@ -2161,9 +2161,10 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertConfidence(.enumelement("windowsLoopOnly"), .certain)
             }
             assertReferenced(.enum("FixtureEnum312Other")) {
-                // A name collision with a skipped branch is accepted as likely.
+                // The skipped branch constructs `FixtureEnum312.constructedOnlyOnWindows`, spelled through its
+                // type, so it is not a use of this other enum's case of the same name.
                 self.assertUnconstructedEnumCase(.enumelement("constructedOnlyOnWindows"))
-                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .likely)
+                self.assertConfidence(.enumelement("constructedOnlyOnWindows"), .certain)
             }
             assertNotReferenced(.typealias("FixtureTypealias312"))
             assertConfidence(.typealias("FixtureTypealias312"), .likely)
@@ -2261,6 +2262,47 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 // `String.init(data:encoding:)` is not an initializer of this class; `FixtureInit5.init(other:)` is.
                 self.assertConfidence(.functionConstructor("init(other:)"), .likely)
                 self.assertConfidence(.functionConstructor("init(unrelated:)"), .certain)
+            }
+        }
+    }
+
+    func testConfidenceSkippedBranchConstructorsAndEnumCasesNarrowByType() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureWidget6")) {
+                // `FixtureWidget6(size: 1)` constructs `FixtureWidget6` with those labels, and no other initializer.
+                self.assertNotReferenced(.functionConstructor("init(size:)"))
+                self.assertConfidence(.functionConstructor("init(size:)"), .likely)
+                self.assertNotReferenced(.functionConstructor("init(name:)"))
+                self.assertConfidence(.functionConstructor("init(name:)"), .certain)
+                // A chain follows the initializer the labels name, and not the one they do not.
+                self.assertConfidence(.functionMethodStatic("sizeHelper6()"), .likely)
+                self.assertConfidence(.functionMethodStatic("nameHelper6()"), .certain)
+                // Used-but-not-compared control: called in the clause this build compiled.
+                self.assertReferenced(.functionConstructor("init(count:)"))
+                self.assertConfidence(.functionConstructor("init(never:)"), .certain)
+            }
+            // A trailing closure fills `body`.
+            assertReferenced(.struct("FixtureClosureWidget6")) {
+                self.assertConfidence(.functionConstructor("init(body:)"), .likely)
+            }
+            // Another type's initializer with the same labels is not named.
+            assertReferenced(.struct("FixtureGadget6")) {
+                self.assertNotReferenced(.functionConstructor("init(size:)"))
+                self.assertConfidence(.functionConstructor("init(size:)"), .certain)
+            }
+            // `FixtureEnumA6.ready` is `FixtureEnumA6`'s case; `.go` names no type, so any `go` may be meant.
+            assertReferenced(.enum("FixtureEnumA6")) {
+                self.assertUnconstructedEnumCase(.enumelement("ready"))
+                self.assertConfidence(.enumelement("ready"), .likely)
+                self.assertConfidence(.enumelement("go"), .likely)
+                // Matching a case in a pattern is not constructing it.
+                self.assertConfidence(.enumelement("patternOnly"), .certain)
+            }
+            assertReferenced(.enum("FixtureEnumB6")) {
+                self.assertUnconstructedEnumCase(.enumelement("ready"))
+                self.assertConfidence(.enumelement("ready"), .certain)
+                self.assertConfidence(.enumelement("go"), .likely)
+                self.assertConfidence(.enumelement("patternOnly"), .certain)
             }
         }
     }
