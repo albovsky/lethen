@@ -39,9 +39,10 @@ Xcode 27.0, Swift 6.4, `swift build -c release`. The Test configuration builds f
 builds the scheme's Run action, and the Test configuration compiles out the launch path that starts at
 `SceneDelegate.swift:64` in the `#else` of `#if TEST`.
 
-Before is the single-configuration scan at the same commit (the expectation recorded earlier also moved by 150 rows
-from #151, #153, #155 and #156, 125 of them `likely` to `certain`, which are not this change). After is the corpus
-expectation recorded with it.
+Before is the single-configuration scan at the same commit. The previously committed expectation equals a scan at
+`b3b84a1`; from there to `0b95cfb`, #153 turned 3 findings from `certain` to `likely` and #155 turned 125 from `likely`
+to `certain`, and #151, #149 and #156 changed no Wikipedia row (see the checks below).
+After is the corpus expectation recorded with this change.
 
 | | Findings | `certain` | `likely` | `likely` share | Sampled | TP | FP | Precision |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -61,14 +62,14 @@ sampled rows no longer reported, and one finding entered the sample. The `likely
 | Unbuilt target (`languages`) | 3 | 3 |
 | Other | 2 | 0 |
 
-Against the single-configuration scan the Debug build adds 68 findings, removes 262 and changes the confidence or line of
-37. Of the 262 removed, 236 were `likely` (the launch-path chain, which the Debug configuration compiles) and 26
-were `certain`: 22 unused-import rows, whose evidence differs per configuration, and 4 declarations (`schema`,
-`didDumpInventory`, `wmf_setAppResignActiveDate(_:)` and `_syncIfNotSyncing()`) that the Debug scan no longer reports. Of the 68
-added, 31 are `WMFDataMocks` declarations that only the WMFData and WMFComponents packages' test targets use, which the scanned
-scheme does not build, so they are TP under the judgment below; 10 are in the widget extension, which only the Debug
-configuration builds; and the other 27 are mostly code of the `#else` of `#if TEST` such as `logStartingSnapshot()` and the
-`animated` parameter of `showNearby(animated:)`.
+Against the single-configuration scan the Debug build adds 55 findings, removes 249 and changes the confidence or line of
+37. Of the 249 removed, 236 were `likely` (the launch-path chain, which the Debug configuration compiles) and 13 were
+`certain`: 9 unused-import rows (seven in `WMFDataMocks`, `AppDelegate.swift` and `SceneDelegate.swift`) and 4 declarations
+(`schema`, `didDumpInventory`, `wmf_setAppResignActiveDate(_:)` and `_syncIfNotSyncing()`) that the Debug scan no longer
+reports. Of the 55 added, 31 are `WMFDataMocks` declarations that only the WMFData and WMFComponents packages' test targets
+use, which the scanned scheme does not build, so they are TP under the judgment below; 10 are in the widget extension,
+which only the Debug configuration builds; and the other 14 are mostly code of the `#else` of `#if TEST` such as
+`logStartingSnapshot()` and the `animated` parameter of `showNearby(animated:)`.
 
 All seven sampled rows that are no longer reported are marked retired: the four named in the second measurement
 (`presentVariantAlert(for:remainingCodes:completion:)`, `setupWMFDataCoreDataStore()`,
