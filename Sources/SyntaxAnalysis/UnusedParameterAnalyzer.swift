@@ -13,6 +13,13 @@ public final class UnusedParameterAnalyzer {
     public init() {}
 
     public func analyze(file: SourceFile, syntax: SourceFileSyntax, locationConverter: SourceLocationConverter, parseProtocols: Bool) -> [Function: Set<Parameter>] {
+        analyzeEveryFunction(file: file, syntax: syntax, locationConverter: locationConverter, parseProtocols: parseProtocols)
+            .filter { !$0.value.isEmpty }
+    }
+
+    /// Like `analyze`, but also returns the functions whose parameters are all used, so a caller can tell that
+    /// a copy of a function uses a parameter another copy leaves unused.
+    public func analyzeEveryFunction(file: SourceFile, syntax: SourceFileSyntax, locationConverter: SourceLocationConverter, parseProtocols: Bool) -> [Function: Set<Parameter>] {
         let functions = UnusedParameterParser.parse(
             file: file,
             syntax: syntax,
@@ -21,11 +28,7 @@ public final class UnusedParameterAnalyzer {
         )
 
         return functions.reduce(into: [Function: Set<Parameter>]()) { result, function in
-            let params = analyze(function: function)
-
-            if !params.isEmpty {
-                result[function] = params
-            }
+            result[function] = analyze(function: function)
         }
     }
 

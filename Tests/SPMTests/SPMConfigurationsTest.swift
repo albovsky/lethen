@@ -47,9 +47,21 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
                 public func unusedInBothEntry(kept: Int, dropped: Int) { print(kept + 1) }
             #endif
 
+            #if DEBUG
+                public func usedInOneCopyEntry(first: Int, second: Int) { print(first, second) }
+            #else
+                public func usedInOneCopyEntry(first: Int, second: Int) { print(first) }
+            #endif
+
+            #if DEBUG
+                public func renamedEntry(x a: Int, y b: Int) { print(a) }
+            #else
+                public func renamedEntry(x b: Int, y a: Int) { print(b) }
+            #endif
+
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -89,6 +101,14 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         // Control: a parameter unused in every configuration is still reported, once.
         let droppedParameters = Self.results.flatMap(\.usrs).filter { $0.hasPrefix("param-dropped-unusedInBothEntry") }
         XCTAssertEqual(droppedParameters.count, 1)
+
+        // Controls: the copy that uses every parameter keeps `second` used, and copies that name their parameters
+        // differently are compared by position, so the second one is reported once.
+        let usedInOneCopy = Self.results.flatMap(\.usrs).filter { $0.contains("usedInOneCopyEntry") }
+        XCTAssertEqual(usedInOneCopy, [String]())
+        let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
+        XCTAssertEqual(renamed.count, 1)
+        XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")
     }
 
     /// `swift package clean` removes every configuration's products. When a later configuration's

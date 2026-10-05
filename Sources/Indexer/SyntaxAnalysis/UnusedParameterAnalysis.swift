@@ -30,7 +30,7 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
             }
         }
 
-        let paramsByFunction = UnusedParameterAnalyzer().analyze(
+        let paramsByFunction = UnusedParameterAnalyzer().analyzeEveryFunction(
             file: file.sourceFile,
             syntax: file.syntax,
             locationConverter: file.locationConverter,
@@ -39,7 +39,7 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
 
         // A function declared in several `#if` branches is indexed once per configuration with the same USR, and the
         // graph keeps one copy. Its parameters share USRs too, so they are decided per USR group: a parameter is
-        // unused only when every copy that declares it leaves it unused, and it is attached to the copy the graph
+        // unused only when every copy leaves it unused, and it is attached to the copy the graph
         // kept. Walking the groups in a fixed order keeps the result independent of dictionary order.
         var copiesByUsrs: [Set<String>: [(function: Function, decl: Declaration, unused: Set<Parameter>)]] = [:]
         for (function, params) in paramsByFunction {
@@ -59,22 +59,26 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
                 copies.first { graph.declaration(withUsr: $0.decl.usrs.sorted()[0]) === $0.decl } ?? copies[0]
             }
             let functionDecl = winner.decl
-            let ignoredParamNames = Set(copies.flatMap { ignoredParamsByLocation[$0.decl.location] ?? [] })
-
-            // Names of parameters some copy declares and uses.
-            let usedNames = Set(copies.flatMap { copy in
-                copy.function.parameters.filter { !copy.unused.contains($0) }.map(\.name.text)
+            // Copies share a signature, not local parameter names, so parameters are matched by position.
+            func isUsed(at index: Int) -> Bool {
+                copies.contains { copy in
+                    copy.function.parameters.indices.contains(index) && !copy.unused.contains(copy.function.parameters[index])
+                }
+            }
+            let ignoredIndexes = Set(copies.flatMap { copy in
+                let ignoredNames = ignoredParamsByLocation[copy.decl.location] ?? []
+                return copy.function.parameters.indices.filter { ignoredNames.contains(copy.function.parameters[$0].name.text) }
             })
 
             file.graph.withLock { graph in
-                for param in winner.unused where !usedNames.contains(param.name.text) {
+                for (index, param) in winner.function.parameters.enumerated() where winner.unused.contains(param) && !isUsed(at: index) {
                     let paramDecl = param.makeDeclaration(withParent: functionDecl)
                     functionDecl.unusedParameters.insert(paramDecl)
                     graph.add(paramDecl)
 
                     if file.retainsAllDeclarations || (functionDecl.isObjcAccessible && retainObjcAccessible) {
                         graph.markRetained(paramDecl)
-                    } else if ignoredParamNames.contains(param.name.text) {
+                    } else if ignoredIndexes.contains(index) {
                         graph.markRetained(paramDecl)
                         graph.markCommandIgnored(paramDecl, kind: .declaration)
                     }
