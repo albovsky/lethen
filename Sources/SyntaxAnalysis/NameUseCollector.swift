@@ -230,7 +230,9 @@ public struct NameUseCollector {
         while let ancestor = current {
             for child in ancestor.children(viewMode: .sourceAccurate) {
                 if let clause = child.as(GenericParameterClauseSyntax.self) {
-                    for parameter in clause.parameters { names.insert(parameter.name.text) }
+                    for parameter in clause.parameters {
+                        names.insert(parameter.name.text)
+                    }
                 }
             }
             if let protocolDecl = ancestor.as(ProtocolDeclSyntax.self) {
