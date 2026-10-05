@@ -46,6 +46,8 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try Self.index(configuration: configuration)
         assertReferenced(.functionFree("calledOnlyFromTests()"))
         XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
+        // The tests are not built in Release, which only builds the Run action, so what they use only there is unused.
+        assertNotReferenced(.functionFree("calledOnlyFromReleaseTests()"))
     }
 
     /// The control: the only listed configuration builds for testing, so the tests still build.
@@ -54,6 +56,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         try Self.build(projectPath: ConfigurationsProjectPath, configuration: configuration)
         try Self.index(configuration: configuration)
         assertReferenced(.functionFree("calledOnlyFromTests()"))
+        assertReferenced(.functionFree("calledOnlyFromReleaseTests()"))
         XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
     }
 

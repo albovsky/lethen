@@ -9,3 +9,4 @@ func conditionalEntry() {
     #endif
 }
 func calledOnlyFromTests() {}
+func calledOnlyFromReleaseTests() {}
