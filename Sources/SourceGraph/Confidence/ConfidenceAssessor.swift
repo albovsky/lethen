@@ -1,4 +1,5 @@
 import Configuration
+import Foundation
 
 /// Assesses how sure Lethen is that a reported declaration is unused, from the evidence indexing collected.
 ///
@@ -170,8 +171,14 @@ public final class ConfidenceAssessor {
             || declaration.attributes.contains { ["objc", "objc.name", "objcMembers", "NSManaged"].contains($0.name) }
             || declaration.modifiers.contains("dynamic")
             || declaration.usrs.contains { Self.objcName(fromUSR: $0) != nil }
+        // `@_cdecl("name")` and `@_silgen_name("name")` export the function under that C symbol, which a C or
+        // Objective-C file can look up with `dlsym`, so its literal names the function.
+        let cSymbols = declaration.attributes
+            .filter { ["_cdecl", "_silgen_name"].contains($0.name) }
+            .compactMap { $0.arguments?.trimmingCharacters(in: CharacterSet(charactersIn: "()\" ")) }
         let clangTokensCount = isObjcReachable || declaration.kind == .class
         if (clangTokensCount && !evidence.clangLiteralTokens.isDisjoint(with: names))
+            || !evidence.clangLiteralTokens.isDisjoint(with: cSymbols)
             || (isObjcReachable && !evidence.literalTokens.isDisjoint(with: names))
         {
             return "its name appears in a string literal"

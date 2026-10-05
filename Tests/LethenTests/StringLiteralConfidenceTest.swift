@@ -68,6 +68,24 @@ final class StringLiteralConfidenceTest: XCTestCase {
         XCTAssertEqual(assess(name: "load()") { $0.addClangLiteralSelectors(["load:"]) }.confidence, .certain)
     }
 
+    func testObjectiveCFileLiteralNamesAFunctionExportedAsACSymbol() {
+        func exported(_ attribute: String, _ symbol: String) -> ConfidenceAssessment {
+            let file = SourceFile(path: FilePath("/p/A.swift"), modules: ["A"])
+            let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
+            var evidence = ConfidenceEvidence()
+            evidence.clangCoverage = ClangCoverage(unindexedFiles: [])
+            evidence.addClangLiteralTokens([symbol])
+            let declaration = Declaration(name: "entry()", kind: .functionFree, usrs: ["s:entry"], location: Location(file: file, line: 1, column: 1))
+            declaration.attributes = [DeclarationAttribute(name: attribute, arguments: "(\"plugin_entry\")")]
+            return ConfidenceAssessor(evidence: evidence, graph: graph, configuration: Configuration()).assess(declaration)
+        }
+        XCTAssertEqual(exported("_cdecl", "plugin_entry").confidence, .likely)
+        XCTAssertEqual(exported("_silgen_name", "plugin_entry").confidence, .likely)
+        // Control: the literal must spell the exported symbol, not the Swift name, and the attribute must be a C export.
+        XCTAssertEqual(exported("_cdecl", "entry").confidence, .certain)
+        XCTAssertEqual(exported("inline", "plugin_entry").confidence, .certain)
+    }
+
     func testObjectiveCFileLiteralStillNamesWhatTheObjectiveCRuntimeReaches() {
         XCTAssertEqual(assess(name: "title", kind: .varInstance, attributes: ["objc"]) { $0.addClangLiteralTokens(["title"]) }.confidence, .likely)
         XCTAssertEqual(assess(name: "handleTap()", attributes: ["objc"]) { $0.addClangLiteralTokens(["handleTap"]) }.confidence, .likely)
