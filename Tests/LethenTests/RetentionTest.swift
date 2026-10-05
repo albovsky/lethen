@@ -2432,6 +2432,15 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct227PlainConforming")) {
                 self.assertNotAssignOnlyProperty(.varInstance("conformed"))
             }
+            assertReferenced(.class("FixtureClass227FilePrivateSub")) {
+                self.assertAssignOnlyProperty(.varInstance("inheritedInFile"))
+            }
+            assertReferenced(.struct("FixtureStruct227Unmarked")) {
+                self.assertNotAssignOnlyProperty(.varInstance("unmarked"))
+            }
+            assertReferenced(.struct("FixtureStruct227Marked")) {
+                self.assertAssignOnlyProperty(.varInstance("marked"))
+            }
             assertReferenced(.class("FixtureClass227Read")) {
                 self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
             }

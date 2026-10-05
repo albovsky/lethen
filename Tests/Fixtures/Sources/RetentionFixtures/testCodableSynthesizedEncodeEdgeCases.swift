@@ -116,6 +116,49 @@ struct FixtureStruct227PlainConforming: FixtureProtocol227Plain {
     }
 }
 
+fileprivate class FixtureClass227FilePrivateBase {
+    fileprivate func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(0)
+    }
+}
+
+fileprivate final class FixtureClass227FilePrivateSub: FixtureClass227FilePrivateBase, Encodable {
+    // Same file: the fileprivate encode(to:) is inherited and is the witness, so nothing reads it.
+    let inheritedInFile: Int
+
+    init(inheritedInFile: Int) {
+        self.inheritedInFile = inheritedInFile
+    }
+}
+
+protocol FixtureProtocol227Marker {}
+
+extension FixtureProtocol227Plain where Self: FixtureProtocol227Marker {
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(0)
+    }
+}
+
+struct FixtureStruct227Unmarked: FixtureProtocol227Plain {
+    // The constrained extension does not apply: the encoder is synthesized.
+    let unmarked: Int
+
+    init(unmarked: Int) {
+        self.unmarked = unmarked
+    }
+}
+
+struct FixtureStruct227Marked: FixtureProtocol227Plain, FixtureProtocol227Marker {
+    // The constrained extension applies, so nothing is synthesized and nothing reads it.
+    let marked: Int
+
+    init(marked: Int) {
+        self.marked = marked
+    }
+}
+
 final class FixtureClass227Read {
     // Used-but-not-encoded control: read normally in a type that is never encoded.
     var readNormally: Int = 0
@@ -142,6 +185,9 @@ public final class FixtureClass227EdgeRetainer {
             JSONEncoder().encode(FixtureStruct227Witness(viaExtension: 9)),
             JSONEncoder().encode(FixtureClass227Witness(viaExtension: 10)),
             JSONEncoder().encode(FixtureStruct227PlainConforming(conformed: 11)),
+            JSONEncoder().encode(FixtureClass227FilePrivateSub(inheritedInFile: 12)),
+            JSONEncoder().encode(FixtureStruct227Unmarked(unmarked: 13)),
+            JSONEncoder().encode(FixtureStruct227Marked(marked: 14)),
         ]
     }
 }

@@ -88,8 +88,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             guard let superclass = graph.declaration(withUsr: reference.usr), !seen.contains(superclass) else { continue }
 
             let members = superclass.declarations.union((graph.extensions[superclass] ?? []).flatMap(\.declarations))
-            // A private or fileprivate method is not inherited, so it is not the subclass's witness.
-            if members.contains(where: { isInheritableCustomEncoder($0) })
+            // A private method is not inherited, and a fileprivate one only by a subclass of the same file.
+            if members.contains(where: { isInheritableCustomEncoder($0, by: type) })
                 || inheritsCustomEncoder(superclass, seen: seen.union([type]))
             {
                 return true
@@ -98,10 +98,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         return false
     }
 
-    private func isInheritableCustomEncoder(_ member: Declaration) -> Bool {
+    private func isInheritableCustomEncoder(_ member: Declaration, by subclass: Declaration) -> Bool {
         guard isCustomCoder(member, named: "encode(to:)", parameterType: "Encoder") else { return false }
 
-        return ![.private, .fileprivate].contains(member.accessibility.value)
+        switch member.accessibility.value {
+        case .private: return false
+        case .fileprivate: return member.location.file == subclass.location.file
+        default: return true
+        }
     }
 
     /// An `encode(to:)` supplied by an extension of a protocol the type conforms to, such as
@@ -116,7 +120,17 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                 guard extensionReference.declarationKind == .extensionProtocol,
                       let extensionDeclaration = graph.declaration(withUsr: extensionReference.usr) else { return false }
 
-                return extensionDeclaration.declarations.contains { isCustomCoder($0, named: "encode(to:)", parameterType: "Encoder") }
+                // Only an extension whose conformance requirements the type meets applies, and its member must be
+                // visible enough to witness the requirement.
+                let inherited = Set(graph.inheritedTypeReferences(of: type).map(\.usr))
+                let applies = extensionDeclaration.references
+                    .filter { $0.role == .genericRequirementType && $0.declarationKind == .protocol }
+                    .allSatisfy { inherited.contains($0.usr) }
+                guard applies else { return false }
+
+                return extensionDeclaration.declarations.contains {
+                    isCustomCoder($0, named: "encode(to:)", parameterType: "Encoder") && ![.private, .fileprivate].contains($0.accessibility.value)
+                }
             }
         }
     }
