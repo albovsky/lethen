@@ -144,6 +144,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Inclusion.storyboard,
+				Nested,
 				Shared.swift,
 			);
 			target = 3C849659255405AD00900DA9 /* UIKitProject */;

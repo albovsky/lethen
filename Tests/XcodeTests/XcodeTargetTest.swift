@@ -105,6 +105,16 @@ final class XcodeTargetTest: XCTestCase {
         XCTAssertTrue(owner.files(kind: .interfaceBuilder).contains(folder.appending("Inclusion.storyboard")))
     }
 
+    /// An included entry that names a folder takes the files below it along, as an exclusion does.
+    func testExceptionSetOfAnotherTargetsFolderIncludesTheFilesBelowAListedFolder() throws {
+        let app = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        try app.identifyFiles()
+        let folder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/InclusionFolder")
+
+        XCTAssertTrue(app.files(kind: .swiftSource).contains(folder.appending("Nested/Inner.swift")), "\(app.files(kind: .swiftSource).sorted())")
+        XCTAssertFalse(app.files(kind: .swiftSource).contains(folder.appending("Other/OtherInner.swift")), "A folder the exception set does not list")
+    }
+
     /// The control: a file of that folder the exception set does not list stays out of the including target, and
     /// the exception set does not turn into exclusions for the owner.
     func testExceptionSetOfAnotherTargetsFolderLeavesOutTheFilesItDoesNotList() throws {

@@ -187,7 +187,11 @@ public final class XcodeTarget {
                 .filter { $0.target === target }
                 .flatMap { $0.membershipExceptions ?? [] }
                 .mapSet { groupRoot.appending($0).lexicallyNormalized() }
-            result.formUnion(included.filter { FileManager.default.fileExists(atPath: $0.string) })
+            // An entry names a file or a folder, which takes everything below it along.
+            for path in included {
+                result.formUnion(FilePath.glob(path.appending("**/*").string).map { $0.lexicallyNormalized() })
+                if FileManager.default.fileExists(atPath: path.string) { result.insert(path) }
+            }
         }
 
         for group in ownedGroups {
