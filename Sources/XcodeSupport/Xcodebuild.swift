@@ -3,6 +3,14 @@ import Logger
 import Shared
 import SystemPackage
 
+/// What `xcodebuild` is asked to do for a scheme.
+public enum BuildAction: String, Sendable {
+    /// Builds the app and its test targets, so tests stay in the index.
+    case buildForTesting = "build-for-testing"
+    /// Builds what the scheme's Run action builds, without test targets.
+    case build
+}
+
 public final class Xcodebuild {
     private let shell: Shell
     private let logger: Logger
@@ -32,15 +40,16 @@ public final class Xcodebuild {
         }
     }
 
-    /// Builds `scheme` for testing with indexing enabled, passing each line of build output to `onOutputLine`.
-    /// A `configuration` is passed as `-configuration`; without one, xcodebuild uses the scheme's Test action
-    /// configuration.
+    /// Builds `scheme` with indexing enabled, for testing unless `action` says otherwise, passing each line of build
+    /// output to `onOutputLine`. A `configuration` is passed as `-configuration`; without one, xcodebuild uses the
+    /// scheme's Test action configuration.
     @discardableResult
     public func build(
         project: XcodeProjectlike,
         scheme: String,
         allSchemes: [String],
         configuration: String? = nil,
+        action: BuildAction = .buildForTesting,
         additionalArguments: [String] = [],
         onOutputLine: @escaping @Sendable (String) -> Void = { _ in }
     ) throws -> String {
@@ -61,7 +70,7 @@ public final class Xcodebuild {
             "-parallelizeTargets",
             "-derivedDataPath", derivedDataPath.string,
             "-quiet",
-            "build-for-testing",
+            action.rawValue,
         ]
         let envs = [
             "CODE_SIGNING_ALLOWED=NO",

@@ -38,6 +38,25 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         assertReferenced(.functionFree("calledOnlyInRelease()"))
     }
 
+    /// The tests build with `build-for-testing` in Debug, where the scheme tests, so `calledOnlyFromTests()` is
+    /// referenced and the test target counts as scanned although Release only builds the Run action.
+    func testTestTargetsAreScannedFromTheConfigurationThatBuildsThem() throws {
+        let configuration = Self.configuration(["Debug", "Release"])
+        try Self.build(projectPath: ConfigurationsProjectPath, configuration: configuration)
+        try Self.index(configuration: configuration)
+        assertReferenced(.functionFree("calledOnlyFromTests()"))
+        XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
+    }
+
+    /// The control: the only listed configuration builds for testing, so the tests still build.
+    func testASingleListedConfigurationStillBuildsTheTests() throws {
+        let configuration = Self.configuration(["Release"])
+        try Self.build(projectPath: ConfigurationsProjectPath, configuration: configuration)
+        try Self.index(configuration: configuration)
+        assertReferenced(.functionFree("calledOnlyFromTests()"))
+        XCTAssertFalse(try XCTUnwrap(Self.plan).unscannedTargets.contains { $0.name == "ConfigurationsProjectTests" })
+    }
+
     // MARK: - Driver
 
     func testEachConfigurationBuildsIntoItsOwnDerivedData() throws {
@@ -52,7 +71,7 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             return command[index + 1]
         }
         XCTAssertEqual(configurations, ["Debug", "Release"])
-        XCTAssertTrue(builds.allSatisfy { $0.contains("build-for-testing") })
+        XCTAssertEqual(builds.map(Self.action), ["build-for-testing", "build"])
         XCTAssertEqual(Set(shell.derivedDataPaths).count, 2, "\(shell.derivedDataPaths)")
     }
 
@@ -86,7 +105,48 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             guard case LethenError.shellCommandFailed = error else { return XCTFail("\(error)") }
         }
         XCTAssertEqual(shell.streamed.count, 2)
-        XCTAssertTrue(shell.streamed.allSatisfy { $0.contains("-configuration") && $0.contains("build-for-testing") })
+        XCTAssertTrue(shell.streamed.allSatisfy { $0.contains("-configuration") })
+        XCTAssertEqual(shell.streamed.map(Self.action), ["build-for-testing", "build"])
+    }
+
+    /// The scheme's Test configuration builds for testing and the others build its Run action; the tests do not
+    /// compile in every configuration, and are indexed once.
+    func testTheSchemesTestConfigurationBuildsForTestingAndTheOthersBuild() throws {
+        func actions(_ scheme: String, _ configurations: [String]) throws -> [String: String] {
+            let shell = RecordingShell()
+            let driver = try Self.recordingDriver(Self.configuration(configurations, scheme: scheme), shell: shell)
+            try driver.build()
+            return try Dictionary(uniqueKeysWithValues: shell.streamed.map { command in
+                let index = try XCTUnwrap(command.firstIndex(of: "-configuration"))
+                return (command[index + 1], Self.action(command))
+            })
+        }
+
+        XCTAssertEqual(try actions("ConfigurationsProject", ["Debug", "Release"]), ["Debug": "build-for-testing", "Release": "build"])
+        XCTAssertEqual(try actions("ReleaseTests", ["Debug", "Release"]), ["Debug": "build", "Release": "build-for-testing"])
+        // The scheme's Test configuration is not listed, so the first listed one builds for testing.
+        XCTAssertEqual(try actions("ConfigurationsProject", ["Release"]), ["Release": "build-for-testing"])
+    }
+
+    func testBuildActionsChooseOneConfigurationToBuildForTesting() {
+        let debugTests = XcodeSchemeConfigurations(test: "Debug", launch: "Release")
+
+        func actions(_ listed: [String], _ configurations: XcodeSchemeConfigurations?) -> [String] {
+            XcodeProjectDriver.buildActions(listed: listed, schemeConfigurations: configurations).map { "\($0.configuration) \($0.action.rawValue)" }
+        }
+
+        XCTAssertEqual(actions(["Release", "Debug"], debugTests), ["Release build", "Debug build-for-testing"])
+        XCTAssertEqual(actions(["Debug", "Release"], debugTests), ["Debug build-for-testing", "Release build"])
+        XCTAssertEqual(actions(["Release", "Staging"], debugTests), ["Release build-for-testing", "Staging build"])
+        XCTAssertEqual(actions(["Release", "Staging"], nil), ["Release build-for-testing", "Staging build"])
+        XCTAssertEqual(actions(["Release", "Staging"], XcodeSchemeConfigurations(test: nil, launch: "Release")), ["Release build-for-testing", "Staging build"])
+        XCTAssertEqual(actions(["Debug"], debugTests), ["Debug build-for-testing"])
+        XCTAssertEqual(actions([], debugTests), [])
+    }
+
+    func testABuildDescriptionSaysWhenTheTestsAreNotBuilt() {
+        let description = XcodeProjectDriver.buildDescription(scheme: "App", listedConfiguration: "Debug", schemeConfigurations: nil, buildArguments: [], action: .build)
+        XCTAssertEqual(description, "Building App with configuration Debug (its tests are not built in this configuration)")
     }
 
     // MARK: - Scheme configurations
@@ -607,6 +667,11 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
     }
 
     // MARK: - Private
+
+    /// The `xcodebuild` action of a recorded build command.
+    private static func action(_ command: [String]) -> String {
+        command.first { $0 == "build" || $0 == "build-for-testing" } ?? "none"
+    }
 
     private static func configuration(_ configurations: [String], scheme: String = "ConfigurationsProject") -> Configuration {
         let configuration = Configuration()

@@ -1,5 +1,8 @@
+@testable import ConfigurationsProject
 import XCTest
 
 final class ConfigurationsProjectTests: XCTestCase {
-    func testNothing() {}
+    func testNothing() {
+        calledOnlyFromTests()
+    }
 }

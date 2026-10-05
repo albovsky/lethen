@@ -8,3 +8,4 @@ func conditionalEntry() {
         calledOnlyInRelease()
     #endif
 }
+func calledOnlyFromTests() {}

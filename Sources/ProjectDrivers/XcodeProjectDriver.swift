@@ -320,10 +320,12 @@
                     logger.warn(warning)
                 }
 
+                let actions = Self.buildActions(listed: listedConfigurations, schemeConfigurations: schemeConfigurations)
                 for buildConfiguration in configurations {
+                    let action = actions.first { $0.configuration == buildConfiguration }?.action ?? .buildForTesting
                     if configuration.outputFormat.supportsAuxiliaryOutput {
                         let asterisk = logger.colorize("*", .boldGreen)
-                        logger.info("\(asterisk) \(Self.buildDescription(scheme: scheme, listedConfiguration: buildConfiguration, schemeConfigurations: schemeConfigurations, buildArguments: configuration.buildArguments))...")
+                        logger.info("\(asterisk) \(Self.buildDescription(scheme: scheme, listedConfiguration: buildConfiguration, schemeConfigurations: schemeConfigurations, buildArguments: configuration.buildArguments, action: action))...")
                     }
 
                     try BuildProgress(configuration: configuration, logger: logger).run { onOutputLine in
@@ -331,6 +333,7 @@
                                              scheme: scheme,
                                              allSchemes: Array(schemes),
                                              configuration: buildConfiguration,
+                                             action: action,
                                              additionalArguments: configuration.buildArguments,
                                              onOutputLine: onOutputLine)
                     }
@@ -489,6 +492,10 @@
         }
 
         /// The configurations to build, each into its own DerivedData; `nil` builds the scheme's Test action configuration.
+        private var listedConfigurations: [String] {
+            configuration.configurations.removingDuplicates()
+        }
+
         private var buildConfigurations: [String?] {
             configuration.configurations.isEmpty ? [nil] : configuration.configurations.removingDuplicates()
         }
@@ -700,14 +707,27 @@
             scheme: String,
             listedConfiguration: String?,
             schemeConfigurations: XcodeSchemeConfigurations?,
-            buildArguments: [String]
+            buildArguments: [String],
+            action: BuildAction = .buildForTesting
         ) -> String {
             let builtConfiguration = listedConfiguration
                 ?? buildArguments.firstIndex(of: "-configuration").flatMap { buildArguments[safe: $0 + 1] }
                 ?? schemeConfigurations?.test
             guard let builtConfiguration else { return "Building \(scheme)" }
 
-            return "Building \(scheme) with configuration \(builtConfiguration)"
+            let described = "Building \(scheme) with configuration \(builtConfiguration)"
+            return action == .build ? "\(described) (its tests are not built in this configuration)" : described
+        }
+
+        /// How each listed configuration builds `scheme`. Exactly one builds for testing, so the test targets are
+        /// compiled and indexed once: the scheme's Test action configuration when it is listed, else the first listed.
+        /// The others build the scheme's Run action, which needs no test target to compile there.
+        static func buildActions(
+            listed: [String],
+            schemeConfigurations: XcodeSchemeConfigurations?
+        ) -> [(configuration: String, action: BuildAction)] {
+            let testing = schemeConfigurations?.test.flatMap { listed.contains($0) ? $0 : nil } ?? listed.first
+            return listed.map { ($0, $0 == testing ? .buildForTesting : .build) }
         }
 
         /// `build-for-testing` compiles the scheme's Test configuration, so code compiled only in the configuration the
