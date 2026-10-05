@@ -90,6 +90,35 @@ final class XcodeTargetTest: XCTestCase {
         XCTAssertFalse(extra.files(kind: .interfaceBuilder).contains(appFolder.appending("XibViewController3.xib")), "ExtraFolder's owner does not own FileSystemFolder")
     }
 
+    /// A file ticked for a target in a folder another target owns belongs to both: the exception set for the folder
+    /// names the including target and lists the file.
+    func testExceptionSetOfAnotherTargetsFolderIncludesTheFilesItListsInThisTarget() throws {
+        let app = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        let owner = try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" })
+        try app.identifyFiles()
+        try owner.identifyFiles()
+        let folder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/InclusionFolder")
+
+        XCTAssertTrue(app.files(kind: .swiftSource).contains(folder.appending("Shared.swift")), "\(app.files(kind: .swiftSource).sorted())")
+        XCTAssertTrue(app.files(kind: .interfaceBuilder).contains(folder.appending("Inclusion.storyboard")), "\(app.files(kind: .interfaceBuilder).sorted())")
+        XCTAssertTrue(owner.files(kind: .swiftSource).contains(folder.appending("Shared.swift")), "The owner keeps what the exception set includes elsewhere")
+        XCTAssertTrue(owner.files(kind: .interfaceBuilder).contains(folder.appending("Inclusion.storyboard")))
+    }
+
+    /// The control: a file of that folder the exception set does not list stays out of the including target, and
+    /// the exception set does not turn into exclusions for the owner.
+    func testExceptionSetOfAnotherTargetsFolderLeavesOutTheFilesItDoesNotList() throws {
+        let app = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
+        let owner = try XCTUnwrap(project.targets.first { $0.name == "Target With Spaces" })
+        try app.identifyFiles()
+        try owner.identifyFiles()
+        let folder = UIKitProjectPath.removingLastComponent().appending("UIKitProject/InclusionFolder")
+
+        XCTAssertFalse(app.files(kind: .swiftSource).contains(folder.appending("NotListed.swift")))
+        XCTAssertTrue(owner.files(kind: .swiftSource).contains(folder.appending("NotListed.swift")))
+        XCTAssertFalse(app.files(kind: .swiftSource).contains(folder.appending("Missing.swift")))
+    }
+
     /// A membership exception leaves a file out of its target's resources as well as its sources.
     func testMembershipExceptionLeavesAPlistOutOfTheTargetsInfoPlists() throws {
         let app = try XCTUnwrap(project.targets.first { $0.name == "UIKitProject" })
