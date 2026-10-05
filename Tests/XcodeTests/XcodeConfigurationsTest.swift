@@ -465,12 +465,12 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
             try FileManager.default.createDirectory(atPath: directory.string, withIntermediateDirectories: true)
         }
         for name in ["Debug", "Release"] {
-            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, name))
         }
 
         func completed() throws -> [Bool] {
             try ["Debug", "Release"].map {
-                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, $0))
             }
         }
 
@@ -684,13 +684,13 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
 
         func completed() throws -> [Bool] {
             try ["Debug", "Release"].map {
-                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments)
+                try xcodebuild.hasCompletedBuild(project: project, schemes: configuration.schemes, configuration: $0, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, $0))
             }
         }
 
         // Release's index cannot be removed, so the clean build fails part way through that directory.
         for name in ["Debug", "Release"] {
-            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments)
+            try Self.markComplete(xcodebuild, project: project, schemes: configuration.schemes, configuration: name, buildArguments: configuration.buildArguments, buildOnlySchemes: Self.buildOnlySchemes(project, configuration, name))
         }
         let stuck = directories[1].appending("Index.noindex")
         try FileManager.default.createDirectory(atPath: stuck.appending("DataStore/v5/units").string, withIntermediateDirectories: true)
@@ -736,9 +736,17 @@ final class XcodeConfigurationsTest: XcodeSourceGraphTestCase {
         )
     }
 
-    private static func markComplete(_ xcodebuild: Xcodebuild, project: XcodeProject, schemes: [String], configuration: String, buildArguments: [String]) throws {
-        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
+    private static func markComplete(_ xcodebuild: Xcodebuild, project: XcodeProject, schemes: [String], configuration: String, buildArguments: [String], buildOnlySchemes: [String] = []) throws {
+        try xcodebuild.beginBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes)
+        try xcodebuild.completeBuild(project: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments, buildOnlySchemes: buildOnlySchemes)
+    }
+
+    /// The schemes the driver builds with `build` in `name`, which its completion mark records.
+    private static func buildOnlySchemes(_ project: XcodeProject, _ configuration: Configuration, _ name: String) -> [String] {
+        configuration.schemes.sorted().filter { scheme in
+            XcodeProjectDriver.buildActions(listed: configuration.configurations, schemeConfigurations: project.schemeConfigurations(named: scheme))
+                .contains { $0.configuration == name && $0.action == .build }
+        }
     }
 
     /// A driver whose builds are recorded rather than run.
