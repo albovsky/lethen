@@ -2401,6 +2401,43 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeEdgeCases() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct227Keyed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("listed"))
+                self.assertAssignOnlyProperty(.varInstance("omitted"))
+            }
+            assertReferenced(.class("FixtureClass227Keyed")) {
+                self.assertNotAssignOnlyProperty(.varInstance("listed"))
+                self.assertAssignOnlyProperty(.varInstance("omitted"))
+            }
+            assertReferenced(.struct("FixtureStruct227Plain")) {
+                self.assertNotAssignOnlyProperty(.varInstance("plain"))
+            }
+            assertReferenced(.class("FixtureClass227Plain")) {
+                self.assertNotAssignOnlyProperty(.varInstance("plain"))
+            }
+            assertReferenced(.class("FixtureClass227PrivateSub")) {
+                self.assertNotAssignOnlyProperty(.varInstance("synthesized"))
+            }
+            assertReferenced(.class("FixtureClass227InternalSub")) {
+                self.assertAssignOnlyProperty(.varInstance("inherited"))
+            }
+            assertReferenced(.struct("FixtureStruct227Witness")) {
+                self.assertAssignOnlyProperty(.varInstance("viaExtension"))
+            }
+            assertReferenced(.class("FixtureClass227Witness")) {
+                self.assertAssignOnlyProperty(.varInstance("viaExtension"))
+            }
+            assertReferenced(.struct("FixtureStruct227PlainConforming")) {
+                self.assertNotAssignOnlyProperty(.varInstance("conformed"))
+            }
+            assertReferenced(.class("FixtureClass227Read")) {
+                self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeReadsThroughStoredProperty() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass226Stored")) {
