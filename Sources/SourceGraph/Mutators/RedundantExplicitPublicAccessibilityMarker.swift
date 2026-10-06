@@ -228,6 +228,7 @@ final class RedundantExplicitPublicAccessibilityMarker: SourceGraphMutator {
     ) -> Set<Declaration> {
         let publicDeclarations = decl.declarations.filter {
             guard !$0.isImplicit, $0.accessibility.isExplicitly(.public) else { return false }
+
             // A skipped witness keeps its subtree: its descendants are exposed through the witness.
             return !(skippingPublicProtocolWitnesses && isWitnessOfPublicProtocolRequirement($0))
         }
