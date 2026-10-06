@@ -2799,6 +2799,119 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialWitness() throws {
+        let reason = "a value of its type is returned as `any Encodable`, and an encoder receives a value whose type Lethen cannot resolve"
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct316Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .likely)
+                self.assertConfidenceReason(.varInstance("duration"), reason)
+                // Used-but-not-compared control: read in code, so it is not reported at all.
+                self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+            }
+            assertReferenced(.struct("FixtureStruct316Nested")) {
+                self.assertAssignOnlyProperty(.varInstance("nestedDuration"))
+                self.assertConfidence(.varInstance("nestedDuration"), .likely)
+            }
+            assertReferenced(.struct("FixtureStruct316Outer")) {
+                self.assertAssignOnlyProperty(.varInstance("nested"))
+                self.assertConfidence(.varInstance("nested"), .likely)
+            }
+            assertReferenced(.struct("FixtureStruct316Payload")) {
+                self.assertAssignOnlyProperty(.varInstance("payloadDuration"))
+                self.assertConfidence(.varInstance("payloadDuration"), .likely)
+            }
+            // Controls: the encoder's reads are known, or nothing links the type to the unresolved encode.
+            assertReferenced(.struct("FixtureStruct316Direct")) {
+                self.assertNotAssignOnlyProperty(.varInstance("directlyEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct316Unrelated")) {
+                self.assertAssignOnlyProperty(.varInstance("unrelatedNotEncoded"))
+                self.assertConfidence(.varInstance("unrelatedNotEncoded"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialTopLevel() throws {
+        let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
+
+        try analyze(retainPublic: true, additionalFilesToIndex: [main]) {
+            assertReferenced(.struct("FixtureStruct319Top")) {
+                self.assertAssignOnlyProperty(.varInstance("topLevelEncoded"))
+                self.assertConfidence(.varInstance("topLevelEncoded"), .likely)
+            }
+        }
+
+        // Without the top-level file nothing encodes the existential.
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct319Top")) {
+                self.assertConfidence(.varInstance("topLevelEncoded"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialWrapperParameter() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct320Wrapped")) {
+                self.assertAssignOnlyProperty(.varInstance("wrappedValue"))
+                self.assertConfidence(.varInstance("wrappedValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialComposition() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct322Composed")) {
+                self.assertAssignOnlyProperty(.varInstance("composedValue"))
+                self.assertConfidence(.varInstance("composedValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeDirectTopLevel() throws {
+        let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
+
+        try analyze(retainPublic: true, additionalFilesToIndex: [main]) {
+            assertReferenced(.struct("FixtureStruct323Direct")) {
+                self.assertNotAssignOnlyProperty(.varInstance("directEncoded"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialGenericArgument() throws {
+        try analyze(retainPublic: true) {
+            // Control: the generic type never stores its argument, so nothing encodes the argument's properties.
+            assertReferenced(.struct("FixtureStruct325Hidden")) {
+                self.assertConfidence(.varInstance("hiddenValue"), .certain)
+            }
+            // A plain stored type is followed whole.
+            assertReferenced(.struct("FixtureStruct325Shown")) {
+                self.assertConfidence(.varInstance("shownValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialWrapperOtherParameter() throws {
+        try analyze(retainPublic: true) {
+            // Control: the unresolved value is passed for a parameter that is not `Encodable`, so no encoder
+            // receives an opaque value.
+            assertReferenced(.struct("FixtureStruct321Skipped")) {
+                self.assertAssignOnlyProperty(.varInstance("skippedValue"))
+                self.assertConfidence(.varInstance("skippedValue"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialWithoutEncodeSite() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct317Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .certain)
+                self.assertConfidenceReason(.varInstance("duration"), nil)
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeTopLevel() throws {
         let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
 

@@ -22,7 +22,8 @@ struct ValueUseAnalysis: SyntaxAnalysis {
         }
         for (call, list) in valueUses.argumentLists {
             let arguments = list.map { argument in
-                ValueArgument(label: argument.label, references: file.references(at: argument.origins))
+                let references = file.references(at: argument.origins)
+                return ValueArgument(label: argument.label, references: references, isUnresolved: references.isEmpty && !argument.origins.isEmpty)
             }
             for reference in file.references(at: call) {
                 reference.valueArguments = arguments
