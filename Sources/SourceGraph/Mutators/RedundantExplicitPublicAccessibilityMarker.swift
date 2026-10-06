@@ -47,7 +47,7 @@ final class RedundantExplicitPublicAccessibilityMarker: SourceGraphMutator {
             {
                 // Public accessibility is redundant.
                 mark(decl)
-                markExplicitPublicDescendentDeclarations(from: decl)
+                markExplicitPublicDescendentDeclarations(from: decl, skippingPublicProtocolWitnesses: true)
             }
 
             // Note: we don't check the descendent declarations on correctly marked publicly accessible declarations
@@ -78,9 +78,31 @@ final class RedundantExplicitPublicAccessibilityMarker: SourceGraphMutator {
         graph.markRedundantPublicAccessibility(decl, modules: decl.location.file.modules)
     }
 
-    private func markExplicitPublicDescendentDeclarations(from decl: Declaration) {
-        for descDecl in descendentPublicDeclarations(from: decl) {
+    private func markExplicitPublicDescendentDeclarations(
+        from decl: Declaration,
+        skippingPublicProtocolWitnesses: Bool = false
+    ) {
+        for descDecl in descendentPublicDeclarations(
+            from: decl,
+            skippingPublicProtocolWitnesses: skippingPublicProtocolWitnesses
+        ) {
             mark(descDecl)
+        }
+    }
+
+    /// Whether the declaration witnesses a requirement of a public protocol.
+    ///
+    /// This mutator runs before `ProtocolConformanceReferenceBuilder`, so a witness still holds a related reference to
+    /// the requirement it satisfies. A public protocol's requirements must be witnessed publicly by any public
+    /// conforming type, so dropping `public` from the witness alone would not compile once the type is made public
+    /// again, nor when the conformance is consumed cross module.
+    private func isWitnessOfPublicProtocolRequirement(_ decl: Declaration) -> Bool {
+        decl.related.contains { ref in
+            guard ref.declarationKind.isProtocolMemberKind,
+                  let protocolDecl = graph.declaration(withUsr: ref.usr)?.parent
+            else { return false }
+
+            return protocolDecl.kind == .protocol && protocolDecl.accessibility.value == .public
         }
     }
 
@@ -200,8 +222,18 @@ final class RedundantExplicitPublicAccessibilityMarker: SourceGraphMutator {
         }
     }
 
-    private func descendentPublicDeclarations(from decl: Declaration) -> Set<Declaration> {
-        let publicDeclarations = decl.declarations.filter { !$0.isImplicit && $0.accessibility.isExplicitly(.public) }
-        return publicDeclarations.flatMapSet { descendentPublicDeclarations(from: $0) }.union(publicDeclarations)
+    private func descendentPublicDeclarations(
+        from decl: Declaration,
+        skippingPublicProtocolWitnesses: Bool
+    ) -> Set<Declaration> {
+        let publicDeclarations = decl.declarations.filter {
+            guard !$0.isImplicit, $0.accessibility.isExplicitly(.public) else { return false }
+
+            // A skipped witness keeps its subtree: its descendants are exposed through the witness.
+            return !(skippingPublicProtocolWitnesses && isWitnessOfPublicProtocolRequirement($0))
+        }
+        return publicDeclarations
+            .flatMapSet { descendentPublicDeclarations(from: $0, skippingPublicProtocolWitnesses: skippingPublicProtocolWitnesses) }
+            .union(publicDeclarations)
     }
 }
