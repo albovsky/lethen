@@ -12,11 +12,11 @@
         func testRetainsAppIntentStaticWitnesses() throws {
             try analyze {
                 assertReferenced(.struct("StaticWitnessIntent")) {
-                    assertReferenced(.varStatic("title"))
-                    assertReferenced(.varStatic("description"))
+                    self.assertReferenced(.varStatic("title"))
+                    self.assertReferenced(.varStatic("description"))
                     // Used-but-not-compared control: retained by its use, not by name.
-                    assertReferenced(.varStatic("preview"))
-                    assertNotReferenced(.varStatic("unusedHelper"))
+                    self.assertReferenced(.varStatic("preview"))
+                    self.assertNotReferenced(.varStatic("unusedHelper"))
                 }
             }
         }
