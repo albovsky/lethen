@@ -94,8 +94,13 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
                         switch command {
                         case .ignore:
                             functionDecl.commentCommands.insert(command)
-                        case .ignoreParameters:
-                            functionDecl.commentCommands.insert(command)
+                        case let .ignoreParameters(names):
+                            // Local names differ between copies, so the command names the kept copy's parameters.
+                            let parameters = winner.function.parameters
+                            let remapped = copy.function.parameters.enumerated()
+                                .filter { names.contains($0.element.name.text) && parameters.indices.contains($0.offset) }
+                                .map { parameters[$0.offset].name.text }
+                            functionDecl.commentCommands.insert(.ignoreParameters(remapped))
                         case .ignoreAll, .override:
                             break
                         }

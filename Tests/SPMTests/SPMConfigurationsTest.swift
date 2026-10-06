@@ -73,9 +73,16 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
                 public func ignoredParameterOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
             #endif
 
+            #if DEBUG
+                public func renamedIgnoredEntry(x a: Int, y b: Int) { print(a) }
+            #else
+                // periphery:ignore:parameters a
+                public func renamedIgnoredEntry(x b: Int, y a: Int) { print(b) }
+            #endif
+
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -124,6 +131,10 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         // and the parameter command is not reported as superfluous.
         let ignored = Self.results.flatMap(\.usrs).filter { $0.contains("OnLaterCopyEntry") }
         XCTAssertEqual(ignored, [String]())
+        // Ignoring a parameter by the local name one copy gives it retains the kept copy's parameter, unreported
+        // and not flagged as a superfluous ignore.
+        let renamedIgnored = Self.results.flatMap(\.usrs).filter { $0.contains("renamedIgnoredEntry") }
+        XCTAssertEqual(renamedIgnored, [String]())
         let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
         XCTAssertEqual(renamed.count, 1)
         XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")
