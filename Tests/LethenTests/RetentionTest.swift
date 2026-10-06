@@ -2758,6 +2758,47 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedDecodeInferredReturn() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct315Bound")) {
+                self.assertNotAssignOnlyProperty(.varInstance("boundDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Returned")) {
+                self.assertNotAssignOnlyProperty(.varInstance("returnedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315ReturnedExplicit")) {
+                self.assertNotAssignOnlyProperty(.varInstance("explicitDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Cast")) {
+                self.assertNotAssignOnlyProperty(.varInstance("castDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Parenthesized")) {
+                self.assertNotAssignOnlyProperty(.varInstance("parenthesizedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Unconstrained")) {
+                self.assertAssignOnlyProperty(.varInstance("unconstrainedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315OtherParameter")) {
+                self.assertAssignOnlyProperty(.varInstance("otherNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315NestedOwner")) {
+                self.assertAssignOnlyProperty(.varInstance("nestedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315NestedDecoded")) {
+                self.assertNotAssignOnlyProperty(.varInstance("nestedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315PhantomHidden")) {
+                self.assertAssignOnlyProperty(.varInstance("phantomNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315WrappedShown")) {
+                self.assertNotAssignOnlyProperty(.varInstance("wrappedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Used")) {
+                self.assertNotAssignOnlyProperty(.varInstance("usedNormally"))
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeTopLevel() throws {
         let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
 

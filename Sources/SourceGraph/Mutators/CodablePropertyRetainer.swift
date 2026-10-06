@@ -207,7 +207,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         let decodableNames = decodableProtocolNames
         let classifyDecode: (Declaration, Declaration) -> PropertyUse = { [self] type, property in decodeUse(of: property, in: type) }
 
-        for use in graph.allReferences where use.kind == .normal && !use.valueArguments.isEmpty {
+        for use in graph.allReferences where use.kind == .normal && (!use.valueArguments.isEmpty || !use.resultTypeReferences.isEmpty) {
             // A use with no parent is top-level code, which holds its reads as root references.
             let caller = use.parent
             guard caller?.isImplicit != true else { continue }
@@ -216,7 +216,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             if let callee = graph.declaration(withUsr: use.usr) {
                 guard mayDecode(indexed: callee) else { continue }
 
-                decoded = decodedArguments(of: use, callee: callee, decodableNames: decodableNames)
+                var arguments = decodedArguments(of: use, callee: callee, decodableNames: decodableNames)
+                // A function that returns its own `Decodable` generic parameter decodes the type its call site infers.
+                if !callee.returnTypeNames.isDisjoint(with: decodableNames) {
+                    arguments.formUnion(use.resultTypeReferences)
+                }
+                decoded = arguments
             } else {
                 guard Self.mayDecode(unindexedUsr: use.usr) else { continue }
 

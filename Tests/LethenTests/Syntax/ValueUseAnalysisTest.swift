@@ -47,6 +47,49 @@ final class ValueUseAnalysisTest: XCTestCase {
         XCTAssertEqual(call.valueArguments.first?.references.map(\.name), ["S"])
     }
 
+    func testCallResultTypeComesFromTheContextThatFixesIt() throws {
+        let source = """
+        struct S {}
+        func load<T: Decodable>() -> T { fatalError() }
+        func make<T>() -> [T] { fatalError() }
+        let bound: S = try load()
+        let cast = try load() as S
+        let plain = try load()
+        let optionalCast = try? load() as? S
+        func returned() -> S { try load() }
+        """
+        let sourceFile = SourceFile(path: FilePath("/t/T.swift"), modules: ["T"])
+        func function(_ name: String, line: Int) -> Declaration {
+            Declaration(name: name, kind: .functionFree, usrs: ["s:\(name)"], location: Location(file: sourceFile, line: line, column: 6))
+        }
+        let load = function("load()", line: 2)
+        let make = function("make()", line: 3)
+        let (file, sourceFile2, _, _) = makeIndexedFile(source: source, declarations: [load, make], references: [
+            (4, 20, .functionFree, "load()"), // initializer of an annotated binding
+            (4, 12, .struct, "S"),
+            (5, 16, .functionFree, "load()"), // operand of a plain `as`
+            (5, 26, .struct, "S"),
+            (6, 17, .functionFree, "load()"), // nothing fixes the type
+            (7, 25, .functionFree, "load()"), // `as?` does not fix the generic parameter
+            (7, 36, .struct, "S"),
+            (8, 28, .functionFree, "load()"), // the implicit return of a function
+            (8, 20, .struct, "S"),
+        ])
+        try ValueUseAnalysis(configuration: Configuration()).apply(to: file)
+
+        func result(line: Int, column: Int) throws -> [String] {
+            try XCTUnwrap(file.references(at: Location(file: sourceFile2, line: line, column: column)).first).resultTypeReferences.map(\.name)
+        }
+        XCTAssertEqual(try result(line: 4, column: 20), ["S"])
+        XCTAssertEqual(try result(line: 5, column: 16), ["S"])
+        XCTAssertEqual(try result(line: 6, column: 17), [], "The control: no context fixes the type")
+        XCTAssertEqual(try result(line: 7, column: 25), [], "The control: a conditional cast does not infer it")
+        XCTAssertEqual(try result(line: 8, column: 28), ["S"])
+
+        XCTAssertEqual(load.returnTypeNames, ["Decodable"])
+        XCTAssertTrue(make.returnTypeNames.isEmpty, "The control: an unconstrained generic parameter decodes nothing")
+    }
+
     func testDeclarationFactsAreRecordedByLocation() throws {
         let source = "var p: Int { 1 }\nlet c = 1\nvar stored = 2\n"
         let sourceFile = SourceFile(path: FilePath("/t/T.swift"), modules: ["T"])
