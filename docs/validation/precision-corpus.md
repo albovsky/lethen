@@ -83,7 +83,7 @@ The scan was not deterministic at first: `SceneDelegate.swift` declares a method
 configurations index it under one USR, and 3 of 21 identical rescans reported two more rows (`connectionOptions` and
 `session`, 2,576 findings; albovsky/lethen#158). #160 fixed that: with it, `corpus/scan.sh` reproduces the
 expectation exactly (no diff against the 2,574 rows) and no rescan reported 2,576. A different intermittent result
-remains: 2 of about 46 rescans reported 2,640 findings, 67 more and 1 fewer, the extra ones launch-path declarations
+remains: 2 of 104 rescans reported 2,640 findings, 67 more and 1 fewer, the extra ones launch-path declarations
 that only the Debug configuration compiles, reported `certain` as if the Debug index had not been read
 (albovsky/lethen#165). The expectation holds the 2,574-row result.
 
