@@ -2309,6 +2309,26 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertConfidence(.enumelement("go"), .likely)
                 self.assertConfidence(.enumelement("patternOnly"), .certain)
             }
+            // An initializer in an extension of an unscanned type is named only by a construction of that type.
+            assertReferenced(.extensionStruct("URL")) {
+                self.assertConfidence(.functionConstructor("init(fixtureHex6:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(fixtureHex6:alpha:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(fixtureOtherTint6:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(_:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(fixtureClassTag6:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(fixtureTint6:)"), .likely)
+            }
+            assertReferenced(.extensionStruct("Double")) {
+                self.assertConfidence(.functionConstructor("init(_:)"), .likely)
+            }
+            // The scan's own `CFloat` shadows the SDK alias, so the skipped `CFloat(...)` is not a `Float`.
+            assertReferenced(.extensionStruct("Float")) {
+                self.assertConfidence(.functionConstructor("init(_:)"), .certain)
+            }
+            assertReferenced(.extensionStruct("Int32")) {
+                self.assertConfidence(.functionConstructor("init(fixtureLong6:)"), .likely)
+                self.assertConfidence(.functionConstructor("init(_:)"), .likely)
+            }
         }
     }
 

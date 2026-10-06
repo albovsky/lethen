@@ -70,11 +70,64 @@ public final class ConfidenceAssessor {
         {
             return false
         }
-        if declaration.kind != .functionFree, let receiver = spelling.receiver, let enclosing = enclosingTypeDeclaration(of: declaration) {
-            return !isDistinct(receiver: receiver, from: enclosing)
+        if declaration.kind != .functionFree, let receiver = spelling.receiver {
+            if let enclosing = enclosingTypeDeclaration(of: declaration) {
+                return !isDistinct(receiver: receiver, from: enclosing)
+            }
+            if let extended = unscannedExtendedType(of: declaration) {
+                return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
+            }
         }
         return true
     }
+
+    /// The name of the concrete type, `UIColor` or `String`, that a declaration of an extension adds a member
+    /// to when the scan does not declare that type; `nil` for any other declaration. An extension of a protocol
+    /// is not one, since every conforming type reaches its members.
+    private func unscannedExtendedType(of declaration: Declaration) -> (name: String, isClass: Bool)? {
+        var current = declaration.parent
+        while let parent = current {
+            if Self.typeKinds.contains(parent.kind) { return nil }
+
+            if parent.kind.isExtensionKind {
+                guard [.extensionClass, .extensionStruct, .extensionEnum].contains(parent.kind) else { return nil }
+
+                let name = SourceGraph.baseName(of: parent.name)
+                return (name.split(separator: ".").last.map(String.init) ?? name, parent.kind == .extensionClass)
+            }
+            current = parent.parent
+        }
+        return nil
+    }
+
+    /// Whether a use spelled through the type `receiver` cannot reach a member of `extended`, a type the scan does
+    /// not declare. It can when it is that type, a type alias of it, which a type alias of the scan or one of the
+    /// SDK's may be, or a subclass of it, which a class of the scan may be. Any other name is another type, or a
+    /// function that is called like one, as `DDLogDebug("...")` is. A name the scan does not declare could also be an unscanned
+    /// subclass or alias this does not list; that is accepted, since ruling out every such name would leave nothing to narrow.
+    private func isDistinct(receiver: String, fromUnscanned extended: String, isClass: Bool) -> Bool {
+        if receiver == extended { return false }
+
+        let receivers = typeDeclarationsByName[receiver, default: []]
+        // A type of the scan with an SDK alias's name shadows the alias.
+        if receivers.isEmpty, Self.sdkTypeAliases[receiver]?.contains(extended) == true { return false }
+        // Only a class can subclass an unscanned class; a struct or enum has no subclasses.
+        let compatible: Set<Declaration.Kind> = isClass ? [.class, .typealias, .protocol, .associatedtype, .genericTypeParam] : [.typealias, .protocol, .associatedtype, .genericTypeParam]
+        return receivers.allSatisfy { !compatible.contains($0.kind) }
+    }
+
+    /// The types each SDK type alias can stand for, which an unscanned extension adds members to under either name.
+    /// An alias of a C type is platform-dependent, `CLong` is `Int` where `long` is 64 bits and `Int32` on Windows, and
+    /// the skipped branch is for another platform than the scanned one, so each lists every type it can be.
+    private static let sdkTypeAliases: [String: Set<String>] = [
+        "TimeInterval": ["Double"], "CFTimeInterval": ["Double"], "CFAbsoluteTime": ["Double"], "Float64": ["Double"],
+        "Float32": ["Float"], "NSInteger": ["Int"], "NSUInteger": ["UInt"],
+        "CInt": ["Int32"], "CUnsignedInt": ["UInt32"], "CShort": ["Int16"], "CUnsignedShort": ["UInt16"],
+        "CLong": ["Int", "Int32"], "CUnsignedLong": ["UInt", "UInt32"], "CLongLong": ["Int64"], "CUnsignedLongLong": ["UInt64"],
+        "CChar": ["Int8", "UInt8"], "CUnsignedChar": ["UInt8"], "CSignedChar": ["Int8"],
+        "CFloat": ["Float"], "CDouble": ["Double"], "CBool": ["Bool"],
+        "CWideChar": ["Scalar", "UInt16", "Int32"], "CChar16": ["UInt16"], "CChar32": ["Scalar"],
+    ]
 
     /// The argument labels of a function's declared name, `_` for an unlabeled parameter: `["title", "_"]` for
     /// `show(title:_:)`. `nil` for a name that spells none.
