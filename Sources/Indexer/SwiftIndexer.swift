@@ -469,6 +469,12 @@ final class SwiftIndexer: Indexer {
                 guard let result = declarationsByLocation[decl.location] else { continue }
 
                 applyDeclarationMetadata(to: decl, with: result)
+
+                // References found in a copy the graph did not keep are held by the kept copy, whose own syntax
+                // result does not list their locations, so the copy that contains them classifies them.
+                if let kept = keptDeclarationsByUsrs[decl.usrs], kept !== decl {
+                    graph.withLock { _ in applyReferenceRoles(to: kept, with: result) }
+                }
             }
         }
 
@@ -485,36 +491,41 @@ final class SwiftIndexer: Indexer {
 
                 decl.hasGenericFunctionReturnedMetatypeParameters = result.hasGenericFunctionReturnedMetatypeParameters
 
-                for ref in decl.references.union(decl.related) {
-                    if result.inheritedTypeLocations.contains(ref.location) {
-                        if decl.kind.isConformableKind, ref.declarationKind == .protocol {
-                            ref.role = .conformedType
-                        } else if decl.kind == .protocol, ref.declarationKind == .protocol {
-                            ref.role = .refinedProtocolType
-                        } else if decl.kind == .class || decl.kind == .associatedtype {
-                            ref.role = .inheritedType
-                        }
-                    } else if result.variableTypeLocations.contains(ref.location) {
-                        ref.role = .varType
-                    } else if result.returnTypeLocations.contains(ref.location) {
-                        ref.role = .returnType
-                    } else if result.throwTypeLocations.contains(ref.location) {
-                        ref.role = .throwType
-                    } else if result.parameterTypeLocations.contains(ref.location) {
-                        ref.role = .parameterType
-                    } else if result.genericParameterLocations.contains(ref.location) {
-                        ref.role = .genericParameterType
-                    } else if result.genericConformanceRequirementLocations.contains(ref.location) {
-                        ref.role = .genericRequirementType
-                    } else if result.variableInitFunctionCallLocations.contains(ref.location) {
-                        ref.role = .variableInitFunctionCall
-                    } else if result.functionCallMetatypeArgumentLocations.contains(ref.location) {
-                        ref.role = .functionCallMetatypeArgument
-                    } else if result.typeInitializerLocations.contains(ref.location) {
-                        ref.role = .initializerType
-                    } else if result.variableInitExprLocations.contains(ref.location) {
-                        ref.role = .initializerType
+                applyReferenceRoles(to: decl, with: result)
+            }
+        }
+
+        /// Must run under the graph lock.
+        private func applyReferenceRoles(to decl: Declaration, with result: DeclarationSyntaxVisitor.Result) {
+            for ref in decl.references.union(decl.related) {
+                if result.inheritedTypeLocations.contains(ref.location) {
+                    if decl.kind.isConformableKind, ref.declarationKind == .protocol {
+                        ref.role = .conformedType
+                    } else if decl.kind == .protocol, ref.declarationKind == .protocol {
+                        ref.role = .refinedProtocolType
+                    } else if decl.kind == .class || decl.kind == .associatedtype {
+                        ref.role = .inheritedType
                     }
+                } else if result.variableTypeLocations.contains(ref.location) {
+                    ref.role = .varType
+                } else if result.returnTypeLocations.contains(ref.location) {
+                    ref.role = .returnType
+                } else if result.throwTypeLocations.contains(ref.location) {
+                    ref.role = .throwType
+                } else if result.parameterTypeLocations.contains(ref.location) {
+                    ref.role = .parameterType
+                } else if result.genericParameterLocations.contains(ref.location) {
+                    ref.role = .genericParameterType
+                } else if result.genericConformanceRequirementLocations.contains(ref.location) {
+                    ref.role = .genericRequirementType
+                } else if result.variableInitFunctionCallLocations.contains(ref.location) {
+                    ref.role = .variableInitFunctionCall
+                } else if result.functionCallMetatypeArgumentLocations.contains(ref.location) {
+                    ref.role = .functionCallMetatypeArgument
+                } else if result.typeInitializerLocations.contains(ref.location) {
+                    ref.role = .initializerType
+                } else if result.variableInitExprLocations.contains(ref.location) {
+                    ref.role = .initializerType
                 }
             }
         }

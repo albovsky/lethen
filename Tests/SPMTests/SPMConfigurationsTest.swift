@@ -96,6 +96,22 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
 
             struct UnignoredContainerEntry { func nestedUnusedControl() {} }
 
+            // A public type named only by the later copy of a public property's annotation is exposed by it.
+            public struct ExposedByReleaseCopy: Sendable {}
+
+            public struct ExposingHolder {
+                public init() {}
+                #if DEBUG
+                    public var exposingProperty: Int? = nil
+                #else
+                    public var exposingProperty: ExposedByReleaseCopy? = nil
+                #endif
+            }
+
+            // Control: a public type nothing exposes or uses across modules is still redundantly public.
+            public struct UnexposedPublicControl {}
+            public func useUnexposedPublicControl() { _ = UnexposedPublicControl() }
+
             func calledOnlyFromReleaseWitness() {}
             func calledFromUnbranchedWitness() {}
             func neverCalledControl() {}
@@ -119,7 +135,7 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
 
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n_ = BranchedIterator().next()\n_ = PlainIterator().next()\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\nuseUnexposedPublicControl()\n_ = ExposingHolder().exposingProperty\n_ = BranchedIterator().next()\n_ = PlainIterator().next()\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -204,6 +220,19 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         XCTAssertEqual(Self.results.flatMap(\.usrs).filter { $0.contains("IgnoredContainerEntry") }, [String]())
         // Control: the same shapes without the command are reported.
         XCTAssertFalse(Self.results.flatMap(\.usrs).filter { $0.contains("UnignoredContainerEntry") }.isEmpty)
+    }
+
+    /// Control for references held by the kept copy of a declaration: a public type named only by the later copy of a
+    /// public property's annotation still counts as exposed by the property, and a public type nothing exposes is
+    /// still reported. The roles of dangling references are classified by the copy that contains them; the index
+    /// gives these annotations a parent, so this fixture does not reach that path.
+    func testReferenceRolesOfLaterCopyKeepTypeExposed() throws {
+        let configuration = Self.configuration(["debug", "release"])
+        try Self.build(projectPath: Self.root, configuration: configuration)
+        try Self.index(configuration: configuration)
+        let usrs = Self.results.flatMap(\.usrs)
+        XCTAssertEqual(usrs.filter { $0.contains("ExposedByReleaseCopy") }, [String](), "\(usrs)")
+        XCTAssertFalse(usrs.filter { $0.contains("UnexposedPublicControl") }.isEmpty, "\(usrs)")
     }
 
     /// `swift package clean` removes every configuration's products. When a later configuration's
