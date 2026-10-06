@@ -80,9 +80,16 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
                 public func renamedIgnoredEntry(x b: Int, y a: Int) { print(b) }
             #endif
 
+            #if DEBUG
+                public func mistypedIgnoreEntry(kept: Int) { print(kept) }
+            #else
+                // periphery:ignore:parameters typo
+                public func mistypedIgnoreEntry(kept: Int) { print(kept) }
+            #endif
+
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -135,6 +142,11 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         // and not flagged as a superfluous ignore.
         let renamedIgnored = Self.results.flatMap(\.usrs).filter { $0.contains("renamedIgnoredEntry") }
         XCTAssertEqual(renamedIgnored, [String]())
+        // Control: an ignored name that no parameter has is still reported as superfluous when it is on a copy
+        // the graph did not keep.
+        let mistyped = Self.results.flatMap(\.usrs).filter { $0.contains("mistypedIgnoreEntry") }
+        XCTAssertEqual(mistyped.count, 1)
+        XCTAssertTrue(mistyped.first?.hasPrefix("superfluous-ignore-param-typo") ?? false, "\(mistyped)")
         let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
         XCTAssertEqual(renamed.count, 1)
         XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")

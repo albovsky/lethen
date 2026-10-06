@@ -97,9 +97,14 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
                         case let .ignoreParameters(names):
                             // Local names differ between copies, so the command names the kept copy's parameters.
                             let parameters = winner.function.parameters
-                            let remapped = copy.function.parameters.enumerated()
-                                .filter { names.contains($0.element.name.text) && parameters.indices.contains($0.offset) }
-                                .map { parameters[$0.offset].name.text }
+                            // A name no parameter of the copy has stays as written, so it is still reported as superfluous.
+                            let remapped = names.map { name in
+                                guard let index = copy.function.parameters.firstIndex(where: { $0.name.text == name }),
+                                      parameters.indices.contains(index)
+                                else { return name }
+
+                                return parameters[index].name.text
+                            }
                             functionDecl.commentCommands.insert(.ignoreParameters(remapped))
                         case .ignoreAll, .override:
                             break
