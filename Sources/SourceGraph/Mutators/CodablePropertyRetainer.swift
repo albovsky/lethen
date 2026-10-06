@@ -83,9 +83,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             guard mayEncode else { continue }
 
             hasOpaqueEncodeSite = hasOpaqueEncodeSite || isOpaqueEncodeSite(use, callee: callee, encodableNames: encodableNames)
-            if let caller {
-                markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
-            }
+            markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
         }
 
         if hasOpaqueEncodeSite {
@@ -265,7 +263,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         usr.range(of: "SE(R[zd]|_)", options: .regularExpression) != nil
     }
 
-    private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
+    private func markEncodedReads(from use: Reference, caller: Declaration?, synthesizedTypes: Set<Declaration>) {
         let classify: (Declaration, Declaration) -> PropertyUse = { [self] type, property in isEncoded(property, in: type) ? .read : .skip }
         markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classify)
     }
@@ -348,7 +346,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     private func matchedArguments(of use: Reference, callee: Declaration, names: Set<String>, matchingTypeNames: Bool = false) -> [ValueArgument]? {
         let parameters = callee.parameterTypeNames
         let accepts: (ParameterTypeNames) -> Bool = { [self] parameter in
-            !parameter.names.isDisjoint(with: names) || (matchingTypeNames && names.contains(Self.bareTypeName(parameter.typeName)))
+            !parameter.names.isDisjoint(with: names) || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName)))
         }
         var matched: [ValueArgument] = []
         var index = 0
@@ -379,13 +377,17 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         return matched
     }
 
-    /// A declared parameter type without `any`, `Swift.`, optionality or whitespace: `(any Encodable)?` is `Encodable`.
-    private static func bareTypeName(_ typeName: String?) -> String {
-        var name = (typeName ?? "").filter { !$0.isWhitespace && $0 != "(" && $0 != ")" && $0 != "?" && $0 != "!" }
-        for prefix in ["any", "Swift."] where name.hasPrefix(prefix) && name.dropFirst(prefix.count).first?.isUppercase == true {
-            name.removeFirst(prefix.count)
-        }
-        return name
+    /// The protocol names of a declared parameter type, without `any`, `Swift.`, optionality or whitespace:
+    /// `(any Encodable)?` is `Encodable`, and `any Encodable & Sendable` is `Encodable` and `Sendable`.
+    private static func bareTypeNames(_ typeName: String?) -> Set<String> {
+        let spelling = (typeName ?? "").filter { !$0.isWhitespace && $0 != "(" && $0 != ")" && $0 != "?" && $0 != "!" }
+        return Set(spelling.split(separator: "&").map { component in
+            var name = String(component)
+            for prefix in ["any", "Swift."] where name.hasPrefix(prefix) && name.dropFirst(prefix.count).first?.isUppercase == true {
+                name.removeFirst(prefix.count)
+            }
+            return name
+        })
     }
 
     /// The names that make a parameter encode its argument: `Encodable`, the protocols that inherit it, and the

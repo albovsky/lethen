@@ -2859,6 +2859,25 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialComposition() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct322Composed")) {
+                self.assertAssignOnlyProperty(.varInstance("composedValue"))
+                self.assertConfidence(.varInstance("composedValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeDirectTopLevel() throws {
+        let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
+
+        try analyze(retainPublic: true, additionalFilesToIndex: [main]) {
+            assertReferenced(.struct("FixtureStruct323Direct")) {
+                self.assertNotAssignOnlyProperty(.varInstance("directEncoded"))
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeExistentialWrapperOtherParameter() throws {
         try analyze(retainPublic: true) {
             // Control: the unresolved value is passed for a parameter that is not `Encodable`, so no encoder

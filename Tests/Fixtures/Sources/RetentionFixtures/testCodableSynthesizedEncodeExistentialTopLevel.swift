@@ -6,7 +6,7 @@ struct FixtureStruct319Top: Encodable {
     let topLevelEncoded: Int
 }
 
-let fixture319Value: Encodable = FixtureStruct319Top(topLevelEncoded: 1)
+let fixture319Value: Encodable? = FixtureStruct319Top(topLevelEncoded: 1)
 
 public func fixture319() {
     _ = fixture319Value

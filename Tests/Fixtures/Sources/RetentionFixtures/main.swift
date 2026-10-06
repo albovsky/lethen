@@ -4,4 +4,9 @@ import Foundation
 _ = try? JSONDecoder().decode(FixtureStruct314.self, from: Data())
 
 // Top-level code: indexed by testCodableSynthesizedEncodeExistentialTopLevel alongside its fixture.
-_ = try? JSONEncoder().encode(fixture319Value)
+if let value = fixture319Value {
+    _ = try? JSONEncoder().encode(value)
+}
+
+// Top-level code: indexed by testCodableSynthesizedEncodeDirectTopLevel alongside its fixture.
+_ = try? JSONEncoder().encode(FixtureStruct323Direct(directEncoded: 1))
