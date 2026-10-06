@@ -66,7 +66,7 @@ own package.
 
 #### After the four fixes (2026-10-06)
 
-Rescanned at master `f134d7a` (#171, #172, #174 and #175 merged), release build, Xcode 27.0, Swift 6.4; three scans
+Rescanned at master `2097203` (#171, #172, #174 and #175 merged; the later #181 changes tests only), release build, Xcode 27.0, Swift 6.4; three scans
 gave an identical result. 447 findings, down from 571: 124 removed, none added, 63 moved from `certain` to `likely`, and no row moved the wrong
 way (none went from `likely` to `certain`).
 
