@@ -127,6 +127,9 @@ public final class SourceGraph {
                 reference.parent = parent
                 add(reference, from: parent)
             }
+        } else if let kept = self.declaration(withUsr: declaration.usrs.sorted()[0]), kept !== declaration {
+            // A copy the graph did not keep (same USR in another configuration) must not become a root.
+            markRetained(kept)
         } else {
             _ = retainedDeclarations.insert(declaration)
         }
