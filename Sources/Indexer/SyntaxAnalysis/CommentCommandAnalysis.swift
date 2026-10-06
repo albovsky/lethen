@@ -19,10 +19,10 @@ struct CommentCommandAnalysis: SyntaxAnalysis {
 
     private func commandIgnore(_ decls: [Declaration], kind: CommandIgnoreKind, in file: IndexedFile) {
         for decl in decls {
+            // A copy the graph did not keep (same USR in another configuration) must not become a root, so the
+            // command applies to the kept copy, which also owns the nested declarations of every copy.
+            let decl = file.graph.withLock { $0.declaration(withUsr: decl.usrs.sorted()[0]) } ?? decl
             file.graph.withLock { graph in
-                // A copy the graph did not keep (same USR in another configuration) must not become a root,
-                // so the command applies to the kept copy.
-                let decl = graph.declaration(withUsr: decl.usrs.sorted()[0]) ?? decl
                 graph.markRetained(decl)
                 decl.unusedParameters.forEach { graph.markRetained($0) }
 

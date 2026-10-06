@@ -87,6 +87,15 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
                 public func mistypedIgnoreEntry(kept: Int) { print(kept) }
             #endif
 
+            #if DEBUG
+                struct IgnoredContainerEntry { func nestedUnused() {} }
+            #else
+                // periphery:ignore
+                struct IgnoredContainerEntry { func nestedUnused() {} }
+            #endif
+
+            struct UnignoredContainerEntry { func nestedUnusedControl() {} }
+
             func calledOnlyFromReleaseWitness() {}
             func calledFromUnbranchedWitness() {}
             func neverCalledControl() {}
@@ -184,6 +193,17 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         // Controls: an unbranched witness stays used, and a function nothing calls is still reported.
         assertReferenced(.functionFree("calledFromUnbranchedWitness()"))
         assertNotReferenced(.functionFree("neverCalledControl()"))
+    }
+
+    /// An ignore command on the copy of a container the graph did not keep applies to the kept copy and to what is
+    /// nested in it, which the kept copy owns for every configuration.
+    func testIgnoreOnLaterContainerCopyRetainsNestedDeclarations() throws {
+        let configuration = Self.configuration(["debug", "release"])
+        try Self.build(projectPath: Self.root, configuration: configuration)
+        try Self.index(configuration: configuration)
+        XCTAssertEqual(Self.results.flatMap(\.usrs).filter { $0.contains("IgnoredContainerEntry") }, [String]())
+        // Control: the same shapes without the command are reported.
+        XCTAssertFalse(Self.results.flatMap(\.usrs).filter { $0.contains("UnignoredContainerEntry") }.isEmpty)
     }
 
     /// `swift package clean` removes every configuration's products. When a later configuration's
