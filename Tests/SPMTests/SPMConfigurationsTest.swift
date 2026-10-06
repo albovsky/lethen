@@ -34,8 +34,62 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
             }
 
             """.write(toFile: root.appending("Sources/TargetA/Conditional.swift").string, atomically: true, encoding: .utf8)
+            try """
+            #if DEBUG
+                public func branchedEntry(debugUsed: Int, releaseUsed: Int) { print(debugUsed) }
+            #else
+                public func branchedEntry(debugUsed: Int, releaseUsed: Int) { print(releaseUsed) }
+            #endif
+
+            #if DEBUG
+                public func unusedInBothEntry(kept: Int, dropped: Int) { print(kept) }
+            #else
+                public func unusedInBothEntry(kept: Int, dropped: Int) { print(kept + 1) }
+            #endif
+
+            #if DEBUG
+                public func usedInOneCopyEntry(first: Int, second: Int) { print(first, second) }
+            #else
+                public func usedInOneCopyEntry(first: Int, second: Int) { print(first) }
+            #endif
+
+            #if DEBUG
+                public func renamedEntry(x a: Int, y b: Int) { print(a) }
+            #else
+                public func renamedEntry(x b: Int, y a: Int) { print(b) }
+            #endif
+
+            #if DEBUG
+                public func ignoredOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #else
+                // periphery:ignore
+                public func ignoredOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #endif
+
+            #if DEBUG
+                public func ignoredParameterOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #else
+                // periphery:ignore:parameters dropped
+                public func ignoredParameterOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #endif
+
+            #if DEBUG
+                public func renamedIgnoredEntry(x a: Int, y b: Int) { print(a) }
+            #else
+                // periphery:ignore:parameters a
+                public func renamedIgnoredEntry(x b: Int, y a: Int) { print(b) }
+            #endif
+
+            #if DEBUG
+                public func mistypedIgnoreEntry(kept: Int) { print(kept) }
+            #else
+                // periphery:ignore:parameters typo
+                public func mistypedIgnoreEntry(kept: Int) { print(kept) }
+            #endif
+
+            """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -61,6 +115,41 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         try Self.index(configuration: configuration)
         assertReferenced(.functionFree("calledOnlyInDebug()"))
         assertReferenced(.functionFree("calledOnlyInRelease()"))
+    }
+
+    /// The same function declared in both branches of `#if DEBUG` is indexed from both configurations
+    /// with one USR per declaration. Each parameter is used in one configuration, so neither is reported.
+    func testSameUSRDeclarationsFromBothConfigurationsAreMerged() throws {
+        let configuration = Self.configuration(["debug", "release"])
+        try Self.build(projectPath: Self.root, configuration: configuration)
+        try Self.index(configuration: configuration)
+        let unusedParameters = Self.results.flatMap(\.usrs).filter { $0.contains("branchedEntry") || $0.contains("unusedInBothEntry") && !$0.hasPrefix("param-dropped") }.sorted()
+        XCTAssertEqual(unusedParameters, [String]())
+
+        // Control: a parameter unused in every configuration is still reported, once.
+        let droppedParameters = Self.results.flatMap(\.usrs).filter { $0.hasPrefix("param-dropped-unusedInBothEntry") }
+        XCTAssertEqual(droppedParameters.count, 1)
+
+        // Controls: the copy that uses every parameter keeps `second` used, and copies that name their parameters
+        // differently are compared by position, so the second one is reported once.
+        let usedInOneCopy = Self.results.flatMap(\.usrs).filter { $0.contains("usedInOneCopyEntry") }
+        XCTAssertEqual(usedInOneCopy, [String]())
+        // A `periphery:ignore` command on a copy the graph did not keep still applies to the kept copy's parameters,
+        // and the parameter command is not reported as superfluous.
+        let ignored = Self.results.flatMap(\.usrs).filter { $0.contains("OnLaterCopyEntry") }
+        XCTAssertEqual(ignored, [String]())
+        // Ignoring a parameter by the local name one copy gives it retains the kept copy's parameter, unreported
+        // and not flagged as a superfluous ignore.
+        let renamedIgnored = Self.results.flatMap(\.usrs).filter { $0.contains("renamedIgnoredEntry") }
+        XCTAssertEqual(renamedIgnored, [String]())
+        // Control: an ignored name that no parameter has is still reported as superfluous when it is on a copy
+        // the graph did not keep.
+        let mistyped = Self.results.flatMap(\.usrs).filter { $0.contains("mistypedIgnoreEntry") }
+        XCTAssertEqual(mistyped.count, 1)
+        XCTAssertTrue(mistyped.first?.hasPrefix("superfluous-ignore-param-typo") ?? false, "\(mistyped)")
+        let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
+        XCTAssertEqual(renamed.count, 1)
+        XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")
     }
 
     /// `swift package clean` removes every configuration's products. When a later configuration's
