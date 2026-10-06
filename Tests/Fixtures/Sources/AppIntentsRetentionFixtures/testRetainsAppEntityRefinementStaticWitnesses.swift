@@ -5,12 +5,14 @@ import AppIntents
 struct RefinedEntity: TransientAppEntity {
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Refined Entity"
     static let unusedEntityHelper = 1
+    // Used-but-not-compared control: retained by its use, not by name.
+    static let usedEntityHelper = "Refined"
     // Collision control: `title` is declared by AppIntent, not by an entity.
     static let title = 1
 
     init() {}
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "Refined")
+        DisplayRepresentation(title: "\(Self.usedEntityHelper)")
     }
 }
