@@ -49,7 +49,7 @@ final class AppIntentsRetainer: SourceGraphMutator {
             return entityStaticRequirementNames
         }
 
-        if name.hasSuffix("Enum") {
+        if name.hasSuffix("Enum") || name.hasSuffix("UnionValue") {
             return enumStaticRequirementNames
         }
 
