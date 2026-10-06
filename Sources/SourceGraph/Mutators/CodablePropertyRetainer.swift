@@ -67,7 +67,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             synthesizedTypes.insert(type)
         }
 
-        for use in graph.allReferences where use.kind == .normal && !use.valueArgumentReferences.isEmpty {
+        var hasOpaqueEncodeSite = false
+        for use in graph.allReferences where use.kind == .normal && (!use.valueArgumentReferences.isEmpty || !use.valueArguments.isEmpty) {
             guard let caller = use.parent, !caller.isImplicit else { continue }
 
             let mayEncode = if let callee = graph.declaration(withUsr: use.usr) {
@@ -77,8 +78,79 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             }
             guard mayEncode else { continue }
 
+            hasOpaqueEncodeSite = hasOpaqueEncodeSite || isOpaqueEncodeSite(use)
             markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
         }
+
+        if hasOpaqueEncodeSite {
+            markReadsThroughEncodableExistentials(synthesizedTypes: synthesizedTypes)
+        }
+    }
+
+    private static let existentialEncodeReason = "a value of its type is returned as `any Encodable`, and an encoder receives a value whose type Lethen cannot resolve"
+
+    /// A call that may encode, whose value the index cannot type: a local bound by `if let`, or a value declared as
+    /// an `Encodable` existential. Only the first argument is the encoded value; a literal is not opaque.
+    private func isOpaqueEncodeSite(_ use: Reference) -> Bool {
+        guard let argument = use.valueArguments.first else { return false }
+
+        return argument.isUnresolved || argument.references.contains { reference in
+            isEncodableExistential(reference) || graph.declaration(withUsr: reference.usr).map(producesEncodableExistential) == true
+        }
+    }
+
+    private func isEncodableExistential(_ reference: Reference) -> Bool {
+        Self.encodableUsrs.contains(reference.usr)
+            || graph.declaration(withUsr: reference.usr).map { $0.kind == .protocol && graph.isEncodable($0) } == true
+    }
+
+    /// A declaration whose declared type is an `Encodable` existential, `Encodable?` and `any Encodable` included.
+    private func producesEncodableExistential(_ declaration: Declaration) -> Bool {
+        declaration.references.contains { [.varType, .returnType].contains($0.role) && isEncodableExistential($0) }
+    }
+
+    /// Where an `Encodable` existential reaches an encoder, the type of the value is erased, and the local that holds
+    /// it is not in the index, so which type is encoded cannot be known. When some encoder receives such a value, the
+    /// synthesized encoder may read the properties of a type whose value is produced inside a declaration of an
+    /// `Encodable` existential type, following constructions, accessors and enum payloads, and of the types it stores.
+    /// That is only likely, so those properties keep their reports but with `likely` confidence.
+    private func markReadsThroughEncodableExistentials(synthesizedTypes: Set<Declaration>) {
+        var visited: Set<Declaration> = []
+        var pending: Set<Declaration> = []
+        for declaration in graph.allDeclarations where producesEncodableExistential(declaration) {
+            pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: producedReferences(in: declaration), in: graph, visited: &visited))
+        }
+
+        var seen: Set<Declaration> = []
+        while let type = pending.popFirst() {
+            guard synthesizedTypes.contains(type), seen.insert(type).inserted else { continue }
+
+            for property in type.declarations where property.kind == .varInstance && isEncoded(property, in: type) {
+                pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: property.references, in: graph, visited: &visited))
+                graph.markLikelyRead(property, reason: Self.existentialEncodeReason)
+            }
+        }
+    }
+
+    /// What a declaration's body names, including its accessors and nested declarations, with the payload types of the
+    /// enum cases it names.
+    private func producedReferences(in declaration: Declaration) -> Set<Reference> {
+        var references = declaration.references.filter { ![.varType, .returnType].contains($0.role) }
+        for member in declaration.declarations {
+            references.formUnion(producedReferences(in: member))
+        }
+        for reference in references where reference.declarationKind == .enumelement {
+            if let element = graph.declaration(withUsr: reference.usr) {
+                references.formUnion(element.references.filter { $0.kind == .normal })
+            }
+        }
+        return references
+    }
+
+    /// Synthesized encoding writes every stored property, including a constant with an initial value.
+    /// An explicit CodingKeys enum limits the encoded properties, as it does the decoded ones.
+    private func isEncoded(_ property: Declaration, in type: Declaration) -> Bool {
+        !property.isImplicit && !property.hasAccessorBody && !isOmittedByCodingKeys(property, in: type)
     }
 
     /// A class that declares `Encodable` but inherits `encode(to:)` from a superclass that does not conform
@@ -174,13 +246,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
-        // Synthesized encoding writes every stored property, including a constant with an initial value.
-        // An explicit CodingKeys enum limits the encoded properties, as it does the decoded ones.
-        let classify: (Declaration, Declaration) -> PropertyUse = { [self] type, property in
-            guard !property.isImplicit, !property.hasAccessorBody, !isOmittedByCodingKeys(property, in: type) else { return .skip }
-
-            return .read
-        }
+        let classify: (Declaration, Declaration) -> PropertyUse = { [self] type, property in isEncoded(property, in: type) ? .read : .skip }
         markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classify)
     }
 

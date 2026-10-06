@@ -117,9 +117,13 @@ extension Reference: Comparable {
 public struct ValueArgument {
     public let label: String?
     public let references: Set<Reference>
+    /// True when the argument names a value, such as a local bound by `if let`, that the index has no declaration for,
+    /// so nothing is known about its type. A literal or an argument that resolves to declarations is not unresolved.
+    public let isUnresolved: Bool
 
-    public init(label: String?, references: Set<Reference>) {
+    public init(label: String?, references: Set<Reference>, isUnresolved: Bool = false) {
         self.label = label
         self.references = references
+        self.isUnresolved = isUnresolved
     }
 }

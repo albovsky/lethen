@@ -90,6 +90,18 @@ final class ValueUseAnalysisTest: XCTestCase {
         XCTAssertTrue(make.returnTypeNames.isEmpty, "The control: an unconstrained generic parameter decodes nothing")
     }
 
+    func testArgumentNamingAValueTheIndexLacksIsUnresolved() throws {
+        let source = "struct S {}\nlet v: S = S()\nfunc g(_ x: Int?) {\n    if let local = x {\n        f(local, v, 0)\n    }\n}\n"
+        let (file, sourceFile, _, _) = makeIndexedFile(source: source, references: [
+            (5, 9, .functionFree, "f(_:_:_:)"), // the call
+            (2, 8, .struct, "S"), // the type `v` was declared with
+        ])
+        try ValueUseAnalysis(configuration: Configuration()).apply(to: file)
+
+        let call = try XCTUnwrap(file.references(at: Location(file: sourceFile, line: 5, column: 9)).first)
+        XCTAssertEqual(call.valueArguments.map(\.isUnresolved), [true, false, false], "local is unresolved; the declared value and the literal are not")
+    }
+
     func testDeclarationFactsAreRecordedByLocation() throws {
         let source = "var p: Int { 1 }\nlet c = 1\nvar stored = 2\n"
         let sourceFile = SourceFile(path: FilePath("/t/T.swift"), modules: ["T"])

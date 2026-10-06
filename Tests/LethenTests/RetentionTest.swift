@@ -2784,6 +2784,49 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialWitness() throws {
+        let reason = "a value of its type is returned as `any Encodable`, and an encoder receives a value whose type Lethen cannot resolve"
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct316Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .likely)
+                self.assertConfidenceReason(.varInstance("duration"), reason)
+                // Used-but-not-compared control: read in code, so it is not reported at all.
+                self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+            }
+            assertReferenced(.struct("FixtureStruct316Nested")) {
+                self.assertAssignOnlyProperty(.varInstance("nestedDuration"))
+                self.assertConfidence(.varInstance("nestedDuration"), .likely)
+            }
+            assertReferenced(.struct("FixtureStruct316Outer")) {
+                self.assertAssignOnlyProperty(.varInstance("nested"))
+                self.assertConfidence(.varInstance("nested"), .likely)
+            }
+            assertReferenced(.struct("FixtureStruct316Payload")) {
+                self.assertAssignOnlyProperty(.varInstance("payloadDuration"))
+                self.assertConfidence(.varInstance("payloadDuration"), .likely)
+            }
+            // Controls: the encoder's reads are known, or nothing links the type to the unresolved encode.
+            assertReferenced(.struct("FixtureStruct316Direct")) {
+                self.assertNotAssignOnlyProperty(.varInstance("directlyEncoded"))
+            }
+            assertReferenced(.struct("FixtureStruct316Unrelated")) {
+                self.assertAssignOnlyProperty(.varInstance("unrelatedNotEncoded"))
+                self.assertConfidence(.varInstance("unrelatedNotEncoded"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialWithoutEncodeSite() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct317Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .certain)
+                self.assertConfidenceReason(.varInstance("duration"), nil)
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeTopLevel() throws {
         let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
 
