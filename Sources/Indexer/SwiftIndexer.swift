@@ -241,6 +241,11 @@ final class SwiftIndexer: Indexer {
                 ($0.location, $0.name, $0.kind.rawValue, $0.isImplicit ? 1 : 0) < ($1.location, $1.name, $1.kind.rawValue, $1.isImplicit ? 1 : 0)
             }
 
+            // Only the first copy of a USR set reaches the graph. Later copies (a declaration written in both
+            // branches of a `#if` built in two configurations) must never become a reference parent or a
+            // retained root, or marking one used would mark the kept declaration used without traversing it.
+            var keptDeclarationsByUsrs: [Set<String>: Declaration] = [:]
+
             for key in orderedKeys {
                 let values = rawDeclsByKey[key, default: []]
                 let usrs = values.mapSet { $0.0.usr }
@@ -250,16 +255,20 @@ final class SwiftIndexer: Indexer {
                 decl.indexedModules = values.mapSet { $0.0.module }
                 decl.isObjcAccessible = key.isObjcAccessible
 
+                let kept = keptDeclarationsByUsrs[usrs] ?? decl
+                keptDeclarationsByUsrs[usrs] = kept
+
                 if decl.isObjcAccessible, configuration.retainObjcAccessible {
-                    graph.withLock { $0.markRetained(decl) }
+                    graph.withLock { $0.markRetained(kept) }
                 }
 
                 let relations = values.flatMap(\.1)
-                references.formUnion(parseDeclaration(decl, relations))
+                references.formUnion(parseDeclaration(kept, relations))
 
                 newDeclarations.insert(decl)
                 declarations.append(decl)
             }
+            self.keptDeclarationsByUsrs = keptDeclarationsByUsrs
 
             graph.withLock { graph in
                 graph.add(references)
@@ -278,7 +287,9 @@ final class SwiftIndexer: Indexer {
             // except extensions: ExtensionReferenceBuilder folds those into the type they extend
             // (and retains extensions of external types), so a generated conformance such as
             // `extension Foo: Observable` does not keep `Foo` alive.
-            let implicitDeclarations = declarations.filter { $0.isImplicit && !$0.kind.isExtensionKind }
+            let implicitDeclarations = declarations.filter {
+                $0.isImplicit && !$0.kind.isExtensionKind && keptDeclarationsByUsrs[$0.usrs] === $0
+            }
             graph.withLock { graph in
                 implicitDeclarations.forEach { graph.markRetained($0) }
             }
@@ -347,6 +358,8 @@ final class SwiftIndexer: Indexer {
         // MARK: - Private
 
         private var declarations: [Declaration] = []
+        /// The copy of each USR set that phase one added to the graph; other copies are never graph-visible.
+        private var keptDeclarationsByUsrs: [Set<String>: Declaration] = [:]
         private var indexedReferences: Set<Reference> = []
         /// Locations of every index occurrence, by the module whose unit recorded them. A file built into
         /// several modules can compile different clauses in each.
@@ -438,13 +451,13 @@ final class SwiftIndexer: Indexer {
                 // however it is possible for there to be more than one. In that case, first attempt to associate with
                 // a decl without a parent, as the reference may be a related type of a class/struct/etc.
                 if let decl = candidateDecls.first(where: { $0.parent == nil }) {
-                    associate(ref, with: decl)
+                    associate(ref, with: keptDeclarationsByUsrs[decl.usrs] ?? decl)
                 } else if let decl = candidateDecls.min() {
                     // Fallback to using the first declaration.
                     // Sorting the declarations helps in the situation where the candidate declarations includes a
                     // property/subscript, and a getter on the same line. The property/subscript is more likely to be
                     // the declaration that should hold the references.
-                    associate(ref, with: decl)
+                    associate(ref, with: keptDeclarationsByUsrs[decl.usrs] ?? decl)
                 }
             }
         }

@@ -87,9 +87,30 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
                 public func mistypedIgnoreEntry(kept: Int) { print(kept) }
             #endif
 
+            func calledOnlyFromReleaseWitness() {}
+            func calledFromUnbranchedWitness() {}
+            func neverCalledControl() {}
+
+            // A witness of an external requirement declared in both branches: two copies with one USR, each
+            // holding a related reference to the requirement.
+            public final class BranchedIterator: IteratorProtocol {
+                public init() {}
+                #if DEBUG
+                    public func next() -> Int? { nil }
+                #else
+                    public func next() -> Int? { calledOnlyFromReleaseWitness(); return nil }
+                #endif
+            }
+
+            // Control: an unbranched witness keeps its body's reference.
+            public final class PlainIterator: IteratorProtocol {
+                public init() {}
+                public func next() -> Int? { calledFromUnbranchedWitness(); return nil }
+            }
+
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n_ = BranchedIterator().next()\n_ = PlainIterator().next()\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -150,6 +171,19 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
         XCTAssertEqual(renamed.count, 1)
         XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")
+    }
+
+    /// A witness of an external requirement declared in both `#if` branches is indexed as two copies with one USR.
+    /// The copy the graph did not keep must not become a retained root, which would be visited before the kept copy
+    /// and hide it from the used-declaration walk, and the walk visits retained roots in an unspecified order.
+    func testWitnessCopiesFromBothConfigurationsKeepBodyReferences() throws {
+        let configuration = Self.configuration(["debug", "release"])
+        try Self.build(projectPath: Self.root, configuration: configuration)
+        try Self.index(configuration: configuration)
+        assertReferenced(.functionFree("calledOnlyFromReleaseWitness()"))
+        // Controls: an unbranched witness stays used, and a function nothing calls is still reported.
+        assertReferenced(.functionFree("calledFromUnbranchedWitness()"))
+        assertNotReferenced(.functionFree("neverCalledControl()"))
     }
 
     /// `swift package clean` removes every configuration's products. When a later configuration's
