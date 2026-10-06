@@ -1,6 +1,6 @@
 import AppIntents
 
-@available(macOS 15.0, *)
+@available(macOS 27.0, *)
 @UnionValue
 enum UnionChoice {
     case text(String)
