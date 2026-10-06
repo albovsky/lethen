@@ -1,6 +1,9 @@
 #!/bin/bash
 # Scans one corpus project at its pinned commit and writes its canonical findings to
 # .corpus/results/<name>.canonical.json. Any clone, checkout, build or scan failure fails the run.
+# A project may set "setup", an argv array (one command, no shell) that runs inside the checkout after the pinned
+# commit is checked out and before the scan, for steps a build needs such as writing a git-ignored config file; a
+# failing setup fails the run.
 # Usage: corpus/scan.sh <name> [lethen-binary]
 set -euo pipefail
 
@@ -16,7 +19,7 @@ manifest, name, key = sys.argv[1:4]
 entries = [e for e in json.load(open(manifest)) if e["name"] == name]
 if not entries:
     sys.exit(f"corpus: unknown project '{name}'")
-value = entries[0][key]
+value = entries[0].get(key, []) if key == "setup" else entries[0][key]
 print("\n".join(value) if isinstance(value, list) else value)
 PY
 }
@@ -28,6 +31,10 @@ arguments=()
 while IFS= read -r argument; do
     [ -n "$argument" ] && arguments+=("$argument")
 done < <(field arguments)
+setup=()
+while IFS= read -r argument; do
+    [ -n "$argument" ] && setup+=("$argument")
+done < <(field setup)
 checkouts="${CORPUS_CHECKOUTS:-$root/.corpus/checkouts}"
 checkout="$checkouts/$name"
 results="$root/.corpus/results"
@@ -40,6 +47,9 @@ git -C "$checkout" fetch --quiet origin "$commit"
 # --force discards edits a previous scan's build made; some projects' build phases run
 # formatters over their sources (wikipedia-ios runs `swiftlint --fix`).
 git -C "$checkout" checkout --quiet --force --detach "$commit"
+if [ ${#setup[@]} -gt 0 ]; then
+    (cd "$checkout" && "${setup[@]}")
+fi
 
 "$lethen" scan --project-root "$checkout" --quiet --disable-update-check \
     --format json --relative-results ${arguments[@]+"${arguments[@]}"} > "$results/$name.json"
