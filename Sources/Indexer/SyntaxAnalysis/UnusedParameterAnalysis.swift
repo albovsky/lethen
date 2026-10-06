@@ -19,14 +19,13 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
             $0[$1.location] = $1
         }
 
-        // Build a map of ignored param names per function, and track functions with ignored
-        // params so ScanResultBuilder can efficiently detect superfluous ignores.
+        // Build a map of ignored param names per function. Functions with ignored params are tracked below, so
+        // ScanResultBuilder can efficiently detect superfluous ignores.
         var ignoredParamsByLocation: [Location: [String]] = [:]
         for functionDecl in functionDecls {
             let ignoredParamNames = functionDecl.commentCommands.ignoredParameterNames
             if !ignoredParamNames.isEmpty {
                 ignoredParamsByLocation[functionDecl.location] = ignoredParamNames
-                file.graph.withLock { $0.markHasIgnoredParameters(functionDecl) }
             }
         }
 
@@ -54,7 +53,9 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
 
         let orderedGroups = copiesByUsrs.values.map { $0.sorted { $0.decl < $1.decl } }.sorted { $0[0].decl < $1[0].decl }
 
+        var groupedLocations: Set<Location> = []
         for copies in orderedGroups {
+            groupedLocations.formUnion(copies.map(\.decl.location))
             let winner = file.graph.withLock { graph in
                 copies.first { graph.declaration(withUsr: $0.decl.usrs.sorted()[0]) === $0.decl } ?? copies[0]
             }
@@ -83,6 +84,35 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
                         graph.markCommandIgnored(paramDecl, kind: .declaration)
                     }
                 }
+            }
+
+            // Comment commands are read per copy, but one declaration survives: an ignore command on any copy
+            // applies to it, so it carries the commands of the copies the graph did not keep.
+            file.graph.withLock { graph in
+                for copy in copies where copy.decl !== functionDecl {
+                    for command in copy.decl.commentCommands {
+                        switch command {
+                        case .ignore:
+                            functionDecl.commentCommands.insert(command)
+                        case .ignoreParameters:
+                            functionDecl.commentCommands.insert(command)
+                        case .ignoreAll, .override:
+                            break
+                        }
+                    }
+                }
+
+                // The winner is tracked, not a copy that equals it, whose parameters it does not own.
+                if !functionDecl.commentCommands.ignoredParameterNames.isEmpty {
+                    graph.markHasIgnoredParameters(functionDecl)
+                }
+            }
+        }
+
+        // Functions the parameter analysis did not cover keep their ignore command tracked as before.
+        file.graph.withLock { graph in
+            for functionDecl in functionDecls where !groupedLocations.contains(functionDecl.location) && ignoredParamsByLocation[functionDecl.location] != nil {
+                graph.markHasIgnoredParameters(functionDecl)
             }
         }
     }

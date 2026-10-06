@@ -59,9 +59,23 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
                 public func renamedEntry(x b: Int, y a: Int) { print(b) }
             #endif
 
+            #if DEBUG
+                public func ignoredOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #else
+                // periphery:ignore
+                public func ignoredOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #endif
+
+            #if DEBUG
+                public func ignoredParameterOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #else
+                // periphery:ignore:parameters dropped
+                public func ignoredParameterOnLaterCopyEntry(kept: Int, dropped: Int) { print(kept) }
+            #endif
+
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -106,6 +120,10 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         // differently are compared by position, so the second one is reported once.
         let usedInOneCopy = Self.results.flatMap(\.usrs).filter { $0.contains("usedInOneCopyEntry") }
         XCTAssertEqual(usedInOneCopy, [String]())
+        // A `periphery:ignore` command on a copy the graph did not keep still applies to the kept copy's parameters,
+        // and the parameter command is not reported as superfluous.
+        let ignored = Self.results.flatMap(\.usrs).filter { $0.contains("OnLaterCopyEntry") }
+        XCTAssertEqual(ignored, [String]())
         let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
         XCTAssertEqual(renamed.count, 1)
         XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")
