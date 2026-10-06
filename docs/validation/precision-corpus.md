@@ -79,9 +79,13 @@ All seven sampled rows that are no longer reported are marked retired: the four 
 sampled row, `LockscreenSearchWidgetConfiguration.languageCode`, is a TP (assigned, never read). Six sampled rows went
 from `likely` to `certain` before this change and their notes say so.
 
-The scan is not deterministic: `SceneDelegate.swift` declares a method in both branches of `#if TEST`, so both
+The scan was not deterministic at first: `SceneDelegate.swift` declares a method in both branches of `#if TEST`, so both
 configurations index it under one USR, and 3 of 21 identical rescans reported two more rows (`connectionOptions` and
-`session`, 2,576 findings). The expectation holds the 2,574-row result; see albovsky/lethen#158.
+`session`, 2,576 findings; albovsky/lethen#158). #160 fixed that: with it, `corpus/scan.sh` reproduces the
+expectation exactly (no diff against the 2,574 rows) and no rescan reported 2,576. A different intermittent result
+remains: 2 of about 46 rescans reported 2,640 findings, 67 more and 1 fewer, the extra ones launch-path declarations
+that only the Debug configuration compiles, reported `certain` as if the Debug index had not been read
+(albovsky/lethen#165). The expectation holds the 2,574-row result.
 
 ### Wikipedia checks for #149, #151, #153, #155 and #156 (2026-10-05)
 
@@ -111,12 +115,12 @@ compared by path, kind, name and ids.
   models (`ReferenceShowing.articleURL`, `WMFArticlePreviewViewModel.imageURL`), not classes and not `@_cdecl`.
   The acceptance holds: no flipped row in the sample is a genuine runtime lookup.
 - **#153:** the three rows are the `UIColor` extension initializers `init(_:alpha:)`, `init(_:)` and
-  `init(_:alpha:)` of `Theme.swift` (lines 8, 16 and 26), now `likely` with the reason "its name appears in `#if DEBUG`
-  at `EventPlatformClient.swift:339`". The clause there spells `String.init(data:encoding:)`, which constructs
-  `String`, not `UIColor`, and its labels `data:encoding:` are not labels of any of the three. The rows keep `likely`
-  because a member of an extension of an unscanned type is never narrowed, so this acceptance check fails for these
-  three rows: the rule is too wide for an initializer whose spelled receiver is a different type or whose labels do not
-  fit. It makes a result more conservative (`likely` rather than `certain`) and never hides one.
+  `init(_:alpha:)` of `Theme.swift` (lines 8, 16 and 26), which became `likely` with the reason "its name appears in
+  `#if DEBUG` at `EventPlatformClient.swift:339`". That clause spells `String.init(data:encoding:)`, which constructs
+  `String`, not `UIColor`, and its labels `data:encoding:` are not labels of any of the three, so the acceptance check
+  failed for these three rows. #161 narrowed the rule by name: a single-configuration scan at `1a2989b` reports all
+  three `certain` again, and no row moved from `certain` to `likely` since `0b95cfb` (three rows changed line only, from
+  #160).
 
 ### Second measurement (2026-09-29)
 
