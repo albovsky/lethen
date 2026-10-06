@@ -17,6 +17,7 @@
                     // Used-but-not-compared control: retained by its use, not by name.
                     self.assertReferenced(.varStatic("preview"))
                     self.assertNotReferenced(.varStatic("unusedHelper"))
+                    self.assertNotReferenced(.varStatic("defaultQuery"))
                 }
             }
         }

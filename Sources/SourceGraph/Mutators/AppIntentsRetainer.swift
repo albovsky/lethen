@@ -14,25 +14,37 @@ final class AppIntentsRetainer: SourceGraphMutator {
     /// For AppIntents (10 characters), this becomes "s:10AppIntents".
     private static let appIntentsModuleUsrPrefix = "s:10AppIntents"
 
-    /// Static requirements of App Intents protocols that the framework reads at runtime.
+    /// Static requirements of App Intents protocols that the framework reads at runtime, by protocol.
     ///
     /// A conforming witness such as `static let description = IntentDescription(...)` can differ in
     /// type from the protocol requirement (`IntentDescription?`), in which case the index records no
-    /// override relation and the member would otherwise be reported as unused. Only these names are
-    /// retained; other static members of an intent are analysed normally.
-    private static let staticRequirementNames: Set<String> = [
+    /// override relation and the member would otherwise be reported as unused. Only a name declared
+    /// by a protocol the type conforms to is retained; other static members, including a name that
+    /// only a different App Intents protocol declares, are analysed normally.
+    private static let staticRequirementNamesByProtocol: [String: Set<String>] = [
+        "AppEntity": ["typeDisplayRepresentation", "defaultQuery"],
+        "AppEnum": ["typeDisplayRepresentation", "caseDisplayRepresentations"],
+        "AppValue": ["typeDisplayRepresentation"],
+        "AppShortcutsProvider": ["appShortcuts", "shortcutTileColor"],
+    ]
+
+    /// `AppIntent` and the protocols refining it (`WidgetConfigurationIntent`, `SnapshotIntent`, ...).
+    private static let intentStaticRequirementNames: Set<String> = [
         "title",
         "description",
         "openAppWhenRun",
         "isDiscoverable",
         "parameterSummary",
         "authenticationPolicy",
-        "typeDisplayRepresentation",
-        "caseDisplayRepresentations",
-        "defaultQuery",
-        "appShortcuts",
-        "shortcutTileColor",
     ]
+
+    private static func staticRequirementNames(forProtocol name: String) -> Set<String> {
+        if name == "AppIntent" || name.hasSuffix("Intent") {
+            return intentStaticRequirementNames
+        }
+
+        return staticRequirementNamesByProtocol[name] ?? []
+    }
 
     private static let staticMemberKinds: Set<Declaration.Kind> = [
         .varStatic,
@@ -58,9 +70,14 @@ final class AppIntentsRetainer: SourceGraphMutator {
         for type in appIntentsTypes {
             graph.markRetained(type)
 
+            let requirementNames = type.related
+                .filter { $0.declarationKind == .protocol && $0.usr.hasPrefix(Self.appIntentsModuleUsrPrefix) }
+                .compactMap { graph.declaration(withUsr: $0.usr)?.name ?? $0.name }
+                .reduce(into: Set<String>()) { $0.formUnion(Self.staticRequirementNames(forProtocol: $1)) }
+
             for member in type.declarations
                 where Self.staticMemberKinds.contains(member.kind) &&
-                Self.staticRequirementNames.contains(member.name) &&
+                requirementNames.contains(member.name) &&
                 member.related.isEmpty
             {
                 graph.markRetained(member)
