@@ -44,7 +44,8 @@
       "verdict": "FP",
       "note": "`static let description = IntentDescription(...)` witnesses the `description` requirement of `AppIntent` (`WidgetConfigurationIntent`), which the App Intents framework reads; removing it changes the widget configuration screen.",
       "adjudicated_on": "2026-10-06",
-      "lethen_commit": "c410a1d"
+      "lethen_commit": "c410a1d",
+      "retired": "No longer reported after #171: a static requirement of `AppIntent` is retained"
     },
     {
       "path": "Packages/Account/Sources/Account/Detail/AccountDetailContextMenu.swift",
@@ -77,7 +78,8 @@
       "verdict": "FP",
       "note": "`public var` of `MediumDark`/`IceCubeLight`, a public struct conforming to the public protocol `ColorSet` that requires it; swiftc rejects dropping `public` (\"must be declared public because it matches a requirement in public protocol\").",
       "adjudicated_on": "2026-10-06",
-      "lethen_commit": "c410a1d"
+      "lethen_commit": "c410a1d",
+      "retired": "No longer reported after #172: a witness of a public protocol requirement stays out of the redundant-public cascade"
     },
     {
       "path": "Packages/DesignSystem/Sources/DesignSystem/ColorSet.swift",
@@ -88,7 +90,8 @@
       "verdict": "FP",
       "note": "`public var name` witnesses the `name` requirement of the public protocol `ColorSet` in a public struct; swiftc requires it to be public.",
       "adjudicated_on": "2026-10-06",
-      "lethen_commit": "c410a1d"
+      "lethen_commit": "c410a1d",
+      "retired": "No longer reported after #172: a witness of a public protocol requirement stays out of the redundant-public cascade"
     },
     {
       "path": "Packages/DesignSystem/Sources/DesignSystem/ColorSet.swift",
@@ -99,7 +102,8 @@
       "verdict": "FP",
       "note": "`public var labelColor` witnesses a `ColorSet` requirement in a public struct; swiftc requires it to be public.",
       "adjudicated_on": "2026-10-06",
-      "lethen_commit": "c410a1d"
+      "lethen_commit": "c410a1d",
+      "retired": "No longer reported after #172: a witness of a public protocol requirement stays out of the redundant-public cascade"
     },
     {
       "path": "Packages/DesignSystem/Sources/DesignSystem/ColorSet.swift",
@@ -110,7 +114,8 @@
       "verdict": "FP",
       "note": "`public var scheme` witnesses a `ColorSet` requirement in a public struct; swiftc requires it to be public.",
       "adjudicated_on": "2026-10-06",
-      "lethen_commit": "c410a1d"
+      "lethen_commit": "c410a1d",
+      "retired": "No longer reported after #172: a witness of a public protocol requirement stays out of the redundant-public cascade"
     },
     {
       "path": "Packages/DesignSystem/Sources/DesignSystem/Views/AvatarView.swift",
@@ -165,7 +170,8 @@
       "verdict": "FP",
       "note": "`Instance.Configuration.Polls` is `Codable` and decoded by `MastodonClient.get<Entity: Decodable>` with `Entity` inferred from the result type, so no `Type.self` reaches the decoder at the call site; `minExpiration` is a required key of the decoded model.",
       "adjudicated_on": "2026-10-06",
-      "lethen_commit": "c410a1d"
+      "lethen_commit": "c410a1d",
+      "retired": "No longer reported after #174: a decoded model returned through `client.get` with an annotated binding is read by its synthesized initializer"
     },
     {
       "path": "Packages/Models/Sources/Models/InstanceSocial.swift",
@@ -207,7 +213,7 @@
       "kind": "var.instance",
       "name": "duration",
       "verdict": "FP",
-      "note": "`MuteData: Encodable` is returned as `jsonValue: Encodable?` and encoded by `encoder.encode(json)` (MastodonClient.swift:128), so the synthesized encoder reads `duration`.",
+      "note": "`MuteData: Encodable` is returned as `jsonValue: Encodable?` and encoded by `encoder.encode(json)` (MastodonClient.swift:128), so the synthesized encoder reads `duration`. Confidence went from `certain` to `likely` after #175, which keeps the verdict FP but flags the finding as uncertain.",
       "adjudicated_on": "2026-10-06",
       "lethen_commit": "c410a1d"
     },
@@ -218,7 +224,7 @@
       "kind": "var.instance",
       "name": "description",
       "verdict": "FP",
-      "note": "`MediaDescriptionData: Encodable` is returned as `jsonValue: Encodable?` and encoded at MastodonClient.swift:128, so the synthesized encoder reads `description`.",
+      "note": "`MediaDescriptionData: Encodable` is returned as `jsonValue: Encodable?` and encoded at MastodonClient.swift:128, so the synthesized encoder reads `description`. Confidence went from `certain` to `likely` after #175, which keeps the verdict FP but flags the finding as uncertain.",
       "adjudicated_on": "2026-10-06",
       "lethen_commit": "c410a1d"
     },
@@ -231,7 +237,8 @@
       "verdict": "FP",
       "note": "`queryItems()` witnesses the requirement of the public `Endpoint` protocol (Endpoint.swift:5); a public type must make it public.",
       "adjudicated_on": "2026-10-06",
-      "lethen_commit": "c410a1d"
+      "lethen_commit": "c410a1d",
+      "retired": "No longer reported after #172: a witness of a public protocol requirement stays out of the redundant-public cascade"
     },
     {
       "path": "Packages/StatusKit/Sources/StatusKit/Poll/StatusPollView.swift",
