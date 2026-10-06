@@ -144,7 +144,11 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             guard synthesizedTypes.contains(type), seen.insert(type).inserted else { continue }
 
             for property in type.declarations where property.kind == .varInstance && isEncoded(property, in: type) {
-                pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: property.references, in: graph, visited: &visited))
+                // As in `markReads`: a generic argument is encoded only when its generic type stores it.
+                let stored = property.references.filter {
+                    !$0.isGenericSpecializationArgument && ![.functionAccessorGetter, .functionAccessorSetter].contains($0.declarationKind)
+                }
+                pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: withGenericArguments(stored, classify: classifyEncode), in: graph, visited: &visited))
                 graph.markLikelyRead(property, reason: Self.existentialEncodeReason)
             }
         }
@@ -263,9 +267,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         usr.range(of: "SE(R[zd]|_)", options: .regularExpression) != nil
     }
 
+    private var classifyEncode: (Declaration, Declaration) -> PropertyUse {
+        { [self] type, property in isEncoded(property, in: type) ? .read : .skip }
+    }
+
     private func markEncodedReads(from use: Reference, caller: Declaration?, synthesizedTypes: Set<Declaration>) {
-        let classify: (Declaration, Declaration) -> PropertyUse = { [self] type, property in isEncoded(property, in: type) ? .read : .skip }
-        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classify)
+        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classifyEncode)
     }
 
     /// Synthesized `init(from:)` requires every non-optional stored property to be present in the

@@ -2878,6 +2878,19 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialGenericArgument() throws {
+        try analyze(retainPublic: true) {
+            // Control: the generic type never stores its argument, so nothing encodes the argument's properties.
+            assertReferenced(.struct("FixtureStruct325Hidden")) {
+                self.assertConfidence(.varInstance("hiddenValue"), .certain)
+            }
+            // A plain stored type is followed whole.
+            assertReferenced(.struct("FixtureStruct325Shown")) {
+                self.assertConfidence(.varInstance("shownValue"), .likely)
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeExistentialWrapperOtherParameter() throws {
         try analyze(retainPublic: true) {
             // Control: the unresolved value is passed for a parameter that is not `Encodable`, so no encoder
