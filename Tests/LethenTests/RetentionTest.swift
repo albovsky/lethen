@@ -2772,6 +2772,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct315Cast")) {
                 self.assertNotAssignOnlyProperty(.varInstance("castDecoded"))
             }
+            assertReferenced(.struct("FixtureStruct315Parenthesized")) {
+                self.assertNotAssignOnlyProperty(.varInstance("parenthesizedDecoded"))
+            }
             assertReferenced(.struct("FixtureStruct315Unconstrained")) {
                 self.assertAssignOnlyProperty(.varInstance("unconstrainedNotDecoded"))
             }

@@ -129,12 +129,21 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
 
     /// The type the context gives a call's result, which fixes a generic result: the annotation of the binding the call
     /// initializes, the type of a plain `as`, or the return type of the function or getter that returns it, by
-    /// `return` or as its only statement. `try` and `await` pass it through. Other positions, such as assignment to an
+    /// `return` or as its only statement. `try`, `await` and parentheses pass it through. Other positions, such as assignment to an
     /// existing property or a closure body, are not modeled.
     private static func contextualType(of call: FunctionCallExprSyntax) -> TypeSyntax? {
         var expression = Syntax(call)
-        while let parent = expression.parent, parent.is(TryExprSyntax.self) || parent.is(AwaitExprSyntax.self) {
-            expression = parent
+        while let parent = expression.parent {
+            if parent.is(TryExprSyntax.self) || parent.is(AwaitExprSyntax.self) {
+                expression = parent
+            } else if let element = parent.as(LabeledExprSyntax.self), element.label == nil,
+                      let tuple = element.parent?.parent?.as(TupleExprSyntax.self), tuple.elements.count == 1
+            {
+                // Parentheses.
+                expression = Syntax(tuple)
+            } else {
+                break
+            }
         }
         guard let parent = expression.parent else { return nil }
 

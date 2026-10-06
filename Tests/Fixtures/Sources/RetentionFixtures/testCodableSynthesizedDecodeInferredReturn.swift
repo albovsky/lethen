@@ -13,6 +13,10 @@ struct FixtureStruct315ReturnedExplicit: Decodable {
     let explicitDecoded: Int
 }
 
+struct FixtureStruct315Parenthesized: Decodable {
+    let parenthesizedDecoded: Int
+}
+
 struct FixtureStruct315Cast: Decodable {
     let castDecoded: Int
 }
@@ -67,6 +71,8 @@ public class FixtureClass315Retainer {
         _ = try returned()
         _ = try returnedExplicit()
         _ = try load(path: "cast") as FixtureStruct315Cast
+        let parenthesized: FixtureStruct315Parenthesized = (try load(path: "parenthesized"))
+        _ = parenthesized
         let unconstrained: FixtureStruct315Unconstrained = make()
         _ = unconstrained
         let other: FixtureStruct315OtherParameter = try pair(Int.self, path: "other")
