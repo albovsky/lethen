@@ -250,7 +250,7 @@ Properties read only by synthesized code are handled in two ways. Synthesized `E
 
 ### Redundant public accessibility
 
-A `public` declaration that no other module references. Removing `public` shrinks the module's surface and lets whole-module optimization infer `final`. `open` declarations and members of types that are themselves correctly public are not reported. Disable with `--disable-redundant-public-analysis`; `--retain-public` also disables it.
+A `public` declaration that no other module references. Removing `public` shrinks the module's surface and lets whole-module optimization infer `final`. `open` declarations and members of types that are themselves correctly public are not reported. When a type is reported, its `public` members are reported with it, except members that witness a requirement of a `public` protocol. Disable with `--disable-redundant-public-analysis`; `--retain-public` also disables it.
 
 ### Redundant protocols
 
