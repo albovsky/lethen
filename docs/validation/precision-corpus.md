@@ -1030,3 +1030,13 @@ Alamofire and swift-nio re-scanned on Linux (Swift 6.4) with the change and with
 | swift-nio `Sources/_NIOFileSystem/Internal/System Calls/Mocking.swift:358` `init(_platformString:)` | function.constructor | Accepted imprecision, `likely` | Named by `#if os(Windows)` in `SystemPackage+Windows.swift:15`, which spells constructions such as `FileDescriptor.OpenOptions(rawValue:)` and `UnsafePointer(s)`. The declaration is in an extension of `String`, an unscanned type, so no receiver narrows it (a member of an extension of an unscanned type is never narrowed, as for #126). |
 
 Both rows stay reported; only `--min-confidence certain` hides them. The cause is the unscanned extended type, not the new rule, and narrowing it needs the extended type's name matched against type aliases the scan cannot see. The Wikipedia iOS check (finding set unchanged, rows that flip listed by rule) waits for the Wikipedia re-baseline of batch 4 slice 2 and runs on the Mac.
+
+### Initializers in extensions of unscanned types in skipped `#if` evidence (#145 follow-up)
+
+Alamofire and swift-nio re-scanned on Linux (Swift 6.4) with the change and with master `0b95cfb`; the two results were compared with each other, since the committed expectations are macOS scans. Alamofire is identical. swift-nio's finding set is identical, and one row moves from `likely` to `certain`:
+
+| Row | Kind | Verdict | Evidence |
+| --- | --- | --- | --- |
+| swift-nio `Sources/_NIOFileSystem/Internal/System Calls/Mocking.swift:358` `init(_platformString:)` | function.constructor | Imprecision fixed, `certain` | The row #153 left `likely` (see above): declared in an extension of `String`, and named only by `#if os(Windows)` in `SystemPackage+Windows.swift:15`, whose constructions are of `FileDescriptor.OpenOptions` and `UnsafePointer`, not `String`. Its labels are not spelled either. |
+
+Wikipedia iOS, to check on the Mac after this merges: the three `UIColor` initializers in `WMF Framework/Theme.swift` (`init(_:)` at :16, `init(_:alpha:)` at :26 and the third `UIColor` initializer in that extension) were `certain` before #153 and `likely` after it, named only by `DDLogDebug("...")` and `String.init(data:encoding:)` in the `#if DEBUG` clause of `EventPlatformClient.swift:339`. They should be `certain` again; no row should move from `certain` to `likely`.

@@ -12,7 +12,9 @@ public final class UnusedParameterAnalyzer {
 
     public init() {}
 
-    public func analyze(file: SourceFile, syntax: SourceFileSyntax, locationConverter: SourceLocationConverter, parseProtocols: Bool) -> [Function: Set<Parameter>] {
+    /// Returns each function's unused parameters, including functions that use all of them, so a caller can tell
+    /// that one copy of a function uses a parameter another copy leaves unused.
+    public func analyzeEveryFunction(file: SourceFile, syntax: SourceFileSyntax, locationConverter: SourceLocationConverter, parseProtocols: Bool) -> [Function: Set<Parameter>] {
         let functions = UnusedParameterParser.parse(
             file: file,
             syntax: syntax,
@@ -21,11 +23,7 @@ public final class UnusedParameterAnalyzer {
         )
 
         return functions.reduce(into: [Function: Set<Parameter>]()) { result, function in
-            let params = analyze(function: function)
-
-            if !params.isEmpty {
-                result[function] = params
-            }
+            result[function] = analyze(function: function)
         }
     }
 
