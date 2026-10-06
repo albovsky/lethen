@@ -98,7 +98,7 @@ final class RedundantExplicitPublicAccessibilityMarker: SourceGraphMutator {
     /// again, nor when the conformance is consumed cross module.
     private func isWitnessOfPublicProtocolRequirement(_ decl: Declaration) -> Bool {
         decl.related.contains { ref in
-            guard ref.declarationKind.isProtocolMemberKind || ref.declarationKind == .associatedtype,
+            guard ref.declarationKind.isProtocolMemberKind,
                   let protocolDecl = graph.declaration(withUsr: ref.usr)?.parent
             else { return false }
 
