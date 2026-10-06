@@ -63,14 +63,18 @@ sampled rows no longer reported, and one finding entered the sample. The `likely
 | Unbuilt target (`languages`) | 3 | 3 |
 | Other | 2 | 0 |
 
-Against the single-configuration scan at the same commit (2,762 findings) the Debug build adds 55 findings, removes 249 and changes the confidence or line of
-33. Of the 249 removed, 236 were `likely` (the launch-path chain, which the Debug configuration compiles) and 13 were
-`certain`: 9 unused-import rows (seven in `WMFDataMocks`, `AppDelegate.swift` and `SceneDelegate.swift`) and 4 declarations
-(`schema`, `didDumpInventory`, `wmf_setAppResignActiveDate(_:)` and `_syncIfNotSyncing()`) that the Debug scan no longer
-reports. Of the 55 added, 31 are `WMFDataMocks` declarations that only the WMFData and WMFComponents packages' test targets
-use, which the scanned scheme does not build, so they are TP under the judgment below; 10 are in the widget extension,
-which only the Debug configuration builds; and the other 14 are mostly code of the `#else` of `#if TEST` such as
-`logStartingSnapshot()` and the `animated` parameter of `showNearby(animated:)`.
+Against the single-configuration scan at the same commit (2,762 findings, rows compared by path, line, column, kind,
+name and ids) the Debug build removes 252 rows and adds 57, which gives the 2,567 findings (2,762 - 252 + 57), and
+30 rows go from `likely` to `certain`. Of the 252 removed, 236 were `likely` (the launch-path chain, which the Debug
+configuration compiles) and 16 were `certain`: 9 unused-import rows (seven in `WMFDataMocks`, `AppDelegate.swift` and
+`SceneDelegate.swift`), 4 declarations (`schema`, `didDumpInventory`, `wmf_setAppResignActiveDate(_:)` and
+`_syncIfNotSyncing()`) and two `WMFArticleTabsDataControlling` rows that the Debug scan no longer reports, and the
+two `_Previews` structs of `PictureOfTheDayWidget.swift` and `SearchWidget.swift`, which only moved a line (so they
+also count among the added). Of the 57 added, 31 are `WMFDataMocks` declarations that only the WMFData and
+WMFComponents packages' test targets use, which the scanned scheme does not build, so they are TP under the judgment
+below; 12 are in the widget extension, which only the Debug configuration builds (two of them the moved `_Previews`
+structs); and the other 14 are mostly code of the `#else` of `#if TEST` such as `logStartingSnapshot()` and the
+`animated` parameter of `showNearby(animated:)`.
 
 All seven sampled rows that are no longer reported are marked retired: the four named in the second measurement
 (`presentVariantAlert(for:remainingCodes:completion:)`, `setupWMFDataCoreDataStore()`,
