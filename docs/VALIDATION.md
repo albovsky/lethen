@@ -56,13 +56,13 @@ CI scan gates pass `--disable-update-check`, so this never affected scan validat
 ## Precision corpus
 
 `corpus/projects.json` pins open-source projects that every analysis change re-scans:
-`corpus/scan.sh <name>` scans one at its pinned commit and canonicalizes the findings,
+`corpus/scan.sh <name>` scans one at its pinned commit and canonicalizes the findings (a project entry may set `"setup"`, an argv array run inside the checkout after the pinned commit is checked out and before the scan, such as `["scripts/setup_bundle_id", "ci"]` for Wikipedia iOS; a failing setup fails the run),
 `corpus/diff.sh <name>` compares them with the committed expectation in `corpus/expected/`, and
 `corpus/accept.sh <name>` records a new expectation once the diff has been adjudicated. Each expected row is `[path, line, column, kind, name, hints, ids, confidence]`; the scorecard reports precision over the sampled `certain` rows beside the all-rows figure, and `corpus/diff.sh` compares an older expectation without the confidence field. A project
 that fails to clone, build, or scan, or that yields no findings, fails the run. The expectations
 were generated on 2026-09-26 with Apple Swift 6.4 (swiftlang-6.4.0.34.1) on macOS 27 from Lethen
 at `bc8c5b5`, both scanned with `--retain-public`: Alamofire at `bda9ed5` has 124 findings and
-swift-nio at `feaf4ac` has 434. A second scan of each produced an identical result. Wikipedia iOS at `599e4a6` was added on 2026-09-27 from Lethen `08a45bc`, scanned as an app (`--project Wikipedia.xcodeproj --schemes Wikipedia` for the generic iOS Simulator destination): 3,189 findings in about 3.5 minutes, identical on a second scan. Its build runs `swiftlint --fix` when SwiftLint is installed, which rewrites 14 source files after they are indexed, so `corpus/scan.sh` force-checks out the pinned commit before every scan. The adjudicated sample and the precision scorecard are in [validation/precision-corpus.md](validation/precision-corpus.md).
+swift-nio at `feaf4ac` has 434. A second scan of each produced an identical result. Wikipedia iOS at `599e4a6` was added on 2026-09-27 from Lethen `08a45bc`, scanned as an app (`--project Wikipedia.xcodeproj --schemes Wikipedia` for the generic iOS Simulator destination): 3,189 findings in about 3.5 minutes, identical on a second scan. Its build runs `swiftlint --fix` when SwiftLint is installed, which rewrites 14 source files after they are indexed, so `corpus/scan.sh` force-checks out the pinned commit before every scan. IceCubesApp at `9efcb16`, a pure-Swift SwiftUI app (`--project IceCubesApp.xcodeproj --schemes IceCubesApp`), was added on 2026-10-06: 571 findings, a clean scan in about 108 s. The adjudicated sample and the precision scorecard are in [validation/precision-corpus.md](validation/precision-corpus.md).
 
 For an analysis change, per project:
 

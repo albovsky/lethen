@@ -31,5 +31,25 @@
       "-destination",
       "generic/platform=iOS Simulator"
     ]
+  },
+  {
+    "name": "IceCubesApp",
+    "url": "https://github.com/Dimillian/IceCubesApp.git",
+    "commit": "9efcb16e720f337a401cf61c8e300dd043368282",
+    "kind": "xcode",
+    "setup": [
+      "cp",
+      "IceCubesApp.xcconfig.template",
+      "IceCubesApp.xcconfig"
+    ],
+    "arguments": [
+      "--project",
+      "IceCubesApp.xcodeproj",
+      "--schemes",
+      "IceCubesApp",
+      "--",
+      "-destination",
+      "generic/platform=iOS Simulator"
+    ]
   }
 ]
