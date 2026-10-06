@@ -2823,6 +2823,44 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialTopLevel() throws {
+        let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
+
+        try analyze(retainPublic: true, additionalFilesToIndex: [main]) {
+            assertReferenced(.struct("FixtureStruct319Top")) {
+                self.assertAssignOnlyProperty(.varInstance("topLevelEncoded"))
+                self.assertConfidence(.varInstance("topLevelEncoded"), .likely)
+            }
+        }
+
+        // Without the top-level file nothing encodes the existential.
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct319Top")) {
+                self.assertConfidence(.varInstance("topLevelEncoded"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialWrapperParameter() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct320Wrapped")) {
+                self.assertAssignOnlyProperty(.varInstance("wrappedValue"))
+                self.assertConfidence(.varInstance("wrappedValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialWrapperOtherParameter() throws {
+        try analyze(retainPublic: true) {
+            // Control: the unresolved value is passed for a parameter that is not `Encodable`, so no encoder
+            // receives an opaque value.
+            assertReferenced(.struct("FixtureStruct321Skipped")) {
+                self.assertAssignOnlyProperty(.varInstance("skippedValue"))
+                self.assertConfidence(.varInstance("skippedValue"), .certain)
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeExistentialWithoutEncodeSite() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct317Mute")) {
