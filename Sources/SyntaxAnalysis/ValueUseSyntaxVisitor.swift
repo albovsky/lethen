@@ -120,7 +120,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         resolvesMetatypes = false
         if let type = Self.contextualType(of: node) {
             recordSpecializations(in: type)
-            resultTypes[callee, default: []].formUnion(tokens(in: type))
+            // The arguments of a specialization are recorded apart: whether they are decoded depends on how the
+            // specialized type stores them.
+            resultTypes[callee, default: []].formUnion(tokens(in: type).subtracting(specializationArgumentLocations))
         }
         return .visitChildren
     }

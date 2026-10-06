@@ -37,6 +37,24 @@ struct FixtureStruct315NestedDecoded: Decodable {
     let nestedDecoded: Int
 }
 
+// Control: the inferred result is a generic wrapper that never stores its parameter, so the argument is not decoded.
+struct FixtureStruct315PhantomHidden: Decodable {
+    let phantomNotDecoded: Int
+}
+
+struct FixturePhantom315<T>: Decodable {
+    let marker: Int
+}
+
+// The wrapper stores its parameter, so the argument is decoded with it.
+struct FixtureStruct315WrappedShown: Decodable {
+    let wrappedDecoded: Int
+}
+
+struct FixtureWrapper315<T: Decodable>: Decodable {
+    let value: T
+}
+
 // Control: no call binds it to a decoding generic function; its property is used normally.
 struct FixtureStruct315Used: Decodable {
     let usedNormally: Int
@@ -54,6 +72,10 @@ public class FixtureClass315Retainer {
         let other: FixtureStruct315OtherParameter = try pair(Int.self, path: "other")
         _ = other
         _ = try nestedOwner(true)
+        let phantom: FixturePhantom315<FixtureStruct315PhantomHidden> = try load(path: "phantom")
+        _ = phantom
+        let wrapper: FixtureWrapper315<FixtureStruct315WrappedShown> = try load(path: "wrapper")
+        _ = wrapper
         let used = FixtureStruct315Used(usedNormally: 1)
         print(used.usedNormally)
     }
