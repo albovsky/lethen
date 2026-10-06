@@ -14,21 +14,17 @@ final class AppIntentsRetainer: SourceGraphMutator {
     /// For AppIntents (10 characters), this becomes "s:10AppIntents".
     private static let appIntentsModuleUsrPrefix = "s:10AppIntents"
 
-    /// Static requirements of App Intents protocols that the framework reads at runtime, by protocol.
+    /// Static requirements of App Intents protocols that the framework reads at runtime, by protocol family.
     ///
     /// A conforming witness such as `static let description = IntentDescription(...)` can differ in
     /// type from the protocol requirement (`IntentDescription?`), in which case the index records no
     /// override relation and the member would otherwise be reported as unused. Only a name declared
     /// by a protocol the type conforms to is retained; other static members, including a name that
     /// only a different App Intents protocol declares, are analysed normally.
-    private static let staticRequirementNamesByProtocol: [String: Set<String>] = [
-        "AppEntity": ["typeDisplayRepresentation", "defaultQuery"],
-        "AppEnum": ["typeDisplayRepresentation", "caseDisplayRepresentations"],
-        "AppValue": ["typeDisplayRepresentation"],
-        "AppShortcutsProvider": ["appShortcuts", "shortcutTileColor"],
-    ]
-
-    /// `AppIntent` and the protocols refining it (`WidgetConfigurationIntent`, `SnapshotIntent`, ...).
+    ///
+    /// Refinements are matched by name suffix because the index records only the directly conformed
+    /// protocol: `AppIntent` and its refinements (`WidgetConfigurationIntent`, `SnapshotIntent`, ...)
+    /// end in `Intent`, `AppEntity` and its refinements (`TransientAppEntity`, ...) end in `Entity`.
     private static let intentStaticRequirementNames: Set<String> = [
         "title",
         "description",
@@ -36,14 +32,32 @@ final class AppIntentsRetainer: SourceGraphMutator {
         "isDiscoverable",
         "parameterSummary",
         "authenticationPolicy",
+        "supportedModes",
+        "allowedExecutionTargets",
     ]
 
+    private static let entityStaticRequirementNames: Set<String> = ["typeDisplayRepresentation", "defaultQuery"]
+    private static let enumStaticRequirementNames: Set<String> = ["typeDisplayRepresentation", "caseDisplayRepresentations"]
+    private static let shortcutsProviderStaticRequirementNames: Set<String> = ["appShortcuts", "shortcutTileColor"]
+
     private static func staticRequirementNames(forProtocol name: String) -> Set<String> {
-        if name == "AppIntent" || name.hasSuffix("Intent") {
+        if name.hasSuffix("Intent") {
             return intentStaticRequirementNames
         }
 
-        return staticRequirementNamesByProtocol[name] ?? []
+        if name.hasSuffix("Entity") {
+            return entityStaticRequirementNames
+        }
+
+        if name.hasSuffix("Enum") {
+            return enumStaticRequirementNames
+        }
+
+        switch name {
+        case "AppValue": return ["typeDisplayRepresentation"]
+        case "AppShortcutsProvider": return shortcutsProviderStaticRequirementNames
+        default: return []
+        }
     }
 
     private static let staticMemberKinds: Set<Declaration.Kind> = [
