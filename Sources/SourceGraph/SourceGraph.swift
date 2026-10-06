@@ -21,6 +21,9 @@ public final class SourceGraph {
     public private(set) var unusedModuleImports: Set<Declaration> = []
     public private(set) var assignOnlyProperties: Set<Declaration> = []
     public private(set) var suppressedAssignOnlyProperties: Set<Declaration> = []
+    /// Properties something may read through a path Lethen cannot follow, each with why it is only likely that they
+    /// are read. A property here that is reported is not `certain`.
+    public private(set) var likelyReads: [Declaration: String] = [:]
     public private(set) var extensions: [Declaration: Set<Declaration>] = [:]
     public private(set) var commandIgnoredDeclarations: [Declaration: CommandIgnoreKind] = [:]
     public private(set) var functionsWithIgnoredParameters: Set<Declaration> = []
@@ -124,6 +127,9 @@ public final class SourceGraph {
                 reference.parent = parent
                 add(reference, from: parent)
             }
+        } else if let kept = self.declaration(withUsr: declaration.usrs.sorted()[0]), kept !== declaration {
+            // A copy the graph did not keep (same USR in another configuration) must not become a root.
+            markRetained(kept)
         } else {
             _ = retainedDeclarations.insert(declaration)
         }
@@ -153,6 +159,12 @@ public final class SourceGraph {
 
     func markAssignOnlyProperty(_ declaration: Declaration) {
         _ = assignOnlyProperties.insert(declaration)
+    }
+
+    func markLikelyRead(_ declaration: Declaration, reason: String) {
+        if likelyReads[declaration] == nil {
+            likelyReads[declaration] = reason
+        }
     }
 
     func markSuppressedAssignOnlyProperty(_ declaration: Declaration) {
@@ -219,6 +231,7 @@ public final class SourceGraph {
         usedDeclarations.remove(declaration)
         assignOnlyProperties.remove(declaration)
         suppressedAssignOnlyProperties.remove(declaration)
+        likelyReads.removeValue(forKey: declaration)
         // A conflicting declaration can own the USR; removing this one must not unmap it.
         for usr in declaration.usrs where allDeclarationsByUsr[usr] === declaration {
             allDeclarationsByUsr.removeValue(forKey: usr)

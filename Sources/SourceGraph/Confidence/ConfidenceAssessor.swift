@@ -293,6 +293,10 @@ public final class ConfidenceAssessor {
             }
         }
 
+        if let reason = graph.likelyReads[declaration] {
+            return .init(confidence: .likely, reason: reason)
+        }
+
         if Self.dynamicallyNamedKinds.contains(declaration.kind), let reason = stringLiteralReason(for: declaration) {
             return .init(confidence: .likely, reason: reason)
         }

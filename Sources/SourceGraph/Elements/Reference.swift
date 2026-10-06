@@ -45,6 +45,10 @@ public final class Reference {
     public var valueArgumentReferences: Set<Reference> = []
     /// The explicit arguments of the call in source order, each with its label and the references that supplied its value.
     public var valueArguments: [ValueArgument] = []
+    /// The references that name the type a call's result is given where the context fixes it: the annotation of the
+    /// binding it initializes, the type of `as`, or the return type of the function or getter that returns it.
+    /// Calls whose result type is only inferred some other way, such as assignment to an existing property, have none.
+    public var resultTypeReferences: Set<Reference> = []
     /// For a type named in a specialized metatype such as `Page<Model>.self`, the references each generic argument names.
     public var genericArguments: [Set<Reference>] = []
     /// True for a type named as a generic argument of a stored property's declared type, such as `Model` in
@@ -113,9 +117,13 @@ extension Reference: Comparable {
 public struct ValueArgument {
     public let label: String?
     public let references: Set<Reference>
+    /// True when the argument names a value, such as a local bound by `if let`, that the index has no declaration for,
+    /// so nothing is known about its type. A literal or an argument that resolves to declarations is not unresolved.
+    public let isUnresolved: Bool
 
-    public init(label: String?, references: Set<Reference>) {
+    public init(label: String?, references: Set<Reference>, isUnresolved: Bool = false) {
         self.label = label
         self.references = references
+        self.isUnresolved = isUnresolved
     }
 }

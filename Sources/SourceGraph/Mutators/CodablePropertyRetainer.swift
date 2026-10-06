@@ -67,18 +67,112 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             synthesizedTypes.insert(type)
         }
 
-        for use in graph.allReferences where use.kind == .normal && !use.valueArgumentReferences.isEmpty {
-            guard let caller = use.parent, !caller.isImplicit else { continue }
+        var hasOpaqueEncodeSite = false
+        let encodableNames = encodableProtocolNames
+        for use in graph.allReferences where use.kind == .normal && (!use.valueArgumentReferences.isEmpty || !use.valueArguments.isEmpty) {
+            // A use with no parent is top-level code, which holds its reads as root references.
+            let caller = use.parent
+            guard caller?.isImplicit != true else { continue }
 
-            let mayEncode = if let callee = graph.declaration(withUsr: use.usr) {
+            let callee = graph.declaration(withUsr: use.usr)
+            let mayEncode = if let callee {
                 mayEncode(indexed: callee)
             } else {
                 Self.mayEncode(unindexedUsr: use.usr)
             }
             guard mayEncode else { continue }
 
+            hasOpaqueEncodeSite = hasOpaqueEncodeSite || isOpaqueEncodeSite(use, callee: callee, encodableNames: encodableNames)
             markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
         }
+
+        if hasOpaqueEncodeSite {
+            markReadsThroughEncodableExistentials(synthesizedTypes: synthesizedTypes)
+        }
+    }
+
+    private static let existentialEncodeReason = "a value of its type is returned as `any Encodable`, and an encoder receives a value whose type Lethen cannot resolve"
+
+    /// A call that may encode, whose value the index cannot type: a local bound by `if let`, or a value declared as
+    /// an `Encodable` existential. For an indexed callee the encoded values are the arguments for its `Encodable`
+    /// parameters; an unindexed encoder, such as `JSONEncoder.encode(_:)`, encodes its first argument. A literal is
+    /// not opaque.
+    private func isOpaqueEncodeSite(_ use: Reference, callee: Declaration?, encodableNames: Set<String>) -> Bool {
+        let encoded: [ValueArgument] = if let callee {
+            // A callee constrained through a generic parameter has its parameters typed by that parameter's name,
+            // so when nothing matches by name the call is judged by its first argument.
+            if let matched = matchedArguments(of: use, callee: callee, names: encodableNames, matchingTypeNames: true), !matched.isEmpty {
+                matched
+            } else {
+                Array(use.valueArguments.prefix(1))
+            }
+        } else {
+            Array(use.valueArguments.prefix(1))
+        }
+
+        return encoded.contains { argument in
+            argument.isUnresolved || argument.references.contains { reference in
+                isEncodableExistential(reference) || graph.declaration(withUsr: reference.usr).map(producesEncodableExistential) == true
+            }
+        }
+    }
+
+    private func isEncodableExistential(_ reference: Reference) -> Bool {
+        Self.encodableUsrs.contains(reference.usr)
+            || graph.declaration(withUsr: reference.usr).map { $0.kind == .protocol && graph.isEncodable($0) } == true
+    }
+
+    /// A declaration whose declared type is an `Encodable` existential, `Encodable?` and `any Encodable` included.
+    private func producesEncodableExistential(_ declaration: Declaration) -> Bool {
+        declaration.references.contains { [.varType, .returnType].contains($0.role) && isEncodableExistential($0) }
+    }
+
+    /// Where an `Encodable` existential reaches an encoder, the type of the value is erased, and the local that holds
+    /// it is not in the index, so which type is encoded cannot be known. When some encoder receives such a value, the
+    /// synthesized encoder may read the properties of a type whose value is produced inside a declaration of an
+    /// `Encodable` existential type, following constructions, accessors and enum payloads, and of the types it stores.
+    /// That is only likely, so those properties keep their reports but with `likely` confidence.
+    private func markReadsThroughEncodableExistentials(synthesizedTypes: Set<Declaration>) {
+        var visited: Set<Declaration> = []
+        var pending: Set<Declaration> = []
+        for declaration in graph.allDeclarations where producesEncodableExistential(declaration) {
+            pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: producedReferences(in: declaration), in: graph, visited: &visited))
+        }
+
+        var seen: Set<Declaration> = []
+        while let type = pending.popFirst() {
+            guard synthesizedTypes.contains(type), seen.insert(type).inserted else { continue }
+
+            for property in type.declarations where property.kind == .varInstance && isEncoded(property, in: type) {
+                // As in `markReads`: a generic argument is encoded only when its generic type stores it.
+                let stored = property.references.filter {
+                    !$0.isGenericSpecializationArgument && ![.functionAccessorGetter, .functionAccessorSetter].contains($0.declarationKind)
+                }
+                pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: withGenericArguments(stored, classify: classifyEncode), in: graph, visited: &visited))
+                graph.markLikelyRead(property, reason: Self.existentialEncodeReason)
+            }
+        }
+    }
+
+    /// What a declaration's body names, including its accessors and nested declarations, with the payload types of the
+    /// enum cases it names.
+    private func producedReferences(in declaration: Declaration) -> Set<Reference> {
+        var references = declaration.references.filter { ![.varType, .returnType].contains($0.role) }
+        for member in declaration.declarations {
+            references.formUnion(producedReferences(in: member))
+        }
+        for reference in references where reference.declarationKind == .enumelement {
+            if let element = graph.declaration(withUsr: reference.usr) {
+                references.formUnion(element.references.filter { $0.kind == .normal })
+            }
+        }
+        return references
+    }
+
+    /// Synthesized encoding writes every stored property, including a constant with an initial value.
+    /// An explicit CodingKeys enum limits the encoded properties, as it does the decoded ones.
+    private func isEncoded(_ property: Declaration, in type: Declaration) -> Bool {
+        !property.isImplicit && !property.hasAccessorBody && !isOmittedByCodingKeys(property, in: type)
     }
 
     /// A class that declares `Encodable` but inherits `encode(to:)` from a superclass that does not conform
@@ -173,15 +267,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         usr.range(of: "SE(R[zd]|_)", options: .regularExpression) != nil
     }
 
-    private func markEncodedReads(from use: Reference, caller: Declaration, synthesizedTypes: Set<Declaration>) {
-        // Synthesized encoding writes every stored property, including a constant with an initial value.
-        // An explicit CodingKeys enum limits the encoded properties, as it does the decoded ones.
-        let classify: (Declaration, Declaration) -> PropertyUse = { [self] type, property in
-            guard !property.isImplicit, !property.hasAccessorBody, !isOmittedByCodingKeys(property, in: type) else { return .skip }
+    private var classifyEncode: (Declaration, Declaration) -> PropertyUse {
+        { [self] type, property in isEncoded(property, in: type) ? .read : .skip }
+    }
 
-            return .read
-        }
-        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classify)
+    private func markEncodedReads(from use: Reference, caller: Declaration?, synthesizedTypes: Set<Declaration>) {
+        markReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes, referencedBy: use.valueArgumentReferences, classify: classifyEncode)
     }
 
     /// Synthesized `init(from:)` requires every non-optional stored property to be present in the
@@ -207,7 +298,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         let decodableNames = decodableProtocolNames
         let classifyDecode: (Declaration, Declaration) -> PropertyUse = { [self] type, property in decodeUse(of: property, in: type) }
 
-        for use in graph.allReferences where use.kind == .normal && !use.valueArguments.isEmpty {
+        for use in graph.allReferences where use.kind == .normal && (!use.valueArguments.isEmpty || !use.resultTypeReferences.isEmpty) {
             // A use with no parent is top-level code, which holds its reads as root references.
             let caller = use.parent
             guard caller?.isImplicit != true else { continue }
@@ -216,7 +307,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             if let callee = graph.declaration(withUsr: use.usr) {
                 guard mayDecode(indexed: callee) else { continue }
 
-                decoded = decodedArguments(of: use, callee: callee, decodableNames: decodableNames)
+                var arguments = decodedArguments(of: use, callee: callee, decodableNames: decodableNames)
+                // A function that returns its own `Decodable` generic parameter decodes the type its call site infers.
+                if !callee.returnTypeNames.isDisjoint(with: decodableNames) {
+                    arguments.formUnion(use.resultTypeReferences)
+                }
+                decoded = arguments
             } else {
                 guard Self.mayDecode(unindexedUsr: use.usr) else { continue }
 
@@ -248,15 +344,25 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// same call, is not evidence. The call's labels are matched to the callee's parameters in order, skipping
     /// parameters left to their defaults; a call that cannot be matched yields nothing.
     private func decodedArguments(of use: Reference, callee: Declaration, decodableNames: Set<String>) -> Set<Reference> {
+        matchedArguments(of: use, callee: callee, names: decodableNames)?
+            .reduce(into: Set<Reference>()) { $0.formUnion($1.references) } ?? []
+    }
+
+    /// The arguments passed for a parameter whose declared type names intersect `names`, or nil when the call's labels
+    /// cannot be matched to the callee's parameters.
+    private func matchedArguments(of use: Reference, callee: Declaration, names: Set<String>, matchingTypeNames: Bool = false) -> [ValueArgument]? {
         let parameters = callee.parameterTypeNames
-        var decoded: Set<Reference> = []
+        let accepts: (ParameterTypeNames) -> Bool = { [self] parameter in
+            !parameter.names.isDisjoint(with: names) || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName)))
+        }
+        var matched: [ValueArgument] = []
         var index = 0
         var variadic: Int?
         for argument in use.valueArguments {
             // Only the first argument of a variadic parameter carries its label; the rest follow unlabeled.
             if let current = variadic, argument.label == nil {
-                if !parameters[current].names.isDisjoint(with: decodableNames) {
-                    decoded.formUnion(argument.references)
+                if accepts(parameters[current]) {
+                    matched.append(argument)
                 }
                 continue
             }
@@ -265,17 +371,41 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             while index < parameters.count, parameters[index].label != argument.label {
                 index += 1
             }
-            guard index < parameters.count else { return [] }
+            guard index < parameters.count else { return nil }
 
-            if !parameters[index].names.isDisjoint(with: decodableNames) {
-                decoded.formUnion(argument.references)
+            if accepts(parameters[index]) {
+                matched.append(argument)
             }
             if parameters[index].isVariadic {
                 variadic = index
             }
             index += 1
         }
-        return decoded
+        return matched
+    }
+
+    /// The protocol names of a declared parameter type, without `any`, `Swift.`, optionality or whitespace:
+    /// `(any Encodable)?` is `Encodable`, and `any Encodable & Sendable` is `Encodable` and `Sendable`.
+    private static func bareTypeNames(_ typeName: String?) -> Set<String> {
+        let spelling = (typeName ?? "").filter { !$0.isWhitespace && $0 != "(" && $0 != ")" && $0 != "?" && $0 != "!" }
+        return Set(spelling.split(separator: "&").map { component in
+            var name = String(component)
+            for prefix in ["any", "Swift."] where name.hasPrefix(prefix) && name.dropFirst(prefix.count).first?.isUppercase == true {
+                name.removeFirst(prefix.count)
+            }
+            return name
+        })
+    }
+
+    /// The names that make a parameter encode its argument: `Encodable`, the protocols that inherit it, and the
+    /// configured external ones.
+    private var encodableProtocolNames: Set<String> {
+        var names: Set<String> = ["Encodable", "Codable"]
+        names.formUnion(configuration.externalCodableProtocols)
+        for decl in graph.declarations(ofKind: .protocol) where graph.isEncodable(decl) {
+            names.insert(decl.name)
+        }
+        return names
     }
 
     /// An explicit `encode(to:)` or `init(from:)` replaces the synthesized one only when its parameter is the

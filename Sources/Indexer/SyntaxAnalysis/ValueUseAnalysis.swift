@@ -22,10 +22,17 @@ struct ValueUseAnalysis: SyntaxAnalysis {
         }
         for (call, list) in valueUses.argumentLists {
             let arguments = list.map { argument in
-                ValueArgument(label: argument.label, references: file.references(at: argument.origins))
+                let references = file.references(at: argument.origins)
+                return ValueArgument(label: argument.label, references: references, isUnresolved: references.isEmpty && !argument.origins.isEmpty)
             }
             for reference in file.references(at: call) {
                 reference.valueArguments = arguments
+            }
+        }
+        for (call, types) in valueUses.resultTypes {
+            let resolved = file.references(at: types)
+            for reference in file.references(at: call) {
+                reference.resultTypeReferences = resolved
             }
         }
         for location in valueUses.specializationArgumentLocations {
@@ -43,6 +50,9 @@ struct ValueUseAnalysis: SyntaxAnalysis {
             for declaration in file.declarations {
                 if let names = valueUses.parameterTypeNames[declaration.location] {
                     declaration.parameterTypeNames = names
+                }
+                if let names = valueUses.returnTypeNames[declaration.location] {
+                    declaration.returnTypeNames = names
                 }
                 if valueUses.accessorBodyLocations.contains(declaration.location) {
                     declaration.hasAccessorBody = true

@@ -57,6 +57,8 @@ _ = PublicClassInheritingPublicClassWithGenericParameter()
 _ = PublicClassAdoptingPublicProtocol()
 _ = PublicClassAdoptingInternalProtocol()
 _ = InternalClassAdoptingPublicProtocolRetainer()
+let _: (any RedundantPublicTypeAdoptingPublicProtocol_Protocol)? = nil
+_ = InternalTypeAdoptingPublicProtocolRetainer()
 
 // Refining
 let _: PublicProtocolRefiningPublicProtocol? = nil
