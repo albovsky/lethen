@@ -156,8 +156,12 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let item = parent.as(CodeBlockItemSyntax.self), let list = item.parent?.as(CodeBlockItemListSyntax.self), list.count == 1,
            let body = list.parent
         {
-            // A single expression is the implicit return of a function, accessor or closure body.
-            return body.is(ClosureExprSyntax.self) ? nil : returnType(enclosing: body)
+            // A single expression is the implicit return only of a function body, an accessor body, or the getter of a
+            // computed property. A nested block (`if`, `do`, a loop, a switch case) or a closure is not.
+            let isDeclarationBody = body.is(AccessorBlockSyntax.self)
+                || (body.is(CodeBlockSyntax.self)
+                    && body.parent.map { $0.is(FunctionDeclSyntax.self) || $0.is(AccessorDeclSyntax.self) } == true)
+            return isDeclarationBody ? returnType(enclosing: body) : nil
         }
         return nil
     }

@@ -27,6 +27,16 @@ struct FixtureStruct315OtherParameter: Decodable {
     let otherNotDecoded: Int
 }
 
+// Control: the function returning it only contains a single-statement `if` whose call is not its return value,
+// so the function's return type must not be treated as decoded.
+struct FixtureStruct315NestedOwner: Decodable {
+    let nestedNotDecoded: Int
+}
+
+struct FixtureStruct315NestedDecoded: Decodable {
+    let nestedDecoded: Int
+}
+
 // Control: no call binds it to a decoding generic function; its property is used normally.
 struct FixtureStruct315Used: Decodable {
     let usedNormally: Int
@@ -43,6 +53,7 @@ public class FixtureClass315Retainer {
         _ = unconstrained
         let other: FixtureStruct315OtherParameter = try pair(Int.self, path: "other")
         _ = other
+        _ = try nestedOwner(true)
         let used = FixtureStruct315Used(usedNormally: 1)
         print(used.usedNormally)
     }
@@ -57,6 +68,18 @@ public class FixtureClass315Retainer {
 
     func returnedExplicit() throws -> FixtureStruct315ReturnedExplicit {
         return try load(path: "explicit")
+    }
+
+    @discardableResult
+    func loadType<T: Decodable>(_ type: T.Type) throws -> T {
+        try JSONDecoder().decode(type, from: Data())
+    }
+
+    func nestedOwner(_ flag: Bool) throws -> FixtureStruct315NestedOwner {
+        if flag {
+            try loadType(FixtureStruct315NestedDecoded.self)
+        }
+        fatalError()
     }
 
     func make<T>() -> T {

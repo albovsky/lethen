@@ -2778,6 +2778,12 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureStruct315OtherParameter")) {
                 self.assertAssignOnlyProperty(.varInstance("otherNotDecoded"))
             }
+            assertReferenced(.struct("FixtureStruct315NestedOwner")) {
+                self.assertAssignOnlyProperty(.varInstance("nestedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315NestedDecoded")) {
+                self.assertNotAssignOnlyProperty(.varInstance("nestedDecoded"))
+            }
             assertReferenced(.struct("FixtureStruct315Used")) {
                 self.assertNotAssignOnlyProperty(.varInstance("usedNormally"))
             }
