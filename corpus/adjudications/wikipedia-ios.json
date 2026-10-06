@@ -187,7 +187,7 @@
       "kind": "var.instance",
       "name": "imageURL",
       "verdict": "TP",
-      "note": "All `WMFArticlePreviewViewModel` construction and reads are inside the WMFComponents package (WMFArticlePreviewView.swift:6, WMFHistoryView.swift:166, WMFSearchResultsViewModel.swift:262, WMFAsyncPageRowSaved.swift:326). No other target or package refers to the type or `.imageURL`, so `public` can be dropped.",
+      "note": "All `WMFArticlePreviewViewModel` construction and reads are inside the WMFComponents package (WMFArticlePreviewView.swift:6, WMFHistoryView.swift:166, WMFSearchResultsViewModel.swift:262, WMFAsyncPageRowSaved.swift:326). No other target or package refers to the type or `.imageURL`, so `public` can be dropped. Confidence went from `likely` to `certain` at master 0b95cfb, before slice 2: a single-configuration scan at that commit already reports it `certain`.",
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-1"
@@ -235,7 +235,7 @@
       "kind": "enumelement",
       "name": "image(_:)",
       "verdict": "TP",
-      "note": "`Slide.Illustration.image(_:)`: Only matched at WMFSlideView.swift:60; every `illustration:` argument is `.gif`/`.asset` (EvergreenAccountCreationCoordinator.swift:270-303, WMFSlideshowView.swift:227-248).",
+      "note": "`Slide.Illustration.image(_:)`: Only matched at WMFSlideView.swift:60; every `illustration:` argument is `.gif`/`.asset` (EvergreenAccountCreationCoordinator.swift:270-303, WMFSlideshowView.swift:227-248). Confidence went from `likely` to `certain` at master 0b95cfb, before slice 2: a single-configuration scan at that commit already reports it `certain`.",
       "adjudicated_on": "2026-09-28",
       "lethen_commit": "1fec976",
       "reference": "enum-case-16"
@@ -585,7 +585,8 @@
       "note": "Called at WMFAppViewController+Extensions.swift:744. The chain is `migrateAutoSignTalkPageDiscussions` ← `setupWMFDataCoreDataStore` (line 697) ← `migrateIfNecessary` (WMFAppViewController.swift:915) ← `launchApp(in:waitToResumeApp:)` ← SceneDelegate.swift:64. SceneDelegate.swift:64 is in the `#else` branch of `#if TEST` (lines 8-21), which is inactive in the Test configuration the scan built.",
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
-      "reference": "wikipedia-ios-7"
+      "reference": "wikipedia-ios-7",
+      "retired": "compiled in the Debug configuration (slice 2)"
     },
     {
       "path": "WMFData/Sources/WMFData/Data Controllers/Shared/WMFRandomDataController.swift",
@@ -594,7 +595,7 @@
       "kind": "var.instance",
       "name": "pageid",
       "verdict": "TP",
-      "note": "`WMFRandomArticle.pageid` is set only by decoding and the init (:119), and no app, WMFData or WMFComponents source reads it. Caveat: WMFDataTests asserts it (WMFRandomDataControllerTests.swift:51), and WMFDataTests and WMFComponentsTests pass `pageid:` to the init, but those test plans are not built by the scheme. Removing the non-optional property also stops decoding from requiring the `pageid` key.",
+      "note": "`WMFRandomArticle.pageid` is set only by decoding and the init (:119), and no app, WMFData or WMFComponents source reads it. Caveat: WMFDataTests asserts it (WMFRandomDataControllerTests.swift:51), and WMFDataTests and WMFComponentsTests pass `pageid:` to the init, but those test plans are not built by the scheme. Removing the non-optional property also stops decoding from requiring the `pageid` key. Confidence went from `likely` to `certain` at master 0b95cfb, before slice 2: a single-configuration scan at that commit already reports it `certain`.",
       "adjudicated_on": "2026-09-29",
       "lethen_commit": "4621c91"
     },
@@ -617,7 +618,7 @@
       "kind": "var.instance",
       "name": "id",
       "verdict": "TP",
-      "note": "The property is read only in this class's `makeCDSlide` (:40). Like the other slide controllers, that runs only from `populateYearInReviewReportData` (WMFYearInReviewDataController.swift:477, :543), which no app code calls, and the `YearInReviewSlideDataControllerProtocol.id` requirement is never read through the protocol. Caveat: this is transitive dead code, the requirement (WMFYearInReviewSlideDataControllerProtocol.swift:11) has to go too, and WMFDataTests reads it (YearInReviewSlideDataControllersTests.swift:58) but is not in the scheme's test plan.",
+      "note": "The property is read only in this class's `makeCDSlide` (:40). Like the other slide controllers, that runs only from `populateYearInReviewReportData` (WMFYearInReviewDataController.swift:477, :543), which no app code calls, and the `YearInReviewSlideDataControllerProtocol.id` requirement is never read through the protocol. Caveat: this is transitive dead code, the requirement (WMFYearInReviewSlideDataControllerProtocol.swift:11) has to go too, and WMFDataTests reads it (YearInReviewSlideDataControllersTests.swift:58) but is not in the scheme's test plan. Confidence went from `likely` to `certain` at master 0b95cfb, before slice 2: a single-configuration scan at that commit already reports it `certain`.",
       "adjudicated_on": "2026-09-29",
       "lethen_commit": "4621c91"
     },
@@ -654,7 +655,8 @@
       "note": "The whole file body is inside `#if DEBUG` (lines 4-135) and uses `WMFData.WMFServiceRequest` (line 6) and `WMFService` (line 49). The scan built the scheme's Test action configuration (\"Test\": `-DNDEBUG -DTEST`, project.pbxproj:12186), where DEBUG is off and the block is empty. Removing the import breaks the Debug build.",
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
-      "reference": "wikipedia-ios-2"
+      "reference": "wikipedia-ios-2",
+      "retired": "compiled in the Debug configuration (slice 2)"
     },
     {
       "path": "WMFTestKitchen/Sources/WMFTestKitchen/Config/StreamConfig.swift",
@@ -674,7 +676,7 @@
       "kind": "var.instance",
       "name": "title",
       "verdict": "TP",
-      "note": "The requirement of the fileprivate `ViewModel` protocol is never read through the protocol. `cellForRowAt` downcasts each element and reads `title` on the concrete `ImageSizeViewModel`/`MeasureViewModel` (:138, :147). Dropping the requirement leaves both stored properties and the reads intact.",
+      "note": "The requirement of the fileprivate `ViewModel` protocol is never read through the protocol. `cellForRowAt` downcasts each element and reads `title` on the concrete `ImageSizeViewModel`/`MeasureViewModel` (:138, :147). Dropping the requirement leaves both stored properties and the reads intact. Confidence went from `likely` to `certain` at master 0b95cfb, before slice 2: a single-configuration scan at that commit already reports it `certain`.",
       "adjudicated_on": "2026-09-29",
       "lethen_commit": "4621c91"
     },
@@ -802,7 +804,7 @@
       "kind": "enumelement",
       "name": "theme(theme:)",
       "verdict": "TP",
-      "note": "`ListUpdateType.theme(theme:)`: The only update types built are `.layoutUpdate` (:100), `.itemExpandUpdate` (:372-373) and `.initialLoad` (DiffContainerViewController.swift:784/:787); `.theme` is only matched at :180.",
+      "note": "`ListUpdateType.theme(theme:)`: The only update types built are `.layoutUpdate` (:100), `.itemExpandUpdate` (:372-373) and `.initialLoad` (DiffContainerViewController.swift:784/:787); `.theme` is only matched at :180. Confidence went from `likely` to `certain` at master 0b95cfb, before slice 2: a single-configuration scan at that commit already reports it `certain`.",
       "adjudicated_on": "2026-09-28",
       "lethen_commit": "1fec976",
       "reference": "enum-case-49"
@@ -1091,7 +1093,8 @@
       "verdict": "FP",
       "note": "Called from `presentLanguageVariantAlerts(completion:)` (WMFAppViewController+Extensions.swift:124), which `resumeApp(_:)` calls (WMFAppViewController.swift:980) on the launch path that starts at SceneDelegate.swift:64 inside the `#else` of `#if TEST`; the scanned Test configuration defines `TEST`, so the whole chain is compiled out (the class of wikipedia-ios-2, 7, 14).",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "compiled in the Debug configuration (slice 2)"
     },
     {
       "path": "Wikipedia/Code/WMFAppViewController+Extensions.swift",
@@ -1102,7 +1105,8 @@
       "verdict": "FP",
       "note": "Called from `migrateIfNecessary()` (WMFAppViewController.swift:915) on the launch path from `launchApp(in:waitToResumeApp:)`, whose only caller is SceneDelegate.swift:64 inside the `#else` of `#if TEST`, compiled out of the scanned Test configuration (the class of wikipedia-ios-2, 7, 14).",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "compiled in the Debug configuration (slice 2)"
     },
     {
       "path": "Wikipedia/Code/WMFAppViewController+Extensions.swift",
@@ -1113,7 +1117,8 @@
       "verdict": "FP",
       "note": "Called from `setupWMFDataCoreDataStore()` (WMFAppViewController+Extensions.swift:705), which the launch path calls (WMFAppViewController.swift:915); that path starts at SceneDelegate.swift:64 inside the `#else` of `#if TEST`, compiled out of the scanned Test configuration (the class of wikipedia-ios-2, 7, 14).",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "compiled in the Debug configuration (slice 2)"
     },
     {
       "path": "Wikipedia/Code/WMFAppViewController.swift",
@@ -1125,7 +1130,8 @@
       "note": "Called at lines 1797 and 1804 inside `checkRemoteAppConfigIfNecessary()`. That function is reached from `migrateIfNecessary` (line 923) and `launchApp` (SceneDelegate.swift:64), which exist only in the non-TEST `#else` branch of SceneDelegate.swift. The scan built the Test configuration (`-DTEST`), so this whole launch path was compiled out.",
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
-      "reference": "wikipedia-ios-14"
+      "reference": "wikipedia-ios-14",
+      "retired": "compiled in the Debug configuration (slice 2)"
     },
     {
       "path": "Wikipedia/Code/WMFAppViewController.swift",
@@ -1136,7 +1142,8 @@
       "verdict": "FP",
       "note": "Called from `performTasksThatShouldOccurAfterBecomeActiveAndResume()` (WMFAppViewController.swift:479), reached from `finishResumingApp()` (:1073) on the launch path that starts at SceneDelegate.swift:64 inside the `#else` of `#if TEST`, compiled out of the scanned Test configuration (the class of wikipedia-ios-2, 7, 14).",
       "adjudicated_on": "2026-09-29",
-      "lethen_commit": "4621c91"
+      "lethen_commit": "4621c91",
+      "retired": "compiled in the Debug configuration (slice 2)"
     },
     {
       "path": "Wikipedia/Code/WMFPasswordResetter.swift",
@@ -1186,6 +1193,17 @@
       "adjudicated_on": "2026-09-27",
       "lethen_commit": "bc8c5b5",
       "reference": "wikipedia-ios-15"
+    },
+    {
+      "path": "Widgets/Widgets/LockscreenSearchWidget.swift",
+      "line": 40,
+      "column": 9,
+      "kind": "var.instance",
+      "name": "languageCode",
+      "verdict": "TP",
+      "note": "`LockscreenSearchWidgetConfiguration.languageCode` is assigned in `init()` (line 46) and read nowhere: the only `.languageCode` reads in Widgets/ are on other types (`language?.languageCode` in OnThisDayWidget.swift, `SearchWidget`'s own copy). The widget extension is built by the scheme's Debug (Run) configuration and not by Test, so this finding appears only with `--configurations Test Debug`. The property is not `@objc`.",
+      "adjudicated_on": "2026-10-05",
+      "lethen_commit": "0b95cfb"
     }
   ]
 }
