@@ -28,6 +28,12 @@ struct ValueUseAnalysis: SyntaxAnalysis {
                 reference.valueArguments = arguments
             }
         }
+        for (call, types) in valueUses.resultTypes {
+            let resolved = file.references(at: types)
+            for reference in file.references(at: call) {
+                reference.resultTypeReferences = resolved
+            }
+        }
         for location in valueUses.specializationArgumentLocations {
             for reference in file.references(at: location) {
                 reference.isGenericSpecializationArgument = true
@@ -43,6 +49,9 @@ struct ValueUseAnalysis: SyntaxAnalysis {
             for declaration in file.declarations {
                 if let names = valueUses.parameterTypeNames[declaration.location] {
                     declaration.parameterTypeNames = names
+                }
+                if let names = valueUses.returnTypeNames[declaration.location] {
+                    declaration.returnTypeNames = names
                 }
                 if valueUses.accessorBodyLocations.contains(declaration.location) {
                     declaration.hasAccessorBody = true

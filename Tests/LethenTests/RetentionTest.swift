@@ -2758,6 +2758,32 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedDecodeInferredReturn() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct315Bound")) {
+                self.assertNotAssignOnlyProperty(.varInstance("boundDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Returned")) {
+                self.assertNotAssignOnlyProperty(.varInstance("returnedDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315ReturnedExplicit")) {
+                self.assertNotAssignOnlyProperty(.varInstance("explicitDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Cast")) {
+                self.assertNotAssignOnlyProperty(.varInstance("castDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Unconstrained")) {
+                self.assertAssignOnlyProperty(.varInstance("unconstrainedNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315OtherParameter")) {
+                self.assertAssignOnlyProperty(.varInstance("otherNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct315Used")) {
+                self.assertNotAssignOnlyProperty(.varInstance("usedNormally"))
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeTopLevel() throws {
         let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
 

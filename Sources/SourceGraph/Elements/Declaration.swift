@@ -230,6 +230,10 @@ public final class Declaration {
     /// For a function, each parameter's label (nil for `_`) and the names its type is constrained to or spelled as:
     /// the constraints of a generic parameter it mentions, or the type names themselves.
     public var parameterTypeNames: [ParameterTypeNames] = []
+    /// For a function, the names a returned value may be decoded through: when the return type is a generic
+    /// parameter of the function itself, possibly inside optionals and arrays, that parameter's constraints and name.
+    /// Such a function decodes whatever type the call site's result is inferred as.
+    public var returnTypeNames: Set<String> = []
     /// True for a `let` property with an initial value, which an initializer, synthesized or not, cannot assign.
     public var isInitializedConstant: Bool = false
     /// True for a property whose accessor block has a getter, setter or read/modify body, so it stores nothing,

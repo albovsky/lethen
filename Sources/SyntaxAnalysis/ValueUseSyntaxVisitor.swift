@@ -7,6 +7,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var arguments: [Location: Set<Location>] = [:]
     public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>)]] = [:]
     public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
+    /// Keyed by a function's name location: see `Declaration.returnTypeNames`.
+    public private(set) var returnTypeNames: [Location: Set<String>] = [:]
+    /// Keyed by a call's callee location: the types its context gives the call's result.
+    public private(set) var resultTypes: [Location: Set<Location>] = [:]
     /// Keyed by the specialized type's own location: what each of its generic arguments names.
     public private(set) var specializationArguments: [Location: [Set<Location>]] = [:]
     /// Every type named inside the generic arguments of a stored property's declared type.
@@ -114,7 +118,69 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         resolvesMetatypes = true
         argumentLists[callee] = node.arguments.map { (label: $0.label?.text, origins: origins(of: $0.expression)) }
         resolvesMetatypes = false
+        if let type = Self.contextualType(of: node) {
+            recordSpecializations(in: type)
+            resultTypes[callee, default: []].formUnion(tokens(in: type))
+        }
         return .visitChildren
+    }
+
+    /// The type the context gives a call's result, which fixes a generic result: the annotation of the binding the call
+    /// initializes, the type of a plain `as`, or the return type of the function or getter that returns it, by
+    /// `return` or as its only statement. `try` and `await` pass it through. Other positions, such as assignment to an
+    /// existing property or a closure body, are not modeled.
+    private static func contextualType(of call: FunctionCallExprSyntax) -> TypeSyntax? {
+        var expression = Syntax(call)
+        while let parent = expression.parent, parent.is(TryExprSyntax.self) || parent.is(AwaitExprSyntax.self) {
+            expression = parent
+        }
+        guard let parent = expression.parent else { return nil }
+
+        if let initializer = parent.as(InitializerClauseSyntax.self) {
+            return initializer.parent?.as(PatternBindingSyntax.self)?.typeAnnotation?.type
+        }
+        // The tree is not operator-folded, so `value as T` is a sequence of the operand, the cast and the type.
+        if let list = parent.as(ExprListSyntax.self) {
+            let items = Array(list)
+            if let index = items.firstIndex(where: { $0.id == expression.id }), index + 2 < items.count,
+               let cast = items[index + 1].as(UnresolvedAsExprSyntax.self), cast.questionOrExclamationMark == nil,
+               let type = items[index + 2].as(TypeExprSyntax.self)
+            {
+                return type.type
+            }
+            return nil
+        }
+        if parent.is(ReturnStmtSyntax.self) {
+            return returnType(enclosing: parent)
+        }
+        if let item = parent.as(CodeBlockItemSyntax.self), let list = item.parent?.as(CodeBlockItemListSyntax.self), list.count == 1,
+           let body = list.parent
+        {
+            // A single expression is the implicit return of a function, accessor or closure body.
+            return body.is(ClosureExprSyntax.self) ? nil : returnType(enclosing: body)
+        }
+        return nil
+    }
+
+    /// The declared type of the nearest function, or of the property whose getter the node is in.
+    private static func returnType(enclosing node: Syntax) -> TypeSyntax? {
+        var current = node.parent
+        while let ancestor = current {
+            if let function = ancestor.as(FunctionDeclSyntax.self) {
+                return function.signature.returnClause?.type
+            }
+            if let accessor = ancestor.as(AccessorDeclSyntax.self), accessor.accessorSpecifier.tokenKind != .keyword(.get) {
+                return nil
+            }
+            if let binding = ancestor.as(PatternBindingSyntax.self) {
+                return binding.typeAnnotation?.type
+            }
+            if ancestor.is(ClosureExprSyntax.self) || ancestor.is(InitializerDeclSyntax.self) || ancestor.is(SubscriptDeclSyntax.self) {
+                return nil
+            }
+            current = ancestor.parent
+        }
+        return nil
     }
 
     override public func visit(_ node: SubscriptCallExprSyntax) -> SyntaxVisitorContinueKind {
@@ -280,12 +346,37 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             constraints[parameter.name.text, default: []].formUnion(Self.typeNames(in: conformance.rightType))
         }
 
+        if let returned = signature.returnClause?.type {
+            returnTypeNames[locations.location(at: position)] = Self.returnedGenericNames(of: returned, constraints: constraints)
+        }
+
         parameterTypeNames[locations.location(at: position)] =
             signature.parameterClause.parameters.map { parameter in
                 let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
                 let names = Self.decodedMetatypeNames(of: parameter.type, constraints: constraints)
                 return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil, typeName: parameter.type.trimmedDescription)
             }
+    }
+
+    /// A generic parameter returned bare or inside optionals and arrays, as `T`, `T?` or `[T]`, with its constraints.
+    /// Anything else, including `Box<T>` and a type that merely mentions `T`, leaves the result type unconstrained.
+    private static func returnedGenericNames(of type: TypeSyntax, constraints: [String: Set<String>]) -> Set<String> {
+        var current = type
+        while true {
+            if let optional = current.as(OptionalTypeSyntax.self) {
+                current = optional.wrappedType
+            } else if let unwrapped = current.as(ImplicitlyUnwrappedOptionalTypeSyntax.self) {
+                current = unwrapped.wrappedType
+            } else if let array = current.as(ArrayTypeSyntax.self) {
+                current = array.element
+            } else {
+                break
+            }
+        }
+        guard let identifier = current.as(IdentifierTypeSyntax.self), identifier.genericArgumentClause == nil,
+              let own = constraints[identifier.name.text] else { return [] }
+
+        return own
     }
 
     /// The names a parameter's type may decode through: only a parameter that takes the metatype of a type, or of an
