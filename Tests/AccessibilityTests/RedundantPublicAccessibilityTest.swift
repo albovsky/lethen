@@ -167,6 +167,7 @@ final class RedundantPublicAccessibilityTest: SPMSourceGraphTestCase {
             // Witnesses of public protocol requirements must stay public.
             self.assertNotRedundantPublicAccessibility(.varInstance("scheme"))
             self.assertNotRedundantPublicAccessibility(.functionMethodInstance("queryItems()"))
+            self.assertNotRedundantPublicAccessibility(.typealias("Value"))
             // Control: a member that witnesses no requirement is still redundant.
             self.assertRedundantPublicAccessibility(.varInstance("extra"))
         }
