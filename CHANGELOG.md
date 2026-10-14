@@ -2,6 +2,22 @@
 
 ##### Breaking
 
+- None.
+
+##### Enhancements
+
+- None.
+
+##### Bug Fixes
+
+- None.
+
+## 2026.10.1 (2026-10-14)
+
+The first calendar-versioned release. Lethen scans Xcode projects in several build configurations at once, so code compiled out of one configuration no longer shows up as dead; marks results `certain` or `likely` more accurately and reports `likely` ones one severity lower in CI formats; reuses completed Xcode and SwiftPM builds; and removes many false-positive classes found on a precision corpus that now includes a SwiftUI app.
+
+##### Breaking
+
 - Library clients of `PeripheryKit` and its `Indexer` module: confidence evidence moved out of `SourceGraph`, so `IndexPipeline.perform()` returns an `IndexResult` (with `evidence`) instead of the line count, and `ScanResultBuilder.build(for:configuration:)` takes a `ConfidenceAssessor` built from that evidence, `ScanResultBuilder.build(for:configuration:confidence:)`. A source-compatible overload would report every declaration as `certain`, so the old entry point is not kept. The command line and its output are unchanged.
 
 ##### Enhancements

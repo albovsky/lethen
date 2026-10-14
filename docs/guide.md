@@ -23,13 +23,13 @@ Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `
 
 ### Download the macOS zip
 
-Download [lethen-3.10.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.10.0/lethen-3.10.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.10.0/SHA256SUMS) into the same directory, then run there:
+Download [lethen-2026.10.1-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/2026.10.1/lethen-2026.10.1-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/2026.10.1/SHA256SUMS) into the same directory, then run there:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
-ditto -x -k lethen-3.10.0-macos-arm64.zip lethen-3.10.0
+ditto -x -k lethen-2026.10.1-macos-arm64.zip lethen-2026.10.1
 mkdir -p "$HOME/.local/bin"
-install -m 755 lethen-3.10.0/lethen "$HOME/.local/bin/lethen"
+install -m 755 lethen-2026.10.1/lethen "$HOME/.local/bin/lethen"
 export PATH="$HOME/.local/bin:$PATH"
 lethen version
 ```
@@ -41,11 +41,11 @@ Keep the PATH export in your shell profile.
 [Mint](https://github.com/yonaskolb/Mint) builds Lethen from source at a release tag, which takes a few minutes and needs Xcode (or the Command Line Tools):
 
 ```sh
-mint install albovsky/lethen@3.10.0
-mint run albovsky/lethen@3.10.0 scan
+mint install albovsky/lethen@2026.10.1
+mint run albovsky/lethen@2026.10.1 scan
 ```
 
-To pin it for a project, add `albovsky/lethen@3.10.0` to your `Mintfile`.
+To pin it for a project, add `albovsky/lethen@2026.10.1` to your `Mintfile`.
 
 ### Linux
 
@@ -62,7 +62,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 Then build the tag you want:
 
 ```sh
-git clone --branch 3.10.0 --depth 1 https://github.com/albovsky/lethen.git
+git clone --branch 2026.10.1 --depth 1 https://github.com/albovsky/lethen.git
 cd lethen
 swift build -c release --product lethen
 lethen_bin_dir="$(swift build -c release --show-bin-path)"

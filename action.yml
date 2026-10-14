@@ -9,10 +9,10 @@ author: albovsky
 inputs:
   version:
     description: >-
-      Lethen version to run: a release version such as 3.10.0, `latest` for the newest stable
+      Lethen version to run: a release version such as 2026.10.1, `latest` for the newest stable
       release, or `source` to build Lethen from the action's own checkout with `swift build -c
-      release`. Defaults to the version of the action itself, so `uses: albovsky/lethen@3.10.0`
-      runs Lethen 3.10.0.
+      release`. Defaults to the version of the action itself, so `uses: albovsky/lethen@2026.10.1`
+      runs Lethen 2026.10.1.
     required: false
     default: ""
   args:
