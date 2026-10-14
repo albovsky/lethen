@@ -1,5 +1,7 @@
 import AppIntents
 
+// The `@UnionValue` macro generates `Cases` only in the Xcode 27 SDK (Swift 6.4); Xcode 26.4 cannot compile this file.
+#if compiler(>=6.4)
 @available(macOS 27.0, *)
 @UnionValue
 enum UnionChoice {
@@ -16,3 +18,4 @@ enum UnionChoice {
         return [:]
     }
 }
+#endif

@@ -46,13 +46,17 @@
         }
 
         func testRetainsUnionValueStaticWitnesses() throws {
-            try analyze {
-                assertReferenced(.enum("UnionChoice")) {
-                    self.assertReferenced(.varStatic("caseDisplayRepresentations"))
-                    self.assertReferenced(.varStatic("usedUnionHelper"))
-                    self.assertNotReferenced(.varStatic("unusedUnionHelper"))
+            #if compiler(>=6.4)
+                try analyze {
+                    assertReferenced(.enum("UnionChoice")) {
+                        self.assertReferenced(.varStatic("caseDisplayRepresentations"))
+                        self.assertReferenced(.varStatic("usedUnionHelper"))
+                        self.assertNotReferenced(.varStatic("unusedUnionHelper"))
+                    }
                 }
-            }
+            #else
+                throw XCTSkip("@UnionValue generates Cases only in the Xcode 27 SDK")
+            #endif
         }
 
         func testRetainsAppEntity() throws {
