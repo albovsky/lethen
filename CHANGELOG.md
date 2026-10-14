@@ -1,4 +1,6 @@
-## master
+## 2026.10.1 (2026-10-14)
+
+The first calendar-versioned release. Lethen scans Xcode projects in several build configurations at once, so code compiled out of one configuration no longer shows up as dead; marks results `certain` or `likely` more accurately and reports `likely` ones one severity lower in CI formats; reuses completed Xcode and SwiftPM builds; and removes many false-positive classes found on a precision corpus that now includes a SwiftUI app.
 
 ##### Breaking
 

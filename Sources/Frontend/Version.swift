@@ -1,1 +1,1 @@
-let LethenVersion = "3.10.0"
+let LethenVersion = "2026.10.1"

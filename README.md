@@ -8,7 +8,7 @@ Website: **[lethen.dev](https://lethen.dev)**, whose source is [albovsky/lethen-
 
 ## Status
 
-[3.10.0](https://github.com/albovsky/lethen/releases/tag/3.10.0) is the current Lethen release and requires Swift 6.3 (Xcode 26.4) or later. Apple silicon Macs can install it with Homebrew, Linux x86_64 and aarch64 can install a release tarball, and Intel Macs build it from source. It gives every result a confidence and a reason, adds `lethen explain`, `--min-confidence`, `--configurations`, a GitHub Action, and a SwiftPM command plugin, counts uses from Objective-C, reuses verified SwiftPM builds instead of cleaning, and fixes false positives measured on a precision corpus. It runs build tools without a shell, so build arguments are no longer interpreted by one; the [release notes](docs/releases/3.10.0.md) list this and the other breaking changes. [3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1), the first Lethen release, is the last that supports Swift 6.1 and 6.2.
+[2026.10.1](https://github.com/albovsky/lethen/releases/tag/2026.10.1) is the current Lethen release and requires Swift 6.3 (Xcode 26.4) or later. Apple silicon Macs can install it with Homebrew, Linux x86_64 and aarch64 can install a release tarball, and Intel Macs build it from source. It scans Xcode projects in several build configurations together, so code compiled out of one no longer shows up as dead, grades every result `certain` or `likely` with a reason and reports `likely` results one severity lower in CI formats, reuses completed Xcode and SwiftPM builds, and fixes false positives measured on a precision corpus. The [release notes](docs/releases/2026.10.1.md) list the breaking changes. [3.8.1](https://github.com/albovsky/lethen/releases/tag/3.8.1), the first Lethen release, is the last that supports Swift 6.1 and 6.2.
 
 Managed SwiftPM scans reuse the previous build only when Lethen can verify its index. SwiftPM does not treat `--enable-index-store` as a change that invalidates already-compiled tasks, and incremental builds do not always recompile a module's importers, so a build tree can hold a stale or partial index. Periphery 3.8.0 reads such an index without saying so: after a function that uses `AFError.isSessionInvalidatedError` was added to Alamofire, it listed neither the new function nor a change to the property, which it kept reporting. Lethen recompiled the modules the edit touched and their importers, verified the index, and reported both: the property as "referenced only from 1 unused declaration". Lethen cleans and rebuilds when there is no matching record of its last build (the first scan, other build arguments, another Swift version), when a build object another build changed belongs to no module Lethen indexed, and when the index fails verification after the build, for example a source with no unit or a recompiled module whose importers were not recompiled; `--verbose` says which. A module that another build or an edit touched is recompiled with its importers rather than cleaned, and a target the build never compiles, such as a plugin-only executable, does not block reuse. The first scan is a full rebuild, and a rescan with nothing changed rebuilds nothing. An Xcode scan likewise runs no `xcodebuild` when nothing a scan reads changed since Lethen's last completed build (see the [guide](docs/guide.md#xcode-projects-and-workspaces)). `--clean-build` always cleans. The [scan performance report](docs/validation/scan-performance.md) records the timings.
 
@@ -27,17 +27,17 @@ lethen version
 
 Lethen loads Xcode's indexing library at launch, so Xcode must be installed as `/Applications/Xcode.app` or `/Applications/Xcode-beta.app`, or the Command Line Tools must be installed. The same binary is attached to each [release](https://github.com/albovsky/lethen/releases) as `lethen-<version>-macos-arm64.zip`, with a `SHA256SUMS` file.
 
-[Mint](https://github.com/yonaskolb/Mint) builds it from source: `mint install albovsky/lethen@3.10.0`. To run Lethen from a package or an Xcode project, add this package with a branch or commit rule and use its `LethenPlugin` command plugin; the [guide](docs/guide.md#swift-package-plugin-and-xcode-command) shows how.
+[Mint](https://github.com/yonaskolb/Mint) builds it from source: `mint install albovsky/lethen@2026.10.1`. To run Lethen from a package or an Xcode project, add this package with a branch or commit rule and use its `LethenPlugin` command plugin; the [guide](docs/guide.md#swift-package-plugin-and-xcode-command) shows how.
 
 ### Download the macOS zip
 
-Download [lethen-3.10.0-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/3.10.0/lethen-3.10.0-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/3.10.0/SHA256SUMS) into the same directory, then run there:
+Download [lethen-2026.10.1-macos-arm64.zip](https://github.com/albovsky/lethen/releases/download/2026.10.1/lethen-2026.10.1-macos-arm64.zip) and [SHA256SUMS](https://github.com/albovsky/lethen/releases/download/2026.10.1/SHA256SUMS) into the same directory, then run there:
 
 ```sh
 shasum -a 256 -c SHA256SUMS
-ditto -x -k lethen-3.10.0-macos-arm64.zip lethen-3.10.0
+ditto -x -k lethen-2026.10.1-macos-arm64.zip lethen-2026.10.1
 mkdir -p "$HOME/.local/bin"
-install -m 755 lethen-3.10.0/lethen "$HOME/.local/bin/lethen"
+install -m 755 lethen-2026.10.1/lethen "$HOME/.local/bin/lethen"
 export PATH="$HOME/.local/bin:$PATH"
 lethen version
 ```
@@ -68,7 +68,7 @@ Add the `export PATH` line to your shell profile if `~/.local/bin` is not alread
 Intel Macs build Lethen from source, and so can any Linux system with a supported toolchain. On macOS, select a full Xcode installation, for example with `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`. The local source-install baseline is Xcode 27.0 with Apple Swift 6.4 on arm64 macOS 27.
 
 ```sh
-git clone --branch 3.10.0 --depth 1 https://github.com/albovsky/lethen.git
+git clone --branch 2026.10.1 --depth 1 https://github.com/albovsky/lethen.git
 cd lethen
 swift build -c release --product lethen
 lethen_bin_dir="$(swift build -c release --show-bin-path)"
@@ -109,7 +109,7 @@ bazel_dep(name = "periphery", dev_dependency = True)
 git_override(
     module_name = "periphery",
     remote = "https://github.com/albovsky/lethen.git",
-    tag = "3.10.0",
+    tag = "2026.10.1",
 )
 use_repo(use_extension("@periphery//bazel:generated.bzl", "generated"), "periphery_generated")
 ```
