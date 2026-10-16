@@ -1,9 +1,11 @@
 #!/bin/bash
 # Scans one corpus project at its pinned commit and writes its canonical findings to
 # .corpus/results/<name>.canonical.json. Any clone, checkout, build or scan failure fails the run.
-# A project may set "setup", an argv array (one command, no shell) that runs inside the checkout after the pinned
-# commit is checked out and before the scan, for steps a build needs such as writing a git-ignored config file; a
-# failing setup fails the run.
+# A project may set "setup", an argv array (one command, no shell) or an array of them, run in order inside the
+# checkout after the pinned commit is checked out and before the scan, for steps a build needs such as writing a
+# git-ignored config file or turning off a build phase that rewrites sources; a failing setup fails the run.
+# The run also fails if the build changes a tracked file: findings would then carry the line numbers of sources
+# rewritten by whatever the scanning machine has installed (a formatter, say) instead of the pinned commit's.
 # Usage: corpus/scan.sh <name> [lethen-binary]
 set -euo pipefail
 
@@ -19,7 +21,13 @@ manifest, name, key = sys.argv[1:4]
 entries = [e for e in json.load(open(manifest)) if e["name"] == name]
 if not entries:
     sys.exit(f"corpus: unknown project '{name}'")
-value = entries[0].get(key, []) if key == "setup" else entries[0][key]
+if key == "setup":
+    # One command per line, its arguments separated by the ASCII unit separator.
+    setup = entries[0].get("setup", [])
+    commands = setup if setup and isinstance(setup[0], list) else [setup] if setup else []
+    print("\n".join("\x1f".join(command) for command in commands))
+    sys.exit(0)
+value = entries[0][key]
 print("\n".join(value) if isinstance(value, list) else value)
 PY
 }
@@ -32,8 +40,8 @@ while IFS= read -r argument; do
     [ -n "$argument" ] && arguments+=("$argument")
 done < <(field arguments)
 setup=()
-while IFS= read -r argument; do
-    [ -n "$argument" ] && setup+=("$argument")
+while IFS= read -r command; do
+    [ -n "$command" ] && setup+=("$command")
 done < <(field setup)
 checkouts="${CORPUS_CHECKOUTS:-$root/.corpus/checkouts}"
 checkout="$checkouts/$name"
@@ -44,15 +52,22 @@ if [ ! -d "$checkout/.git" ]; then
     git clone --quiet "$url" "$checkout"
 fi
 git -C "$checkout" fetch --quiet origin "$commit"
-# --force discards edits a previous scan's build made; some projects' build phases run
-# formatters over their sources (wikipedia-ios runs `swiftlint --fix`).
+# --force discards edits a previous setup or build made.
 git -C "$checkout" checkout --quiet --force --detach "$commit"
-if [ ${#setup[@]} -gt 0 ]; then
-    (cd "$checkout" && "${setup[@]}")
-fi
+for command in ${setup[@]+"${setup[@]}"}; do
+    IFS=$'\x1f' read -r -a argv <<< "$command"
+    (cd "$checkout" && "${argv[@]}")
+done
+tracked() { git -C "$checkout" diff --binary HEAD | shasum; }
+before="$(tracked)"
 
 "$lethen" scan --project-root "$checkout" --quiet --disable-update-check \
     --format json --relative-results ${arguments[@]+"${arguments[@]}"} > "$results/$name.json"
+if [ "$(tracked)" != "$before" ]; then
+    echo "corpus: building $name changed tracked files, so its findings would not have the pinned commit's lines:" >&2
+    git -C "$checkout" status --short --untracked-files=no >&2
+    exit 1
+fi
 # One finding per line, so a changed finding is a one-line diff and expectations stay small.
 python3 "$root/.github/scripts/canonicalize-scan-json.py" "$checkout" "$results/$name.json" \
     | python3 -c 'import json, sys; rows = json.load(sys.stdin); print("[\n" + ",\n".join(json.dumps(r) for r in rows) + "\n]")' \
