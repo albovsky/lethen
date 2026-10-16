@@ -1103,3 +1103,14 @@ Alamofire and swift-nio re-scanned on Linux (Swift 6.4) with the change and with
 | swift-nio `Sources/_NIOFileSystem/Internal/System Calls/Mocking.swift:358` `init(_platformString:)` | function.constructor | Imprecision fixed, `certain` | The row #153 left `likely` (see above): declared in an extension of `String`, and named only by `#if os(Windows)` in `SystemPackage+Windows.swift:15`, whose constructions are of `FileDescriptor.OpenOptions` and `UnsafePointer`, not `String`. Its labels are not spelled either. |
 
 Wikipedia iOS, to check on the Mac after this merges: the three `UIColor` initializers in `WMF Framework/Theme.swift` (`init(_:)` at :16, `init(_:alpha:)` at :26 and the third `UIColor` initializer in that extension) were `certain` before #153 and `likely` after it, named only by `DDLogDebug("...")` and `String.init(data:encoding:)` in the `#if DEBUG` clause of `EventPlatformClient.swift:339`. They should be `certain` again; no row should move from `certain` to `likely`.
+
+### Wikipedia iOS line numbers from the pinned commit (#197)
+
+Not an analysis change. Wikipedia's three `SwiftLint` build phases run `swiftlint --fix` with whatever SwiftLint the scanning machine has, before the sources are compiled. The expectation had been recorded on a Mac with SwiftLint 0.65.1, which rewrites 14 files (it joins `.resizable()` and `.aspectRatio(contentMode: .fit)` into `.resizable().scaledToFit()`), and the CI runner reported two rows at the pinned commit's lines instead, so the nightly corpus job failed from #159 on. The corpus setup now replaces the phases' `if which swiftlint > /dev/null` with `if false`, and `corpus/scan.sh` fails when a build changes a tracked file.
+
+Wikipedia iOS re-scanned on the Mac (Xcode 27.0, Swift 6.4, Lethen `58cae75` plus this change, debug build, SwiftLint 0.65.1 installed): the result is byte-identical to the canonical results of nightly run [38535384736](https://github.com/albovsky/lethen/actions/runs/38535384736), and differs from the old expectation in two rows, which the expectation now records at the pinned commit's lines. Applying SwiftLint 0.65.1's `--fix` to the pinned commit moves no other expected row. Neither row is sampled; the scorecard is unchanged. The same scan without the new setup step fails in `corpus/scan.sh`, naming the 14 files the build rewrote.
+
+| Row | Kind | Old line | Pinned line | Evidence |
+| --- | --- | ---: | ---: | --- |
+| `Widgets/Widgets/PictureOfTheDayWidget.swift` `PictureOfTheDayWidget_Previews` | struct | 289 | 291 | `git show 599e4a6:Widgets/Widgets/PictureOfTheDayWidget.swift` declares it at :291; the autocorrect removes two lines above it (:266 and :277). |
+| `Widgets/Widgets/SearchWidget.swift` `SearchWidget_Previews` | struct | 115 | 116 | Declared at :116 at `599e4a6`; the autocorrect removes one line above it (:89). |
