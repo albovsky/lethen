@@ -225,6 +225,7 @@
 ["Packages/DesignSystem/Sources/DesignSystem/Views/StatusEditorToolbarItem.swift", 36, 14, "var.instance", "body", ["redundantPublicAccessibility"], ["s:12DesignSystem23StatusEditorToolbarItemV4bodyQrvp"], "certain"],
 ["Packages/DesignSystem/Sources/DesignSystem/Views/StatusEditorToolbarItem.swift", 7, 15, "function.method.instance", "statusEditorToolbarItem(routerPath:visibility:)", ["unused"], ["s:7SwiftUI4ViewP12DesignSystemE23statusEditorToolbarItem10routerPath10visibilityQr3Env06RouterK0C_6Models10VisibilityOtF"], "certain"],
 ["Packages/DesignSystem/Sources/DesignSystem/Views/ThemePreviewView.swift", 7, 31, "var.instance", "dismiss", ["unused"], ["s:12DesignSystem16ThemePreviewViewV7dismiss7SwiftUI13DismissActionVvp"], "certain"],
+["Packages/Env/Sources/Env/CurrentAccount.swift", 15, 27, "var.instance", "isUpdating", ["unused"], ["s:3Env14CurrentAccountC10isUpdatingSbvp"], "certain"],
 ["Packages/Env/Sources/Env/DeepLUserAPIHandler.swift", 3, 1, "module", "Models", ["unused"], ["import-Models-Packages/Env/Sources/Env/DeepLUserAPIHandler.swift:3:1"], "certain"],
 ["Packages/Env/Sources/Env/PreviewEnv.swift", 6, 15, "function.method.instance", "withPreviewsEnv()", ["unused"], ["s:7SwiftUI4ViewP3EnvE012withPreviewsD0QryF"], "certain"],
 ["Packages/Env/Sources/Env/Router.swift", 126, 8, "enumelement", "display", ["unconstructedEnumCase"], ["s:3Env21SettingsStartingPointO7displayyA2CmF"], "certain"],
