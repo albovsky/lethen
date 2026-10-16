@@ -17,7 +17,7 @@ open class SourceGraphTestCase: XCTestCase {
 
     private static var graph: SourceGraph!
     static var confidence: ConfidenceAssessor!
-    private static var allIndexedDeclarations: Set<Declaration> = []
+    private(set) static var allIndexedDeclarations: Set<Declaration> = []
 
     private var scopeStack: [DeclarationScope] = []
 

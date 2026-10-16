@@ -2958,6 +2958,31 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    /// The macro expands every tracked property at the class's attach site, and the index names none of their
+    /// `_modify` accessors, so each must stay its own declaration under its own property. Merged into one
+    /// declaration under all of them, the accessor's keypath to every property kept them all alive, unless the
+    /// property the merged accessor happened to get as its parent was the unused one.
+    func testObservablePropertiesAreIndependent() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass326")) {
+                self.assertReferenced(.varInstance("readProperty"))
+                self.assertNotReferenced(.varInstance("neverUsedProperty"))
+                self.assertNotReferenced(.varInstance("otherNeverUsedProperty"))
+            }
+
+            let modifyAccessors = Self.allIndexedDeclarations.filter {
+                $0.kind == .functionAccessorModify && $0.parent?.parent?.name == "FixtureClass326"
+            }
+            XCTAssertEqual(
+                modifyAccessors.mapSet { $0.parent?.name ?? "" },
+                ["readProperty", "neverUsedProperty", "otherNeverUsedProperty"]
+            )
+            for accessor in modifyAccessors {
+                XCTAssertEqual(accessor.usrs.count, 1, "\(accessor.usrs.sorted())")
+            }
+        }
+    }
+
     func testUnconstructedEnumCases() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.enum("FixtureEnum229")) {
