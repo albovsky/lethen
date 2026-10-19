@@ -4,6 +4,8 @@ private let fixturePrivateGlobal6 = 0
 let fixtureInternalGlobal6 = 0
 // Named by a bare identifier in the same clause, which is how a global is named: the control for both.
 let fixtureBareGlobal6 = 0
+// `private(set)` makes only the setter private, so the other file reads this one like any internal global.
+private(set) var fixtureSetPrivateGlobal6 = 0
 
 class FixtureOwnFile6 {
     // Read only in a skipped clause of this file, the one file that can see it.

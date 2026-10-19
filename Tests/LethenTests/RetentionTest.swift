@@ -2345,6 +2345,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             // Control: a bare identifier in the same clause does name a global of the module.
             assertNotReferenced(.varGlobal("fixtureBareGlobal6"))
             assertConfidence(.varGlobal("fixtureBareGlobal6"), .likely)
+            // `private(set)` is setter privacy, not file privacy, so the other file's clause names it.
+            assertNotReferenced(.varGlobal("fixtureSetPrivateGlobal6"))
+            assertConfidence(.varGlobal("fixtureSetPrivateGlobal6"), .likely)
             // The members the clause really spells keep the hint.
             assertReferenced(.class("FixtureOtherFile6")) {
                 self.assertNotReferenced(.varInstance("fixturePrivateGlobal6"))

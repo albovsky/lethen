@@ -9,6 +9,7 @@ class FixtureOtherFile6 {
             _ = self.fixturePrivateGlobal6
             _ = self.fixtureInternalGlobal6
             _ = fixtureBareGlobal6
+            _ = fixtureSetPrivateGlobal6
         #endif
     }
 }

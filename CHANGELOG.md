@@ -11,6 +11,7 @@
 ##### Bug Fixes
 
 - The `likely` hint for a name used in a `#if` branch the build skipped no longer attaches to a declaration the branch cannot name. A `private` or `fileprivate` declaration is downgraded only by a clause of its own file, the only file that can see it, and a declaration no type declares, a global, a free function, a top-level type, a type alias or an operator, only by a use that is not a member access, since `self.logger` names a member and not a global; a use qualified by the module, `MyApp.logger`, still counts ([#199](https://github.com/albovsky/lethen/issues/199)).
+- `private(set)` and `fileprivate(set)` no longer give a declaration their access level: they restrict only the setter, so `private(set) var count` is read wherever an unannotated one is. It was taken as `private`, which hid it from the rules that ask whether another file or an unscanned target can see it, and reported it as `private` in the `json` and `csv` formats. `public private(set)` is public whichever order the two modifiers are written in ([#199](https://github.com/albovsky/lethen/issues/199)).
 
 ## 2026.10.1 (2026-10-14)
 

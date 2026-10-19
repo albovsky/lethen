@@ -126,6 +126,13 @@ final class PropertyVisitTest: XCTestCase {
         XCTAssertEqual(result.variableTypeLocations, [fixtureLocation(line: 22, column: 32)])
     }
 
+    /// `private(set)` restricts the setter, so it is not the declaration's own access level: the property
+    /// is read wherever an unannotated one is, and `public private(set)` is public.
+    func testSetterOnlyAccessibilityIsNotTheDeclarationsAccessibility() {
+        XCTAssertNil(results[fixtureLocation(line: 23, column: 22)]!.accessibility)
+        XCTAssertEqual(results[fixtureLocation(line: 24, column: 29)]!.accessibility, .public)
+    }
+
     // MARK: - Private
 
     private var fixturePath: SourceFile {
