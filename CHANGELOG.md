@@ -10,7 +10,7 @@
 
 ##### Bug Fixes
 
-- None.
+- The `likely` hint for a name used in a `#if` branch the build skipped no longer attaches to a declaration the branch cannot name. A `private` or `fileprivate` declaration is downgraded only by a clause of its own file, the only file that can see it, and a declaration no type declares, a global, a free function, a top-level type, a type alias or an operator, only by a use that is not a member access, since `self.logger` names a member and not a global; a use qualified by the module, `MyApp.logger`, still counts ([#199](https://github.com/albovsky/lethen/issues/199)).
 
 ## 2026.10.1 (2026-10-14)
 

@@ -2332,6 +2332,36 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testConfidenceSkippedBranchCannotNameFileScopeDeclarations() throws {
+        let other = FixturesProjectPath.appending("Sources/RetentionFixtures/testConfidenceSkippedBranchCannotNameFileScopeDeclarationsOther.swift")
+
+        try analyze(retainPublic: true, additionalFilesToIndex: [other]) {
+            // The other file cannot see a `private` global, so its `self.fixturePrivateGlobal6` is not this one.
+            assertNotReferenced(.varGlobal("fixturePrivateGlobal6"))
+            assertConfidence(.varGlobal("fixturePrivateGlobal6"), .certain)
+            // No member access names a global, whatever its access level.
+            assertNotReferenced(.varGlobal("fixtureInternalGlobal6"))
+            assertConfidence(.varGlobal("fixtureInternalGlobal6"), .certain)
+            // Control: a bare identifier in the same clause does name a global of the module.
+            assertNotReferenced(.varGlobal("fixtureBareGlobal6"))
+            assertConfidence(.varGlobal("fixtureBareGlobal6"), .likely)
+            // The members the clause really spells keep the hint.
+            assertReferenced(.class("FixtureOtherFile6")) {
+                self.assertNotReferenced(.varInstance("fixturePrivateGlobal6"))
+                self.assertConfidence(.varInstance("fixturePrivateGlobal6"), .likely)
+                self.assertNotReferenced(.varInstance("fixtureInternalGlobal6"))
+                self.assertConfidence(.varInstance("fixtureInternalGlobal6"), .likely)
+            }
+            assertReferenced(.class("FixtureOwnFile6")) {
+                // A `private` member read in a skipped clause of its own file is still likely.
+                self.assertNotReferenced(.varInstance("tick6"))
+                self.assertConfidence(.varInstance("tick6"), .likely)
+                // Used-but-not-compared control: read in the clause this build compiled.
+                self.assertReferenced(.varInstance("taken6"))
+            }
+        }
+    }
+
     func testConfidenceSkippedBranchReceiverTypeNarrowsMembers() throws {
         try analyze(retainPublic: true) {
             // Spelled through the type: `FixtureStoreA5.shared` is `FixtureStoreA5`'s.

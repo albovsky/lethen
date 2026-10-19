@@ -24,7 +24,8 @@ struct SkippedBranchAnalysis: SyntaxAnalysis {
                         constructionNames: skippedBranches.constructionNames,
                         spellings: skippedBranches.spellings
                     ),
-                    modules: [module]
+                    modules: [module],
+                    file: file.sourceFile.path
                 )
             }
         }

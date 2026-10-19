@@ -16,6 +16,10 @@ public struct NameSites: Equatable {
         public var receiver: String?
         /// Whether the use is a member access or a call.
         public var isMember: Bool
+        /// Whether the use is written as a member access, `store.value`, `self.value`, `.value`, `Store.value`
+        /// or `\.value`, as opposed to a bare name or a call of one. Nothing reaches a file-scope declaration
+        /// that way, so such a use names a member or a nested type unless its receiver is the module.
+        public var isMemberAccess: Bool
         /// Whether the use is inside a pattern, `case .ready:`, where an enum case is matched, not constructed.
         public var isPattern: Bool
 
@@ -24,12 +28,14 @@ public struct NameSites: Equatable {
             hasTrailingClosure: Bool = false,
             receiver: String? = nil,
             isMember: Bool = false,
+            isMemberAccess: Bool = false,
             isPattern: Bool = false
         ) {
             self.labels = labels
             self.hasTrailingClosure = hasTrailingClosure
             self.receiver = receiver
             self.isMember = isMember
+            self.isMemberAccess = isMemberAccess
             self.isPattern = isPattern
         }
     }
