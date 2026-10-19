@@ -18,8 +18,13 @@ public struct NameSites: Equatable {
         public var isMember: Bool
         /// Whether the use is written as a member access, `store.value`, `self.value`, `.value`, `Store.value`
         /// or `\.value`, as opposed to a bare name or a call of one. Nothing reaches a file-scope declaration
-        /// that way, so such a use names a member or a nested type unless its receiver is the module.
+        /// that way, so such a use names a member or a nested type unless its qualifier is the module.
         public var isMemberAccess: Bool
+        /// The identifier a member access is written through, whatever its case: `Store` in `Store.shared`,
+        /// `store` in `store.shared`, `app` in `app.logger`. `nil` when the base is not a plain identifier
+        /// (`self.shared`, `.shared`, `make().shared`) or stands for a type chosen elsewhere. `receiver` is
+        /// the subset of these that names a type; this one also catches a lowercase module name.
+        public var qualifier: String?
         /// Whether the use is inside a pattern, `case .ready:`, where an enum case is matched, not constructed.
         public var isPattern: Bool
 
@@ -29,6 +34,7 @@ public struct NameSites: Equatable {
             receiver: String? = nil,
             isMember: Bool = false,
             isMemberAccess: Bool = false,
+            qualifier: String? = nil,
             isPattern: Bool = false
         ) {
             self.labels = labels
@@ -36,6 +42,7 @@ public struct NameSites: Equatable {
             self.receiver = receiver
             self.isMember = isMember
             self.isMemberAccess = isMemberAccess
+            self.qualifier = qualifier
             self.isPattern = isPattern
         }
     }

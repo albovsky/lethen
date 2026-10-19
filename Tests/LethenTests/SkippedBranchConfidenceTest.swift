@@ -124,18 +124,49 @@ final class SkippedBranchConfidenceTest: XCTestCase {
         // Control: the member the clause really spells keeps the hint.
         XCTAssertEqual(assess(graph, module: "A", kind: .varInstance, name: "logger").confidence, .likely)
 
-        // A module can qualify one of its own file-scope declarations: `App.logger` names the global.
+        // A module can qualify one of its own file-scope declarations: `A.logger` names the global.
         let qualified = "#if !DEBUG at Storage.swift:1"
         evidence.addSkippedBranchNames(
             NameSites(
                 names: ["logger": qualified],
                 memberNames: ["logger": qualified],
-                spellings: ["logger": [.init(receiver: "A", isMember: true, isMemberAccess: true): qualified]]
+                spellings: ["logger": [.init(receiver: "A", isMember: true, isMemberAccess: true, qualifier: "A"): qualified]]
             ),
             modules: ["A"],
             file: FilePath("/tmp/A.swift")
         )
         XCTAssertEqual(assess(graph, module: "A", kind: .varGlobal, name: "logger").confidence, .likely)
+    }
+
+    /// A module whose name is lowercase qualifies its own declarations the same way, although `app` in
+    /// `app.logger` is not a type name and so is not the spelling's receiver.
+    func testALowercaseModuleNameQualifiesItsOwnFileScopeDeclarations() {
+        let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
+        let site = "#if !DEBUG at Storage.swift:9"
+        evidence.addSkippedBranchNames(
+            NameSites(
+                names: ["logger": site],
+                memberNames: ["logger": site],
+                spellings: ["logger": [.init(isMember: true, isMemberAccess: true, qualifier: "app"): site]]
+            ),
+            modules: ["app"],
+            file: FilePath("/tmp/app.swift")
+        )
+
+        XCTAssertEqual(assess(graph, module: "app", kind: .varGlobal, name: "logger").confidence, .likely)
+
+        // A lowercase qualifier that is not the module is a value, and `store.tick` is its member.
+        evidence.addSkippedBranchNames(
+            NameSites(
+                names: ["tick": site],
+                memberNames: ["tick": site],
+                spellings: ["tick": [.init(isMember: true, isMemberAccess: true, qualifier: "store"): site]]
+            ),
+            modules: ["app"],
+            file: FilePath("/tmp/app.swift")
+        )
+        XCTAssertEqual(assess(graph, module: "app", kind: .varGlobal, name: "tick").confidence, .certain)
+        XCTAssertEqual(assess(graph, module: "app", kind: .varInstance, name: "tick").confidence, .likely)
     }
 
     /// A bare identifier is how a global is named, and the control for both rules above: the evidence of the

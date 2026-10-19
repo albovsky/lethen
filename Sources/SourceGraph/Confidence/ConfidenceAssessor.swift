@@ -84,11 +84,12 @@ public final class ConfidenceAssessor {
         if Self.memberKinds.contains(declaration.kind), !spelling.isMember { return false }
 
         // A declaration no type declares is reached by its bare name, or qualified by its module
-        // (`App.logger`). `self.logger`, `store.logger` or `Store.Logger` names a member or a nested type of
-        // something else, whatever the name: a global is not visible through a value, and no value has one.
+        // (`App.logger`, and `app.logger` for a module whose name is lowercase). `self.logger`,
+        // `store.logger` or `Store.Logger` names a member or a nested type of something else, whatever the
+        // name: a global is not visible through a value, and no value has one.
         if Self.fileScopeKinds.contains(declaration.kind), spelling.isMemberAccess,
            enclosingTypeName(of: declaration) == nil,
-           !(spelling.receiver.map { modules.contains($0) } ?? false)
+           !(spelling.qualifier.map { modules.contains($0) } ?? false)
         {
             return false
         }

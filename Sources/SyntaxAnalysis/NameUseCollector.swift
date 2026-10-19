@@ -69,17 +69,18 @@ public struct NameUseCollector {
         labels: [String]? = nil,
         hasTrailingClosure: Bool = false,
         receiver: String? = nil,
-        isMemberAccess: Bool = false
+        isMemberAccess: Bool = false,
+        qualifier: String? = nil
     ) {
         if spellingOnly {
             spellings[name, default: []].insert(
-                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, isPattern: inPattern)
+                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, qualifier: qualifier, isPattern: inPattern)
             )
             return
         }
         if !forFileReaderOnly {
             spellings[name, default: []].insert(
-                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, isPattern: inPattern)
+                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, qualifier: qualifier, isPattern: inPattern)
             )
             uses[name] = (uses[name] ?? false) || isMember
             if isConstruction { constructionUses.insert(name) }
@@ -138,14 +139,15 @@ public struct NameUseCollector {
             // A call spells labels, so does a reference such as `show(title:)`; a bare name spells none.
             let labels = call.map { Self.labels(of: $0) } ?? reference.argumentNames?.arguments.map(\.name.text)
             let access = reference.parent?.as(MemberAccessExprSyntax.self)
-            let receiver = access.flatMap { $0.declName.id == reference.id ? receiverName(of: $0) : nil }
+            let qualifier = access.flatMap { $0.declName.id == reference.id ? qualifierName(of: $0) : nil }
+            let receiver = qualifier.flatMap { $0.first?.isUppercase == true ? $0 : nil }
             // `store.value` and `Store.value` reach the name through something; `value` and `value()` do not.
             let isMemberAccess = access?.declName.id == reference.id
                 || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
             record(
                 name, isMember: isMember, isConstruction: isMember && !inPattern, at: node, inPattern: inPattern,
                 labels: labels, hasTrailingClosure: call.map { $0.trailingClosure != nil } ?? false, receiver: receiver,
-                isMemberAccess: isMemberAccess
+                isMemberAccess: isMemberAccess, qualifier: qualifier
             )
             // `Widget(...)` calls an initializer of `Widget`, which the index records under `init`; a type name
             // starts with a capital letter, a function does not. The use is also recorded as `Widget.init`, so
@@ -181,9 +183,13 @@ public struct NameUseCollector {
         } else if let type = node.as(MemberTypeSyntax.self) {
             let name = type.name.identifier?.name ?? type.name.text
             // `Outer.Inner` reaches the type through `Outer`, which `Module.Widget` spells as the module.
-            let base = type.baseType.as(IdentifierTypeSyntax.self).map { $0.name.identifier?.name ?? $0.name.text }
-            let receiver = base.flatMap { $0.first?.isUppercase == true && $0 != "Self" && !placeholderTypeNames.contains($0) ? $0 : nil }
-            record(name, isMember: true, isConstruction: !inPattern, at: node, receiver: receiver, isMemberAccess: true)
+            let base = type.baseType.as(IdentifierTypeSyntax.self)?.name.identifier?.name
+            let qualifier = base.flatMap { placeholderTypeNames.contains($0) ? nil : $0 }
+            let receiver = qualifier.flatMap { $0.first?.isUppercase == true ? $0 : nil }
+            record(
+                name, isMember: true, isConstruction: !inPattern, at: node,
+                receiver: receiver, isMemberAccess: true, qualifier: qualifier
+            )
         } else if let call = node.as(FunctionCallExprSyntax.self), Self.isCallableValueCall(call) {
             // `Handler()()` or `handler(1)` can run a `callAsFunction`, which the call never spells; like `init`
             // and `subscript`, only a file that names the type can match it.
@@ -221,13 +227,14 @@ public struct NameUseCollector {
         call.arguments.map { $0.label?.text ?? "_" } + call.additionalTrailingClosures.map(\.label.text)
     }
 
-    /// The type a member access is spelled through: `Store` in `Store.shared`. Anything else, `self.shared`,
-    /// `store.shared`, `Outer.Inner.shared`, or a name that stands for a type chosen elsewhere, names none.
-    private func receiverName(of access: MemberAccessExprSyntax) -> String? {
-        guard let base = access.base?.as(DeclReferenceExprSyntax.self), base.argumentNames == nil else { return nil }
-
-        let name = base.baseName.identifier?.name ?? base.baseName.text
-        guard name.first?.isUppercase == true, name != "Self", !placeholderTypeNames.contains(name) else { return nil }
+    /// The identifier a member access is spelled through, whatever its case: `Store` in `Store.shared`,
+    /// `store` in `store.shared`, `app` in `app.logger`. Anything else, `self.shared`, `Self.shared`,
+    /// `Outer.Inner.shared`, or a name that stands for a type chosen elsewhere, names none. An uppercase one
+    /// is the `receiver`, the type a member is reached through; a lowercase one can still be a module.
+    private func qualifierName(of access: MemberAccessExprSyntax) -> String? {
+        guard let base = access.base?.as(DeclReferenceExprSyntax.self), base.argumentNames == nil,
+              let name = base.baseName.identifier?.name, !placeholderTypeNames.contains(name)
+        else { return nil }
 
         return name
     }
