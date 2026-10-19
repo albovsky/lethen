@@ -17,7 +17,10 @@ final class SkippedBranchAnalysisTest: XCTestCase {
         try SkippedBranchAnalysis(configuration: Configuration()).apply(to: file)
 
         let skipped = evidence.snapshot().skippedBranches
-        XCTAssertEqual(skipped["B"]?.names["Shared"], "#if os(Windows) at T.swift:1")
-        XCTAssertNil(skipped["A"]?.names["Shared"])
+        XCTAssertEqual(skipped["B"]?.all.names["Shared"], "#if os(Windows) at T.swift:1")
+        XCTAssertNil(skipped["A"]?.all.names["Shared"])
+        // The clause is recorded under the file that holds it, which is what a `private` declaration is
+        // matched against.
+        XCTAssertEqual(skipped["B"]?.byFile[.init("/t/T.swift")]?.names["Shared"], "#if os(Windows) at T.swift:1")
     }
 }

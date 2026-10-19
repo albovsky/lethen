@@ -2129,6 +2129,7 @@
 ["Wikipedia/Code/SchemeHandler/SchemeHandler.swift", 7, 10, "enumelement", "createHTTPURLResponseFailure", ["unused"], ["s:9Wikipedia18SchemeHandlerErrorO28createHTTPURLResponseFailureyA2CmF"], "certain"],
 ["Wikipedia/Code/SchemeHandler/SchemeHandler.swift", 8, 10, "enumelement", "unexpectedResponse", ["unused"], ["s:9Wikipedia18SchemeHandlerErrorO18unexpectedResponseyA2CmF"], "certain"],
 ["Wikipedia/Code/ScribbleIgnoringInteractionDelegate.swift", 4, 13, "class", "ScribbleIgnoringInteractionDelegate", ["unused"], ["c:@M@Wikipedia@objc(cs)ScribbleIgnoringInteractionDelegate"], "certain"],
+["Wikipedia/Code/ScrollableEducationPanelViewController.swift", 114, 29, "var.instance", "showOptionalButton", ["redundantPublicAccessibility"], ["s:9Wikipedia38ScrollableEducationPanelViewControllerC18showOptionalButtonSbvp"], "certain"],
 ["Wikipedia/Code/ScrollableEducationPanelViewController.swift", 131, 9, "var.instance", "image", ["unused"], ["s:9Wikipedia38ScrollableEducationPanelViewControllerC5imageSo7UIImageCSgvp"], "certain"],
 ["Wikipedia/Code/ScrollableEducationPanelViewController.swift", 141, 9, "var.instance", "heading", ["unused"], ["s:9Wikipedia38ScrollableEducationPanelViewControllerC7headingSSSgvp"], "certain"],
 ["Wikipedia/Code/ScrollableEducationPanelViewController.swift", 151, 9, "var.instance", "subheading", ["unused"], ["s:9Wikipedia38ScrollableEducationPanelViewControllerC10subheadingSSSgvp"], "certain"],

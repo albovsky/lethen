@@ -20,4 +20,6 @@ class PropertyVisitorTestFixture {
     let (implicitDestructuringPropertyA, implicitDestructuringPropertyB) = (CustomType(), "1")
     let multipleBindingPropertyA: Int = 1, multipleBindingPropertyB: String = ""
     var simpleTypeWithComment: Bool = true // comment
+    private(set) var setPrivateProperty = 0
+    public private(set) var publicSetPrivateProperty = 0
 }

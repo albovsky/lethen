@@ -309,7 +309,13 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
         at position: AbsolutePosition
     ) {
         let modifierNames = modifiers?.map(\.name.text) ?? []
-        let accessibility = modifierNames.mapFirst { Accessibility(rawValue: $0) }
+        // `private(set)` restricts only the setter, so it is not the declaration's own access level:
+        // `private(set) var count` is readable wherever an unannotated one is. Only a modifier without a
+        // detail gives the access level, whichever order the two are written in.
+        let accessibility = modifiers?.lazy
+            .filter { $0.detail == nil }
+            .compactMap { Accessibility(rawValue: $0.name.text) }
+            .first
 
         var parsedAttributes: Set<DeclarationAttribute> = []
 

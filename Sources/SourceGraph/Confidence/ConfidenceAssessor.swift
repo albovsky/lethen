@@ -21,19 +21,29 @@ public final class ConfidenceAssessor {
 
     /// The skipped clause, in a module the declaration belongs to, that uses its name. A member or
     /// enum case is matched only by a use spelled as a member access or a call, so a bare identifier such as
-    /// a local named `count` does not count.
+    /// a local named `count` does not count, and a file-scope declaration only by a use that is not a member
+    /// access, since nothing reaches a global, a free function or a top-level type through a value or a type.
+    /// A `private` or `fileprivate` declaration is matched only by a clause of its own file, the only file
+    /// that can see it.
     private func skippedBranchSite(of declaration: Declaration) -> String? {
         let baseName = SourceGraph.baseName(of: declaration.name)
         let modules = declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
+        let isVisibleElsewhere = isVisibleOutsideItsFile(declaration)
+        let file = declaration.location.file.path.lexicallyNormalized()
         return modules.compactMap { module -> String? in
-            guard let sites = evidence.skippedBranches[module] else { return nil }
+            guard let branches = evidence.skippedBranches[module] else { return nil }
 
-            if Self.spellingMatchedKinds.contains(declaration.kind), let spelled = sites.spellings[baseName] {
-                return spelled.filter { canBeUse(of: declaration, spelledAs: $0.key) }.values.min()
+            let pool: NameSites? = isVisibleElsewhere ? branches.all : branches.byFile[file]
+            guard let sites = pool else { return nil }
+
+            if Self.spellingMatchedKinds.contains(declaration.kind) || Self.fileScopeKinds.contains(declaration.kind),
+               let spelled = sites.spellings[baseName]
+            {
+                return spelled.filter { canBeUse(of: declaration, spelledAs: $0.key, inModules: modules) }.values.min()
             }
             // An enum case is reached through its type like any member, but only a construction is a use of it.
             if declaration.kind == .enumelement, let spelled = sites.spellings[baseName] {
-                return spelled.filter { !$0.key.isPattern && canBeUse(of: declaration, spelledAs: $0.key) }.values.min()
+                return spelled.filter { !$0.key.isPattern && canBeUse(of: declaration, spelledAs: $0.key, inModules: modules) }.values.min()
             }
             let names = if declaration.kind == .enumelement {
                 sites.constructionNames
@@ -57,13 +67,32 @@ public final class ConfidenceAssessor {
         .functionFree, .functionMethodClass, .functionMethodInstance, .functionMethodStatic, .functionConstructor,
     ]
 
+    /// Kinds that can be declared at file scope, where no member access reaches them: a global, a free
+    /// function, a type, a type alias and an operator. One of these that a type does declare, a nested type,
+    /// is reached through that type like any member, which is why the rule asks for the enclosing type too.
+    private static let fileScopeKinds: Set<Declaration.Kind> = [
+        .class, .struct, .enum, .protocol, .typealias, .functionFree, .varGlobal,
+        .functionOperator, .functionOperatorInfix, .functionOperatorPrefix, .functionOperatorPostfix,
+    ]
+
     /// Whether a skipped use of the declaration's name, spelled this way, can be a use of this declaration. A
     /// member needs a member access or a call, as for any name. A function is matched by its labels, so that
     /// `show(title:)` does not name `show(message:)`, and a member reached through a type by that type, so that
     /// `String.init(data:)` does not name another type's initializer. Neither says anything about a use that
     /// spells no labels or no type: `#selector(show)` can be any `show`, and `self.show()` names no type.
-    private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling) -> Bool {
+    private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling, inModules modules: Set<String>) -> Bool {
         if Self.memberKinds.contains(declaration.kind), !spelling.isMember { return false }
+
+        // A declaration no type declares is reached by its bare name, or qualified by its module
+        // (`App.logger`, and `app.logger` for a module whose name is lowercase). `self.logger`,
+        // `store.logger` or `Store.Logger` names a member or a nested type of something else, whatever the
+        // name: a global is not visible through a value, and no value has one.
+        if Self.fileScopeKinds.contains(declaration.kind), spelling.isMemberAccess,
+           enclosingTypeName(of: declaration) == nil,
+           !(spelling.qualifier.map { modules.contains($0) } ?? false)
+        {
+            return false
+        }
 
         if Self.functionKinds.contains(declaration.kind), let labels = spelling.labels,
            !Self.labels(labels, hasTrailingClosure: spelling.hasTrailingClosure, fit: Self.parameterLabels(of: declaration))
