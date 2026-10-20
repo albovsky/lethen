@@ -2556,6 +2556,26 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeIgnoresAsyncAndMutatingOverloads() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass152AsyncSub")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaAsyncOverload"))
+            }
+            assertReferenced(.class("FixtureClass152SyncSub")) {
+                self.assertAssignOnlyProperty(.varInstance("viaSyncWitness"))
+            }
+            assertReferenced(.struct("FixtureStruct152Mutating")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaMutatingOverload"))
+            }
+            assertReferenced(.struct("FixtureStruct152Async")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaAsyncExtension"))
+            }
+            assertReferenced(.struct("FixtureStruct152NotEncoded")) {
+                self.assertAssignOnlyProperty(.varInstance("neverEncoded"))
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeReadsThroughStoredProperty() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass226Stored")) {
