@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- The guide has a section, [code used outside Swift](docs/guide.md#code-used-outside-swift), on what Lethen does not see (build and verification scripts that read source text, string-based lookups it does not model, resource names and external tooling) and how to record such a use with `// periphery:ignore - reason`, `--retain-files` or `--retain-assign-only-property-types`, linked from the unused-declaration and assign-only sections ([#204](https://github.com/albovsky/lethen/issues/204)).
 
 ##### Bug Fixes
 
