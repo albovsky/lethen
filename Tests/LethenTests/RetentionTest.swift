@@ -2798,6 +2798,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 ("FixtureStruct278SwitchBody", "switchBodyDecoded"),
                 ("FixtureStruct278IfInitializer", "ifInitializerDecoded"),
                 ("FixtureStruct278Bound", "boundByIfDecoded"),
+                ("FixtureStruct278Item", "itemDecoded"),
             ] {
                 assertReferenced(.struct(type)) {
                     self.assertNotAssignOnlyProperty(.varInstance(property))

@@ -210,7 +210,7 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         return owner
     }
 
-    /// The type names that only qualify another, `Outer` in `Outer.Model` or `Outer<T>.Model`.
+    /// The type names that only qualify another, `Outer` in `Outer.Model`.
     private func qualifierLocations(in type: TypeSyntax) -> Set<Location> {
         let collector = QualifierCollector(viewMode: .sourceAccurate)
         collector.walk(type)
@@ -517,12 +517,26 @@ private final class TypeNameCollector: SyntaxVisitor {
     }
 }
 
+/// The qualifiers of the member types in a type. A qualifier with generic arguments, `Outer<Item>` in
+/// `Outer<Item>.Model`, is left out: its reference carries the substitutions the nested type may store.
 private final class QualifierCollector: SyntaxVisitor {
     var qualifiers: [TypeSyntax] = []
 
     override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
-        qualifiers.append(node.baseType)
+        if !Self.hasGenericArguments(node.baseType) {
+            qualifiers.append(node.baseType)
+        }
         return .visitChildren
+    }
+
+    private static func hasGenericArguments(_ type: TypeSyntax) -> Bool {
+        if let identifier = type.as(IdentifierTypeSyntax.self) {
+            return identifier.genericArgumentClause != nil
+        }
+        if let member = type.as(MemberTypeSyntax.self) {
+            return member.genericArgumentClause != nil || hasGenericArguments(member.baseType)
+        }
+        return true
     }
 }
 

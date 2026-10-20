@@ -30,6 +30,19 @@ struct FixtureStruct278Outer: Decodable {
     }
 }
 
+// A generic qualifier keeps its arguments: the nested type stores the outer type's parameter.
+struct FixtureGeneric278Outer<T: Decodable>: Decodable {
+    let outerValue: T
+
+    struct Model: Decodable {
+        let modelValue: T
+    }
+}
+
+struct FixtureStruct278Item: Decodable {
+    let itemDecoded: Int
+}
+
 public class FixtureClass278Retainer {
     public func retain(_ flag: Bool, _ number: Int) throws {
         _ = try ifBody(flag)
@@ -40,6 +53,8 @@ public class FixtureClass278Retainer {
         let qualified: FixtureStruct278Outer.Model = try load(path: "qualified")
         _ = qualified
         _ = FixtureStruct278Outer(outerNotDecoded: 1)
+        let generic: FixtureGeneric278Outer<FixtureStruct278Item>.Model = try load(path: "generic")
+        _ = generic
     }
 
     func ifBody(_ flag: Bool) throws -> FixtureStruct278IfBody {
