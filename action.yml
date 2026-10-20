@@ -34,7 +34,9 @@ inputs:
     required: false
     default: ""
   strict:
-    description: Fail the step when any result is reported.
+    description: >-
+      Fail the step when any result is reported. With no `min-confidence`, only `certain`
+      results fail it; `likely` ones are still annotated, as notices.
     required: false
     default: "true"
   format:
@@ -45,8 +47,10 @@ inputs:
     default: github-actions
   min-confidence:
     description: >-
-      Report only results at or above this confidence, `certain` or `likely`. Leave empty for
-      the scan's own default. Requires a Lethen version that has `--min-confidence`.
+      Report only results at or above this confidence, `certain` or `likely`. Left empty, a
+      strict scan fails only on `certain` results and annotates `likely` ones as notices, and
+      a scan that is not strict reports everything. `likely` fails a strict scan on both.
+      Requires a Lethen version that has `--min-confidence`.
     required: false
     default: ""
 outputs:
@@ -54,7 +58,9 @@ outputs:
     description: Path of the file holding the scan's results in the chosen format.
     value: ${{ steps.scan.outputs.results-file }}
   count:
-    description: Number of results reported after the baseline and confidence filters.
+    description: >-
+      Number of results reported after the baseline and confidence filters. With strict on and
+      no `min-confidence`, the number of `certain` results.
     value: ${{ steps.scan.outputs.count }}
 runs:
   using: composite

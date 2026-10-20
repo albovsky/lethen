@@ -2,7 +2,7 @@
 
 ##### Breaking
 
-- None.
+- The GitHub Action fails a strict scan only on `certain` results when `min-confidence` is not set. In the `github-actions` format `likely` results are still annotated, as notices, and the step's log says how many there were, but they no longer fail the step or count in the `count` output; other formats run the scan with `--min-confidence certain`. Set `min-confidence: likely` to keep the previous behavior. The precision corpus at 2026.10.1 found no false positive among 81 sampled `certain` results but only 2 true positives among 9 sampled `likely` ones, so a new install's first failed check was most likely a false positive. `likely` notices from a `working-directory` below the repository root now point at the right file, as warnings already did ([#190](https://github.com/albovsky/lethen/issues/190)).
 
 ##### Enhancements
 
