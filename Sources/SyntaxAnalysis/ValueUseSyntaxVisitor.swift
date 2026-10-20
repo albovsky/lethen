@@ -122,17 +122,25 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             recordSpecializations(in: type)
             // The arguments of a specialization are recorded apart: whether they are decoded depends on how the
             // specialized type stores them.
-            resultTypes[callee, default: []].formUnion(tokens(in: type).subtracting(specializationArgumentLocations))
+            // A qualified type, `Outer.Model`, is the result only by its last component.
+            resultTypes[callee, default: []].formUnion(
+                tokens(in: type).subtracting(specializationArgumentLocations).subtracting(qualifierLocations(in: type))
+            )
         }
         return .visitChildren
     }
 
     /// The type the context gives a call's result, which fixes a generic result: the annotation of the binding the call
     /// initializes, the type of a plain `as`, or the return type of the function or getter that returns it, by
-    /// `return` or as its only statement. `try`, `await` and parentheses pass it through. Other positions, such as assignment to an
-    /// existing property or a closure body, are not modeled.
+    /// `return` or as its only statement. `try`, `await` and parentheses pass it through, and so does an `if` or `switch`
+    /// expression whose branch the call is. Other positions, such as assignment to an existing property or a closure body,
+    /// are not modeled.
     private static func contextualType(of call: FunctionCallExprSyntax) -> TypeSyntax? {
-        var expression = Syntax(call)
+        contextualType(ofValue: Syntax(call))
+    }
+
+    private static func contextualType(ofValue value: Syntax) -> TypeSyntax? {
+        var expression = value
         while let parent = expression.parent {
             if parent.is(TryExprSyntax.self) || parent.is(AwaitExprSyntax.self) {
                 expression = parent
@@ -167,6 +175,11 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let item = parent.as(CodeBlockItemSyntax.self), let list = item.parent?.as(CodeBlockItemListSyntax.self), list.count == 1,
            let body = list.parent
         {
+            // The only statement of a branch is the value of the `if` or `switch` expression, which takes the type of
+            // its own context.
+            if let branching = branchingExpression(owning: body) {
+                return contextualType(ofValue: branching)
+            }
             // A single expression is the implicit return only of a function body, an accessor body, or the getter of a
             // computed property. A nested block (`if`, `do`, a loop, a switch case) or a closure is not.
             let isDeclarationBody = body.is(AccessorBlockSyntax.self)
@@ -175,6 +188,36 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return isDeclarationBody ? returnType(enclosing: body) : nil
         }
         return nil
+    }
+
+    /// The `if` or `switch` expression `body` is a branch of, followed out through `else if`, and through the statement
+    /// that holds it when it stands alone; nil when `body` is no such branch.
+    private static func branchingExpression(owning body: Syntax) -> Syntax? {
+        var owner: Syntax
+        if let block = body.as(CodeBlockSyntax.self), let ifExpression = block.parent?.as(IfExprSyntax.self) {
+            owner = Syntax(ifExpression)
+        } else if let switchCase = body.as(SwitchCaseSyntax.self), let switchExpression = switchCase.parent?.parent?.as(SwitchExprSyntax.self) {
+            owner = Syntax(switchExpression)
+        } else {
+            return nil
+        }
+        while let outer = owner.parent?.as(IfExprSyntax.self) {
+            owner = Syntax(outer)
+        }
+        if let statement = owner.parent?.as(ExpressionStmtSyntax.self) {
+            owner = Syntax(statement)
+        }
+        return owner
+    }
+
+    /// The type names that only qualify another, `Outer` in `Outer.Model`.
+    private func qualifierLocations(in type: TypeSyntax) -> Set<Location> {
+        let collector = QualifierCollector(viewMode: .sourceAccurate)
+        collector.walk(type)
+        let inspector = TypeSyntaxInspector(sourceLocationBuilder: locations)
+        return collector.qualifiers.reduce(into: []) { result, qualifier in
+            result.formUnion(inspector.types(for: qualifier).map { locations.location(at: $0.positionAfterSkippingLeadingTrivia) })
+        }
     }
 
     /// The declared type of the nearest function, or of the property whose getter the node is in.
@@ -471,6 +514,29 @@ private final class TypeNameCollector: SyntaxVisitor {
             names.insert(node.name.text)
         }
         return .skipChildren
+    }
+}
+
+/// The qualifiers of the member types in a type. A qualifier with generic arguments, `Outer<Item>` in
+/// `Outer<Item>.Model`, is left out: its reference carries the substitutions the nested type may store.
+private final class QualifierCollector: SyntaxVisitor {
+    var qualifiers: [TypeSyntax] = []
+
+    override func visit(_ node: MemberTypeSyntax) -> SyntaxVisitorContinueKind {
+        if !Self.hasGenericArguments(node.baseType) {
+            qualifiers.append(node.baseType)
+        }
+        return .visitChildren
+    }
+
+    private static func hasGenericArguments(_ type: TypeSyntax) -> Bool {
+        if let identifier = type.as(IdentifierTypeSyntax.self) {
+            return identifier.genericArgumentClause != nil
+        }
+        if let member = type.as(MemberTypeSyntax.self) {
+            return member.genericArgumentClause != nil || hasGenericArguments(member.baseType)
+        }
+        return true
     }
 }
 
