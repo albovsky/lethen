@@ -99,7 +99,9 @@ public final class ConfidenceAssessor {
         {
             return false
         }
-        if declaration.kind != .functionFree, let receiver = spelling.receiver {
+        if declaration.kind != .functionFree, let receiver = spelling.receiver,
+           !mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType)
+        {
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
                 return !isDistinct(receiver: receiver, from: enclosing)
             }
@@ -108,6 +110,17 @@ public final class ConfidenceAssessor {
             }
         }
         return true
+    }
+
+    /// Whether a type name spelled inside an extension may be a generic parameter or associated type of the extended
+    /// type, which the extension uses without declaring it and which stands for any type: `Element` in `extension
+    /// Array where Element: Buildable`. Only when the scan declares neither the extended type, whose own generic
+    /// parameters and associated types it would declare, nor a type of that name. Such a name can also be an
+    /// unscanned type, `String`, which then no longer narrows the use.
+    private func mayBeInheritedPlaceholder(_ receiver: String, inExtensionOf extended: String?) -> Bool {
+        guard let extended, receiver != extended else { return false }
+
+        return typeDeclarationsByName[extended, default: []].isEmpty && typeDeclarationsByName[receiver, default: []].isEmpty
     }
 
     /// The name of the concrete type, `UIColor` or `String`, that a declaration of an extension adds a member
