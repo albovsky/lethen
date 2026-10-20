@@ -113,7 +113,27 @@ final class ScanCommandPipelineTest: XCTestCase {
         \(file):1:1: warning: Unused class 'Bar'
 
         """)
-        XCTAssertEqual(standardError, "3 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.\n")
+        XCTAssertEqual(standardError, """
+        Likely unused, check by hand:
+        3 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.
+
+        """)
+    }
+
+    func testQuietXcodeFormatPrintsNoHeaderButKeepsTheGroupOrder() throws {
+        try makePackage()
+        StubScan.results = [result("Bar", line: 1, confidence: .likely), result("Foo", line: 2)]
+        var standardOutput = ""
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            standardOutput = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--disable-update-check", "--quiet"])
+            }
+        }
+
+        let file = projectRoot.appending("Sources/A.swift").string
+        XCTAssertEqual(standardOutput, "\(file):2:1: warning: Unused class 'Foo'\n\(file):1:1: warning: Unused class 'Bar'\n")
+        XCTAssertEqual(standardError, "")
     }
 
     func testFooterFoldsInResultsHiddenByMinimumConfidence() throws {
