@@ -408,11 +408,15 @@ public struct ParameterTypeNames {
     public let isVariadic: Bool
     /// The parameter type as written.
     public let typeName: String
+    /// The constraints of a generic parameter the parameter is typed by, bare or optional: `Encodable` for
+    /// `value: T` in `func emit<T: Encodable>(value: T)`.
+    public let genericConstraintNames: Set<String>
 
-    public init(label: String?, names: Set<String>, isVariadic: Bool = false, typeName: String = "") {
+    public init(label: String?, names: Set<String>, isVariadic: Bool = false, typeName: String = "", genericConstraintNames: Set<String> = []) {
         self.label = label
         self.names = names
         self.isVariadic = isVariadic
         self.typeName = typeName
+        self.genericConstraintNames = genericConstraintNames
     }
 }

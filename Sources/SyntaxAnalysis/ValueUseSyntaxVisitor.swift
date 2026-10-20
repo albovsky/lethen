@@ -5,7 +5,9 @@ import SwiftSyntax
 /// Local variables are absent from the index, so resolve their lexical bindings here.
 public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var arguments: [Location: Set<Location>] = [:]
-    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>)]] = [:]
+    /// Keyed by a call's callee location: each argument's label, origins, and, for an element such as `values[0]`, the
+    /// origins of its collection, which only the opaque encoding check reads.
+    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>, elementOrigins: Set<Location>)]] = [:]
     public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
     /// Keyed by a function's name location: see `Declaration.returnTypeNames`.
     public private(set) var returnTypeNames: [Location: Set<String>] = [:]
@@ -116,7 +118,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         let callee = calleeLocation(node.calledExpression)
         arguments[callee, default: []].formUnion(values)
         resolvesMetatypes = true
-        argumentLists[callee] = node.arguments.map { (label: $0.label?.text, origins: origins(of: $0.expression)) }
+        argumentLists[callee] = node.arguments.map {
+            (label: $0.label?.text, origins: origins(of: $0.expression), elementOrigins: elementOrigins(of: $0.expression))
+        }
         resolvesMetatypes = false
         if let type = Self.contextualType(of: node) {
             recordSpecializations(in: type)
@@ -267,6 +271,26 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         return []
     }
 
+    /// The origins of the collection an element such as `values[0]`, `values[0]!` or `try values[key]` is read from;
+    /// none for any other expression.
+    private func elementOrigins(of expression: ExprSyntax) -> Set<Location> {
+        var current = expression
+        while true {
+            if let forced = current.as(ForceUnwrapExprSyntax.self) {
+                current = forced.expression
+            } else if let optional = current.as(OptionalChainingExprSyntax.self) {
+                current = optional.expression
+            } else if let tried = current.as(TryExprSyntax.self) {
+                current = tried.expression
+            } else if let awaited = current.as(AwaitExprSyntax.self) {
+                current = awaited.expression
+            } else {
+                break
+            }
+        }
+        return current.as(SubscriptCallExprSyntax.self).map { origins(of: $0.calledExpression) } ?? []
+    }
+
     /// A shorthand getter, or an accessor list with a getter, setter, `_read` or `_modify`; `willSet` and `didSet`
     /// observe a stored property.
     private static func isComputed(_ block: AccessorBlockSyntax) -> Bool {
@@ -369,7 +393,18 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             signature.parameterClause.parameters.map { parameter in
                 let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
                 let names = Self.decodedMetatypeNames(of: parameter.type, constraints: constraints)
-                return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil, typeName: parameter.type.trimmedDescription)
+                var valueType = parameter.type
+                while let optional = valueType.as(OptionalTypeSyntax.self) {
+                    valueType = optional.wrappedType
+                }
+                let generic = valueType.as(IdentifierTypeSyntax.self).flatMap { constraints[$0.name.text] } ?? []
+                return ParameterTypeNames(
+                    label: label,
+                    names: names,
+                    isVariadic: parameter.ellipsis != nil,
+                    typeName: parameter.type.trimmedDescription,
+                    genericConstraintNames: generic
+                )
             }
     }
 

@@ -120,10 +120,14 @@ public struct ValueArgument {
     /// True when the argument names a value, such as a local bound by `if let`, that the index has no declaration for,
     /// so nothing is known about its type. A literal or an argument that resolves to declarations is not unresolved.
     public let isUnresolved: Bool
+    /// For an element such as `values[0]`, what its collection resolves to. Only the opaque encoding check reads it:
+    /// the collection's type names its element's type only roughly, so no read is modeled from it.
+    public let elementReferences: Set<Reference>
 
-    public init(label: String?, references: Set<Reference>, isUnresolved: Bool = false) {
+    public init(label: String?, references: Set<Reference>, isUnresolved: Bool = false, elementReferences: Set<Reference> = []) {
         self.label = label
         self.references = references
         self.isUnresolved = isUnresolved
+        self.elementReferences = elementReferences
     }
 }
