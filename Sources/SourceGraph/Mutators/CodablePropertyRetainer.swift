@@ -353,7 +353,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     private func matchedArguments(of use: Reference, callee: Declaration, names: Set<String>, matchingTypeNames: Bool = false) -> [ValueArgument]? {
         let parameters = callee.parameterTypeNames
         let accepts: (ParameterTypeNames) -> Bool = { [self] parameter in
-            !parameter.names.isDisjoint(with: names) || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName)))
+            !parameter.names.isDisjoint(with: names)
+                || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName).union(parameter.genericConstraintNames)))
         }
         var matched: [ValueArgument] = []
         var index = 0

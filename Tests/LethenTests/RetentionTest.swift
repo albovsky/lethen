@@ -2892,6 +2892,44 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialConstrainedGenericParameter() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct176Generic")) {
+                self.assertAssignOnlyProperty(.varInstance("genericValue"))
+                self.assertConfidence(.varInstance("genericValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialConstrainedGenericOtherParameter() throws {
+        try analyze(retainPublic: true) {
+            // Control: the constrained parameter receives a literal, and the unresolved value goes elsewhere.
+            assertReferenced(.struct("FixtureStruct177Skipped")) {
+                self.assertAssignOnlyProperty(.varInstance("skippedGenericValue"))
+                self.assertConfidence(.varInstance("skippedGenericValue"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialSubscript() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct178Element")) {
+                self.assertAssignOnlyProperty(.varInstance("elementValue"))
+                self.assertConfidence(.varInstance("elementValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeConcreteSubscript() throws {
+        try analyze(retainPublic: true) {
+            // Control: an element of an array of integers is no opaque value.
+            assertReferenced(.struct("FixtureStruct179Element")) {
+                self.assertAssignOnlyProperty(.varInstance("unencodedElementValue"))
+                self.assertConfidence(.varInstance("unencodedElementValue"), .certain)
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeExistentialComposition() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct322Composed")) {

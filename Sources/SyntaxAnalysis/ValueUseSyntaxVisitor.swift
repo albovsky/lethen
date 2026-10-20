@@ -21,8 +21,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
     private var scopes: [[String: Set<Location>]] = [[:]]
-    /// Whether `Type.self` resolves to the type's own reference. Only the per-argument lists want that; the unioned
-    /// value uses that equality and encoding rules read treat a metatype as no value.
+    /// Whether `Type.self` resolves to the type's own reference, and an element `values[0]` to its collection. Only the
+    /// per-argument lists want that; the unioned value uses that equality and encoding rules read treat a metatype,
+    /// and a subscript, as no value.
     private var resolvesMetatypes = false
 
     public init(locations: SourceLocationBuilder) {
@@ -243,6 +244,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             // Passing value.field passes the field, not the containing value.
             return [locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)]
         }
+        // An element, `values[0]`, comes from the collection; only the per-argument lists follow it.
+        if let subscripted = expression.as(SubscriptCallExprSyntax.self) {
+            return resolvesMetatypes ? origins(of: subscripted.calledExpression) : []
+        }
         if let array = expression.as(ArrayExprSyntax.self) {
             return array.elements.reduce(into: []) { $0.formUnion(origins(of: $1.expression)) }
         }
@@ -369,7 +374,18 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             signature.parameterClause.parameters.map { parameter in
                 let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
                 let names = Self.decodedMetatypeNames(of: parameter.type, constraints: constraints)
-                return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil, typeName: parameter.type.trimmedDescription)
+                var valueType = parameter.type
+                while let optional = valueType.as(OptionalTypeSyntax.self) {
+                    valueType = optional.wrappedType
+                }
+                let generic = valueType.as(IdentifierTypeSyntax.self).flatMap { constraints[$0.name.text] } ?? []
+                return ParameterTypeNames(
+                    label: label,
+                    names: names,
+                    isVariadic: parameter.ellipsis != nil,
+                    typeName: parameter.type.trimmedDescription,
+                    genericConstraintNames: generic
+                )
             }
     }
 
