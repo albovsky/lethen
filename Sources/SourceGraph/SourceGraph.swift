@@ -24,6 +24,8 @@ public final class SourceGraph {
     /// Properties something may read through a path Lethen cannot follow, each with why it is only likely that they
     /// are read. A property here that is reported is not `certain`.
     public private(set) var likelyReads: [Declaration: String] = [:]
+    /// For each of `likelyReads`, the declarations holding the code it rests on, nil standing for top-level code.
+    private var likelyReadSites: [Declaration: Set<Declaration?>] = [:]
     public private(set) var extensions: [Declaration: Set<Declaration>] = [:]
     public private(set) var commandIgnoredDeclarations: [Declaration: CommandIgnoreKind] = [:]
     public private(set) var functionsWithIgnoredParameters: Set<Declaration> = []
@@ -161,9 +163,19 @@ public final class SourceGraph {
         _ = assignOnlyProperties.insert(declaration)
     }
 
-    func markLikelyRead(_ declaration: Declaration, reason: String) {
+    func markLikelyRead(_ declaration: Declaration, reason: String, sites: Set<Declaration?>) {
         if likelyReads[declaration] == nil {
             likelyReads[declaration] = reason
+        }
+        likelyReadSites[declaration, default: []].formUnion(sites)
+    }
+
+    /// Drops the likely reads that rest only on code nothing uses, such as an encode in an unused private function,
+    /// once reachability is known.
+    func removeUnreachableLikelyReads() {
+        // Top-level code always runs.
+        for (declaration, sites) in likelyReadSites where !sites.contains(where: { $0.map(isUsed) ?? true }) {
+            likelyReads.removeValue(forKey: declaration)
         }
     }
 
@@ -232,6 +244,7 @@ public final class SourceGraph {
         assignOnlyProperties.remove(declaration)
         suppressedAssignOnlyProperties.remove(declaration)
         likelyReads.removeValue(forKey: declaration)
+        likelyReadSites.removeValue(forKey: declaration)
         // A conflicting declaration can own the USR; removing this one must not unmap it.
         for usr in declaration.usrs where allDeclarationsByUsr[usr] === declaration {
             allDeclarationsByUsr.removeValue(forKey: usr)

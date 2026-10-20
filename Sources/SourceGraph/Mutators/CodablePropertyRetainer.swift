@@ -67,7 +67,9 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             synthesizedTypes.insert(type)
         }
 
-        var hasOpaqueEncodeSite = false
+        // The declarations holding an opaque encode site, nil for top-level code. Whether they are used is known only
+        // after reachability, which drops the likely reads of sites in unused code.
+        var opaqueEncodeSites: Set<Declaration?> = []
         let encodableNames = encodableProtocolNames
         for use in graph.allReferences where use.kind == .normal && (!use.valueArgumentReferences.isEmpty || !use.valueArguments.isEmpty) {
             // A use with no parent is top-level code, which holds its reads as root references.
@@ -82,12 +84,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             }
             guard mayEncode else { continue }
 
-            hasOpaqueEncodeSite = hasOpaqueEncodeSite || isOpaqueEncodeSite(use, callee: callee, encodableNames: encodableNames)
+            if isOpaqueEncodeSite(use, callee: callee, encodableNames: encodableNames) {
+                opaqueEncodeSites.insert(caller)
+            }
             markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
         }
 
-        if hasOpaqueEncodeSite {
-            markReadsThroughEncodableExistentials(synthesizedTypes: synthesizedTypes)
+        if !opaqueEncodeSites.isEmpty {
+            markReadsThroughEncodableExistentials(synthesizedTypes: synthesizedTypes, sites: opaqueEncodeSites)
         }
     }
 
@@ -131,8 +135,9 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// it is not in the index, so which type is encoded cannot be known. When some encoder receives such a value, the
     /// synthesized encoder may read the properties of a type whose value is produced inside a declaration of an
     /// `Encodable` existential type, following constructions, accessors and enum payloads, and of the types it stores.
-    /// That is only likely, so those properties keep their reports but with `likely` confidence.
-    private func markReadsThroughEncodableExistentials(synthesizedTypes: Set<Declaration>) {
+    /// That is only likely, so those properties keep their reports but with `likely` confidence, as long as one of the
+    /// `sites` holding such an encoder is used.
+    private func markReadsThroughEncodableExistentials(synthesizedTypes: Set<Declaration>, sites: Set<Declaration?>) {
         var visited: Set<Declaration> = []
         var pending: Set<Declaration> = []
         for declaration in graph.allDeclarations where producesEncodableExistential(declaration) {
@@ -149,7 +154,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                     !$0.isGenericSpecializationArgument && ![.functionAccessorGetter, .functionAccessorSetter].contains($0.declarationKind)
                 }
                 pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: withGenericArguments(stored, classify: classifyEncode), in: graph, visited: &visited))
-                graph.markLikelyRead(property, reason: Self.existentialEncodeReason)
+                graph.markLikelyRead(property, reason: Self.existentialEncodeReason, sites: sites)
             }
         }
     }

@@ -2945,6 +2945,32 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialUnusedEncodeSite() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass333Sender")) {
+                self.assertNotReferenced(.functionMethodInstance("unusedSend(endpoint:)"))
+            }
+            // Control: the only opaque encode site is in unused code, so the property stays certain.
+            assertReferenced(.struct("FixtureStruct333Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .certain)
+                self.assertConfidenceReason(.varInstance("duration"), nil)
+                // Used-but-not-compared control: read in code, so it is not reported at all.
+                self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialAccessorEncodeSite() throws {
+        try analyze(retainPublic: true) {
+            // The site is in the getter of a used property, so it is reached.
+            assertReferenced(.struct("FixtureStruct334Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .likely)
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeTopLevel() throws {
         let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
 
