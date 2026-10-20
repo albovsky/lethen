@@ -158,21 +158,24 @@ public enum ScanResultBuilder {
         for decl in graph.functionsWithIgnoredParameters {
             let ignoredParamNames = decl.commentCommands.ignoredParameterNames
             let unusedParamNames = Set(decl.unusedParameters.compactMap(\.name))
+            let namingNothing = graph.ignoredParameterNamesNamingNothing[decl] ?? []
+            // A name that names nothing on its own copy is superfluous even when the kept copy has an unused
+            // parameter of that name.
+            let superfluousNames = ignoredParamNames.filter { !unusedParamNames.contains($0) }
+            let superfluousNamesNamingNothing = namingNothing.subtracting(superfluousNames).sorted()
 
-            for ignoredParamName in ignoredParamNames {
-                if !unusedParamNames.contains(ignoredParamName) {
-                    // The ignored parameter is actually used - create a result for it
-                    let parentUsrs = decl.usrs.sorted().joined(separator: "-")
-                    let usr = "param-\(ignoredParamName)-\(decl.name)-\(parentUsrs)"
-                    let paramDecl = Declaration(
-                        name: ignoredParamName,
-                        kind: .varParameter,
-                        usrs: [usr],
-                        location: decl.location
-                    )
-                    paramDecl.parent = decl
-                    results.append(.init(declaration: paramDecl, annotation: .superfluousIgnoreCommand))
-                }
+            for ignoredParamName in superfluousNames + superfluousNamesNamingNothing {
+                // The ignored parameter is actually used, or names nothing - create a result for it
+                let parentUsrs = decl.usrs.sorted().joined(separator: "-")
+                let usr = "param-\(ignoredParamName)-\(decl.name)-\(parentUsrs)"
+                let paramDecl = Declaration(
+                    name: ignoredParamName,
+                    kind: .varParameter,
+                    usrs: [usr],
+                    location: decl.location
+                )
+                paramDecl.parent = decl
+                results.append(.init(declaration: paramDecl, annotation: .superfluousIgnoreCommand))
             }
         }
 

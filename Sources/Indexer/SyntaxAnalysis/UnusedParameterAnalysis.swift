@@ -97,15 +97,22 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
                         case let .ignoreParameters(names):
                             // Local names differ between copies, so the command names the kept copy's parameters.
                             let parameters = winner.function.parameters
-                            // A name no parameter of the copy has stays as written, so it is still reported as superfluous.
-                            let remapped = names.map { name in
+                            var remapped: [String] = []
+                            for name in names {
                                 guard let index = copy.function.parameters.firstIndex(where: { $0.name.text == name }),
                                       parameters.indices.contains(index)
-                                else { return name }
+                                else {
+                                    // A name no parameter of the copy has is kept apart, so it is still reported as
+                                    // superfluous when the kept copy has a parameter of that name.
+                                    graph.markIgnoredParameterNamingNothing(functionDecl, name: name)
+                                    continue
+                                }
 
-                                return parameters[index].name.text
+                                remapped.append(parameters[index].name.text)
                             }
-                            functionDecl.commentCommands.insert(.ignoreParameters(remapped))
+                            if !remapped.isEmpty {
+                                functionDecl.commentCommands.insert(.ignoreParameters(remapped))
+                            }
                         case .ignoreAll, .override:
                             break
                         }
@@ -113,7 +120,7 @@ struct UnusedParameterAnalysis: SyntaxAnalysis {
                 }
 
                 // The winner is tracked, not a copy that equals it, whose parameters it does not own.
-                if !functionDecl.commentCommands.ignoredParameterNames.isEmpty {
+                if !functionDecl.commentCommands.ignoredParameterNames.isEmpty || graph.ignoredParameterNamesNamingNothing[functionDecl] != nil {
                     graph.markHasIgnoredParameters(functionDecl)
                 }
             }
