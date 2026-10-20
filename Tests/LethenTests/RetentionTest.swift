@@ -2365,6 +2365,32 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testConfidenceSkippedBranchCapitalizedValueReceivers() throws {
+        try analyze(retainPublic: true) {
+            // `Store` is a parameter, so `Store.shared8` names no type and can be either `shared8`.
+            assertReferenced(.class("FixtureStore8")) {
+                self.assertNotReferenced(.varStatic("shared8"))
+                self.assertConfidence(.varStatic("shared8"), .likely)
+                self.assertNotReferenced(.varStatic("unnamed8"))
+                self.assertConfidence(.varStatic("unnamed8"), .certain)
+                // Used-but-not-compared control.
+                self.assertReferenced(.varStatic("read8"))
+            }
+            assertReferenced(.class("FixtureOtherStore8")) {
+                self.assertNotReferenced(.varStatic("shared8"))
+                self.assertConfidence(.varStatic("shared8"), .likely)
+            }
+            // A type of the scan still narrows the member it is spelled through.
+            assertReferenced(.class("FixtureNarrowA8")) {
+                self.assertConfidence(.varStatic("narrow8"), .likely)
+            }
+            assertReferenced(.class("FixtureNarrowB8")) {
+                self.assertNotReferenced(.varStatic("narrow8"))
+                self.assertConfidence(.varStatic("narrow8"), .certain)
+            }
+        }
+    }
+
     func testConfidenceSkippedBranchReceiverTypeNarrowsMembers() throws {
         try analyze(retainPublic: true) {
             // Spelled through the type: `FixtureStoreA5.shared` is `FixtureStoreA5`'s.
