@@ -5,8 +5,10 @@ Joins corpus/adjudications/<project>.json with corpus/expected/<project>.json. A
 a project's sample when the hash of its key falls under the project's `sample_rate` (see
 `is_sampled`), so a finding keeps its membership, and its verdict, for as long as it is reported.
 Precision is TP / (TP + FP) over sampled findings with a verdict; UNSURE counts in neither.
-`certain` precision is the same ratio over the sampled findings whose confidence is `certain`
-(the expected rows carry it as their eighth field; a row without it is counted in no `certain` column).
+`certain` and `likely` precision are the same ratio over the sampled findings of that confidence
+(the expected rows carry it as their eighth field; a row without it is counted in neither tier), each
+published with its 95 % Wilson score interval. The overall figure is also given weighted by each
+project's number of findings, since the sample rates, and so each project's share of the pool, differ.
 Verdicts on findings outside the sample are kept, but not counted, and verdicts on findings no
 longer reported must be marked `retired`.
 
@@ -21,10 +23,13 @@ Usage:
 import argparse
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 
 VERDICTS = ("TP", "FP", "UNSURE")
+TIERS = ("certain", "likely")
+WILSON_Z = 1.959964  # two-sided 95 %
 KEY_FIELDS = ("path", "line", "column", "kind", "name")
 REQUIRED_FIELDS = KEY_FIELDS + ("verdict", "note", "adjudicated_on", "lethen_commit")
 OPTIONAL_FIELDS = ("reference", "retired")
@@ -107,17 +112,21 @@ def evaluate(root, project):
     sampled = [key for key in expected if is_sampled(project, key, rate)]
     in_sample = set(sampled)
     counts = {verdict: sum(1 for key in sampled if verdicts.get(key, {}).get("verdict") == verdict) for verdict in VERDICTS}
-    certain = [key for key in sampled if confidence[key] == "certain"]
-    certain_counts = {verdict: sum(1 for key in certain if verdicts.get(key, {}).get("verdict") == verdict) for verdict in VERDICTS}
+    tiers = {}
+    for tier in TIERS:
+        keys = [key for key in sampled if confidence[key] == tier]
+        tiers.update({
+            f"{tier}_sampled": len(keys),
+            f"{tier}_TP": sum(1 for key in keys if verdicts.get(key, {}).get("verdict") == "TP"),
+            f"{tier}_FP": sum(1 for key in keys if verdicts.get(key, {}).get("verdict") == "FP"),
+            f"{tier}_pending": sum(1 for key in keys if key not in verdicts),
+        })
     return {
         "project": project,
         "findings": len(expected),
         "sampled": len(sampled),
         **counts,
-        "certain_sampled": len(certain),
-        "certain_TP": certain_counts["TP"],
-        "certain_FP": certain_counts["FP"],
-        "certain_pending": sum(1 for key in certain if key not in verdicts),
+        **tiers,
         "pending": sorted(key for key in sampled if key not in verdicts),
         "outside_sample": sum(1 for key in reported if key in verdicts and key not in in_sample),
         "retired": sorted((key, entry) for key, entry in verdicts.items() if key not in reported and "retired" in entry),
@@ -133,8 +142,50 @@ def precision(tp, fp):
     return f"{100 * tp / (tp + fp):.1f} %" if tp + fp else "n/a"
 
 
+def wilson(tp, fp):
+    """The 95 % Wilson score interval of TP / (TP + FP), as fractions, or None without verdicts."""
+    n = tp + fp
+    if not n:
+        return None
+    p = tp / n
+    z2 = WILSON_Z ** 2
+    center = (p + z2 / (2 * n)) / (1 + z2 / n)
+    half = WILSON_Z * math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / (1 + z2 / n)
+    return max(0.0, center - half), min(1.0, center + half)
+
+
+def interval(tp, fp, pending):
+    """The published interval, `95.5–100.0 %`, under the same rule as `published`."""
+    if pending:
+        return "pending"
+    bounds = wilson(tp, fp)
+    if bounds is None:
+        return "n/a"
+    return f"{100 * bounds[0]:.1f}–{100 * bounds[1]:.1f} %"
+
+
+def weighted(results):
+    """Overall precision with each project weighted by its number of findings rather than by its
+    sample size, over the projects whose precision is published; None while any is pending or
+    none has verdicts."""
+    if any(r["pending"] for r in results):
+        return None
+    scored = [r for r in results if r["TP"] + r["FP"]]
+    findings = sum(r["findings"] for r in scored)
+    if not findings:
+        return None
+    return sum(r["findings"] * r["TP"] / (r["TP"] + r["FP"]) for r in scored) / findings
+
+
+def weighted_text(results):
+    if any(r["pending"] for r in results):
+        return "pending"
+    share = weighted(results)
+    return "n/a" if share is None else f"{100 * share:.1f} %"
+
+
 def total(results):
-    fields = ("findings", "sampled", "TP", "FP", "UNSURE", "certain_sampled", "certain_TP", "certain_FP", "certain_pending")
+    fields = ("findings", "sampled", "TP", "FP", "UNSURE") + tuple(f"{tier}_{field}" for tier in TIERS for field in ("sampled", "TP", "FP", "pending"))
     summed = {field: sum(result[field] for result in results) for field in fields}
     summed["pending"] = sum(len(result["pending"]) for result in results)
     summed["outside_sample"] = sum(result["outside_sample"] for result in results)
@@ -162,11 +213,23 @@ def scorecard(results):
     t = total(results)
     lines.append(f"| **All** | {t['findings']:,} | {t['sampled']} | {t['TP']} | {t['FP']} | {t['UNSURE']} | {t['pending']} | **{published(t['TP'], t['FP'], t['pending'])}** "
                  f"| {t['certain_sampled']} | **{published(t['certain_TP'], t['certain_FP'], t['certain_pending'])}** |")
+    lines += [
+        "",
+        "| Project | Confidence | Sampled | TP | FP | Needs a verdict | Precision | 95 % interval |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for name, r in [(r["project"], r) for r in results] + [("**All**", t)]:
+        for tier in TIERS:
+            tp, fp, pending = r[f"{tier}_TP"], r[f"{tier}_FP"], r[f"{tier}_pending"]
+            lines.append(f"| {name} | `{tier}` | {r[f'{tier}_sampled']} | {tp} | {fp} | {pending} | {published(tp, fp, pending)} | {interval(tp, fp, pending)} |")
     lines.append("")
     lines.append(
+        f"Over every sampled finding, pooled: {published(t['TP'], t['FP'], t['pending'])}; "
+        f"with each project weighted by its findings: {weighted_text(results)}. "
         "Generated by `corpus/precision.py --markdown` from `corpus/expected/` and `corpus/adjudications/`. "
         "Precision is TP / (TP + FP) over the sampled findings, published once each of them has a verdict; "
-        "the `certain` columns count only the sampled findings Lethen reports as `certain`, the rest being `likely`. "
+        "the `certain` columns count only the sampled findings Lethen reports as `certain`, the rest being `likely`, "
+        "and the interval is the 95 % Wilson score interval of the tier's precision. "
         f"Verdicts kept but not counted: {t['outside_sample']} on reported findings outside the sample, "
         f"{t['retired']} on findings no longer reported."
     )
@@ -179,7 +242,8 @@ def figure(results):
     if t["pending"]:
         return f"being re-measured ({t['sampled'] - t['pending']} of {t['sampled']} sampled findings have a verdict)"
     return (f"{precision(t['TP'], t['FP'])} over {t['sampled']} sampled findings, "
-            f"{published(t['certain_TP'], t['certain_FP'], t['certain_pending'])} over `certain` findings")
+            f"{published(t['certain_TP'], t['certain_FP'], t['certain_pending'])} over {t['certain_sampled']} sampled `certain` findings "
+            f"(95 % interval {interval(t['certain_TP'], t['certain_FP'], t['certain_pending'])})")
 
 
 def replace_between(text, markers, body, where):
@@ -205,11 +269,25 @@ def describe(key):
     return f"{path}:{line}:{column} {kind} {name}"
 
 
+def tiers_summary(r):
+    """`certain 100.0 % (88.3–100.0 %) over 29, likely n/a over 0`. A tier still waiting for verdicts reads
+    `certain 100.0 % so far, 1 of 17 adjudicated`, with no interval, as the report's other partial figures do."""
+    parts = []
+    for tier in TIERS:
+        tp, fp, pending, sampled = r[f"{tier}_TP"], r[f"{tier}_FP"], r[f"{tier}_pending"], r[f"{tier}_sampled"]
+        if pending:
+            parts.append(f"{tier} {precision(tp, fp)} so far, {sampled - pending} of {sampled} adjudicated")
+        else:
+            bounds = f" ({interval(tp, fp, pending)})" if tp + fp else ""
+            parts.append(f"{tier} {precision(tp, fp)}{bounds} over {sampled}")
+    return ", ".join(parts)
+
+
 def report(results):
     for r in results:
         print(f"{r['project']}: {r['findings']} findings, {r['sampled']} sampled, "
               f"TP {r['TP']}, FP {r['FP']}, UNSURE {r['UNSURE']}, {len(r['pending'])} need a verdict, "
-              f"precision {precision(r['TP'], r['FP'])}{' so far' if r['pending'] else ''}")
+              f"precision {precision(r['TP'], r['FP'])}{' so far' if r['pending'] else ''}; {tiers_summary(r)}")
         for key in r["pending"]:
             print(f"  needs a verdict: {describe(key)}")
         for key in r["unmarked"]:
@@ -218,7 +296,8 @@ def report(results):
             print(f"  retired {entry['verdict']}: {describe(key)} ({entry['retired']})")
     t = total(results)
     print(f"All: {t['findings']} findings, {t['sampled']} sampled, TP {t['TP']}, FP {t['FP']}, "
-          f"UNSURE {t['UNSURE']}, {t['pending']} need a verdict, precision {precision(t['TP'], t['FP'])}{' so far' if t['pending'] else ''}")
+          f"UNSURE {t['UNSURE']}, {t['pending']} need a verdict, precision {precision(t['TP'], t['FP'])}{' so far' if t['pending'] else ''}; "
+          f"{tiers_summary(t)}; weighted by findings {weighted_text(results)}")
 
 
 def main(argv=None):
