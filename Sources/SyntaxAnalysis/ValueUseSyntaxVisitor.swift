@@ -17,6 +17,8 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var specializationArgumentLocations: Set<Location> = []
     public private(set) var accessorBodyLocations: Set<Location> = []
     public private(set) var initializedConstantLocations: Set<Location> = []
+    /// Keyed by a function's name location: the functions declared `async`.
+    public private(set) var asyncFunctionLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
@@ -67,6 +69,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             genericWhereClause: node.genericWhereClause,
             at: node.name.positionAfterSkippingLeadingTrivia
         )
+        if node.signature.effectSpecifiers?.asyncSpecifier != nil {
+            asyncFunctionLocations.insert(locations.location(at: node.name.positionAfterSkippingLeadingTrivia))
+        }
         return .visitChildren
     }
 
