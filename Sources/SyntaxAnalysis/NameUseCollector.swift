@@ -41,6 +41,9 @@ public struct NameUseCollector {
     /// The generic parameters and associated types the syntax declares: `T.make()` names whatever `T` is, so no
     /// type narrows the member it uses.
     private var placeholderTypeNames: Set<String> = []
+    /// The capitalized names the file binds to values, `let Handler = …` or a parameter `Handler`, against the Swift
+    /// API guidelines: calling one, `Handler()`, can run a `callAsFunction` rather than construct a type.
+    private var capitalizedValueNames: Set<String> = []
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
     /// declaration, such as the elements of an `#if` clause; the generic parameters and associated types of the
@@ -49,6 +52,11 @@ public struct NameUseCollector {
         self.onUse = onUse
         Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
         Self.collectEnclosingPlaceholderTypeNames(of: node, into: &placeholderTypeNames)
+        // Only the file reader sees `callAsFunction`. Across the whole file, not by scope, so a part of it sees the
+        // parameters and locals around it.
+        if onUse != nil {
+            Self.collectCapitalizedValueNames(node.root, into: &capitalizedValueNames)
+        }
         collect(node, inPattern: false)
     }
 
@@ -190,7 +198,7 @@ public struct NameUseCollector {
                 name, isMember: true, isConstruction: !inPattern, at: node,
                 receiver: receiver, isMemberAccess: true, qualifier: qualifier
             )
-        } else if let call = node.as(FunctionCallExprSyntax.self), Self.isCallableValueCall(call) {
+        } else if let call = node.as(FunctionCallExprSyntax.self), Self.isCallableValueCall(call, capitalizedValueNames: capitalizedValueNames) {
             // `Handler()()` or `handler(1)` can run a `callAsFunction`, which the call never spells; like `init`
             // and `subscript`, only a file that names the type can match it.
             record("callAsFunction", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
@@ -259,6 +267,26 @@ public struct NameUseCollector {
         }
     }
 
+    private static func collectCapitalizedValueNames(_ node: Syntax, into names: inout Set<String>) {
+        let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
+            pattern.identifier
+        } else if let parameter = node.as(FunctionParameterSyntax.self) {
+            parameter.secondName ?? parameter.firstName
+        } else if let parameter = node.as(ClosureParameterSyntax.self) {
+            parameter.secondName ?? parameter.firstName
+        } else if let parameter = node.as(ClosureShorthandParameterSyntax.self) {
+            parameter.name
+        } else {
+            nil
+        }
+        if let name = bound?.identifier?.name, name.first?.isUppercase == true {
+            names.insert(name)
+        }
+        for child in node.children(viewMode: .sourceAccurate) {
+            collectCapitalizedValueNames(child, into: &names)
+        }
+    }
+
     private static func collectPlaceholderTypeNames(_ node: Syntax, into names: inout Set<String>) {
         if let parameter = node.as(GenericParameterSyntax.self) {
             names.insert(parameter.name.text)
@@ -298,13 +326,15 @@ public struct NameUseCollector {
     /// Whether the call's callee is a value rather than a function or type name that the index resolves: a call,
     /// a subscript, a parenthesized, unwrapped or chained expression, or a lowercase name, since a type name
     /// starts with a capital letter; leading underscores are skipped, so `_handler` is a value, and so is a shorthand argument such as `$0`. A call of a local function matches too, which only costs a name that no
-    /// type named by the file can narrow to a `callAsFunction`.
-    private static func isCallableValueCall(_ call: FunctionCallExprSyntax) -> Bool {
+    /// type named by the file can narrow to a `callAsFunction`. A capitalized name in `capitalizedValueNames` is a
+    /// value too: `Handler()` may then also be a construction, which is still recorded as one.
+    private static func isCallableValueCall(_ call: FunctionCallExprSyntax, capitalizedValueNames: Set<String>) -> Bool {
         var callee = call.calledExpression
         if let specialized = callee.as(GenericSpecializationExprSyntax.self) { callee = specialized.expression }
         func isValueName(_ name: String) -> Bool {
-            // `$0` is a closure's shorthand argument, a value whatever it holds.
-            name.hasPrefix("$") || name.first(where: { $0 != "_" })?.isLowercase == true
+            // `$0` is a closure's shorthand argument, a value whatever it holds. A capitalized name is a type unless
+            // the file binds it to a value, when the call may be either.
+            name.hasPrefix("$") || name.first(where: { $0 != "_" })?.isLowercase == true || capitalizedValueNames.contains(name)
         }
         if let reference = callee.as(DeclReferenceExprSyntax.self) {
             return isValueName(reference.baseName.text)
