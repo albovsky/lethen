@@ -37,3 +37,19 @@ func captureOutput(of descriptor: Int32, _ body: () throws -> Void) throws -> St
 
     return try XCTUnwrap(String(bytes: finish(), encoding: .utf8))
 }
+
+/// Runs `body` with standard output and standard error redirected to one pipe, as `2>&1` does, and returns what was
+/// written to it in the order it arrived.
+func captureMergedOutput(_ body: () throws -> Void) throws -> String {
+    let savedError = dup(STDERR_FILENO)
+    defer { close(savedError) }
+    return try captureOutput(of: STDOUT_FILENO) {
+        fflush(stderr)
+        dup2(STDOUT_FILENO, STDERR_FILENO)
+        defer {
+            fflush(stderr)
+            dup2(savedError, STDERR_FILENO)
+        }
+        try body()
+    }
+}

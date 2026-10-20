@@ -204,6 +204,79 @@ final class ScanReportTest: XCTestCase {
         XCTAssertNoThrow(try report.validateStrictMode())
     }
 
+    // MARK: - Groups and footer
+
+    func testXcodeGroupsAreCertainThenLikelyThenAccessLevelAndIgnoreComments() throws {
+        let results = [
+            result("Public", annotation: .redundantPublicAccessibility(modules: ["App"])),
+            result("Likely", confidence: .likely),
+            result("Certain"),
+            result("Ignore", annotation: .superfluousIgnoreCommand),
+            result("AssignOnly", annotation: .assignOnlyProperty),
+        ]
+        let groups = ScanReport.groups(of: results)
+
+        XCTAssertEqual(groups.map(\.header), [nil, ScanReport.likelyHeader, ScanReport.housekeepingHeader])
+        XCTAssertEqual(groups.map { $0.results.map(\.declaration.name) }, [["Certain", "AssignOnly"], ["Likely"], ["Public", "Ignore"]])
+    }
+
+    func testAllCertainResultsAreOneGroupWithoutHeader() {
+        let groups = ScanReport.groups(of: [result("A"), result("B")])
+        XCTAssertEqual(groups.map(\.header), [nil])
+        XCTAssertEqual(groups.map { $0.results.map(\.declaration.name) }, [["A", "B"]])
+    }
+
+    func testAllLikelyResultsHaveTheLikelyHeader() {
+        let groups = ScanReport.groups(of: [result("A", confidence: .likely)])
+        XCTAssertEqual(groups.map(\.header), [ScanReport.likelyHeader])
+    }
+
+    func testNoResultsAreOneEmptyGroupWithoutHeader() {
+        let groups = ScanReport.groups(of: [])
+        XCTAssertEqual(groups.map(\.header), [nil])
+        XCTAssertEqual(groups.map(\.results.count), [0])
+    }
+
+    func testXcodeSectionsAndResultsFileFollowTheGroups() throws {
+        let configuration = Configuration()
+        configuration.relativeResults = true
+        configuration.writeResults = directory.appending("results.txt")
+        let report = try ScanReport(results: [result("Likely", confidence: .likely), result("Public", annotation: .redundantPublicAccessibility(modules: ["App"])), result("Certain")], configuration: configuration, logger: logger)
+
+        XCTAssertEqual(report.results.map(\.declaration.name), ["Certain", "Likely", "Public"])
+        XCTAssertEqual(report.sections.map(\.header), [nil, ScanReport.likelyHeader, ScanReport.housekeepingHeader])
+        XCTAssertEqual(report.sections.map(\.output).joined(separator: "\n"), report.output)
+        try report.writeResults()
+        XCTAssertEqual(try String(contentsOfFile: directory.appending("results.txt").string, encoding: .utf8), report.output)
+        XCTAssertFalse(try XCTUnwrap(report.output).contains(ScanReport.likelyHeader))
+    }
+
+    func testOtherFormatsKeepTheFilterOrderInOneSection() throws {
+        let configuration = Configuration()
+        configuration.outputFormat = .json
+        let report = try ScanReport(results: [result("Public", annotation: .redundantPublicAccessibility(modules: ["App"])), result("Likely", confidence: .likely), result("Certain")], configuration: configuration, logger: logger)
+
+        XCTAssertEqual(report.sections.map(\.header), [nil])
+        XCTAssertEqual(report.sections.map(\.output), try [XCTUnwrap(report.output)])
+    }
+
+    func testFooterCountsEachKindWhenThereIsMoreThanOne() {
+        let configuration = Configuration()
+        configuration.writeBaseline = directory.appending("baseline.json")
+        let mixed = [
+            result("A"), result("B", confidence: .likely),
+            result("C", annotation: .redundantPublicAccessibility(modules: ["App"])),
+            result("D", annotation: .redundantPublicAccessibility(modules: ["App"])),
+            result("E", annotation: .superfluousIgnoreCommand),
+        ]
+
+        XCTAssertEqual(
+            ScanReport.footer(for: mixed, hiddenByConfidence: 0, configuration: configuration),
+            "5 results (2 unused, 2 redundant public, 1 superfluous ignore), 1 likely. `lethen explain <name>` shows why."
+        )
+        XCTAssertEqual(ScanReport.footer(for: [result("A"), result("B")], hiddenByConfidence: 0, configuration: configuration), "2 results. `lethen explain <name>` shows why.")
+    }
+
     // MARK: - Private
 
     private func writeBaseline(_ usrs: [String]) throws -> FilePath {
@@ -212,9 +285,9 @@ final class ScanReportTest: XCTestCase {
         return path
     }
 
-    private func result(_ name: String, confidence: Confidence = .certain) -> ScanResult {
+    private func result(_ name: String, confidence: Confidence = .certain, annotation: ScanResult.Annotation = .unused) -> ScanResult {
         let location = Location(file: SourceFile(path: root.appending("Sources/A.swift"), modules: ["App"]), line: 1, column: 1)
         let declaration = Declaration(name: name, kind: .class, usrs: ["s:\(name)"], location: location)
-        return ScanResult(declaration: declaration, annotation: .unused, confidence: confidence)
+        return ScanResult(declaration: declaration, annotation: annotation, confidence: confidence)
     }
 }

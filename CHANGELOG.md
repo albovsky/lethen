@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- The `xcode` format lists `likely` dead code after a `Likely unused, check by hand:` line, and redundant public accessibility and superfluous ignore comments, which are not dead code, last after their own header line, so where the trustworthy dead code ends is visible at a glance. The header lines go to standard error, so the results on standard output stay parseable, and `--quiet` leaves them out. The results file of the `xcode` format follows the same order; other formats do not change. The summary counts each kind when there is more than one, as in `37 results (10 unused, 27 redundant public), 3 likely`. The guide says that an application target's `public` declarations are redundant by construction and that `disable_redundant_public_analysis: true` is the setting for it ([#191](https://github.com/albovsky/lethen/issues/191)).
 
 ##### Bug Fixes
 
