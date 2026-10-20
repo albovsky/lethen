@@ -2945,6 +2945,53 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialConfiguredProtocol() throws {
+        // CustomStringConvertible doesn't actually inherit Encodable, we're just using it because we don't have an
+        // external module in which to declare our own type.
+        for configured in [(encodable: ["CustomStringConvertible"], codable: []), (encodable: [], codable: ["CustomStringConvertible"])] {
+            try analyze(retainPublic: true, externalCodableProtocols: configured.codable, externalEncodableProtocols: configured.encodable) {
+                assertReferenced(.struct("FixtureStruct330Mute")) {
+                    self.assertAssignOnlyProperty(.varInstance("duration"))
+                    self.assertConfidence(.varInstance("duration"), .likely)
+                    // Used-but-not-compared control: read in code, so it is not reported at all.
+                    self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+                }
+            }
+        }
+
+        // Control: unconfigured, the protocol is not `Encodable`, so nothing is encoded.
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct330Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialUnindexedLaterArgument() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct331Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .likely)
+                // Used-but-not-compared control: read in code, so it is not reported at all.
+                self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialStandardLaterArgument() throws {
+        try analyze(retainPublic: true) {
+            // Control: the standard container encodes its first argument, not the unresolved key.
+            assertReferenced(.struct("FixtureStruct332Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .certain)
+            }
+            assertReferenced(.struct("FixtureStruct332Item")) {
+                self.assertNotAssignOnlyProperty(.varInstance("itemEncoded"))
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeTopLevel() throws {
         let main = FixturesProjectPath.appending("Sources/RetentionFixtures/main.swift")
 
