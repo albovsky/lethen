@@ -169,13 +169,75 @@ class PrecisionTest(unittest.TestCase):
         doc = (self.corpus.root / "docs/validation/precision-corpus.md").read_text()
         self.assertIn(f"| demo | 200 | {len(sampled)} | {len(sampled) - 1} | 1 | 0 | 0 | {expected} | {len(certain)} | {certain_expected} |", doc)
         self.assertTrue(doc.endswith("<!-- precision-scorecard:end -->\n\nText.\n"))
+        low, high = precision.wilson(len(certain) - (sampled[0][7] == "certain"), int(sampled[0][7] == "certain"))
         self.assertEqual((self.corpus.root / "README.md").read_text(),
                          f"It is <!-- precision-figure:begin -->{expected} over {len(sampled)} sampled findings, "
-                         f"{certain_expected} over `certain` findings<!-- precision-figure:end -->.\n")
+                         f"{certain_expected} over {len(certain)} sampled `certain` findings "
+                         f"(95 % interval {100 * low:.1f}–{100 * high:.1f} %)<!-- precision-figure:end -->.\n")
         self.assertEqual(self.corpus.run(precision, "--verify")[0], 0)
         status, out, _ = self.corpus.run(precision, "--markdown", "--stdout")
         self.assertEqual(status, 0)
         self.assertIn(f"**{expected}**", out)
+
+
+class IntervalTest(unittest.TestCase):
+    def test_wilson_interval_matches_published_values(self):
+        # 82 of 82: the lower bound is z² / (n + z²) below 1, about 4.5 points.
+        low, high = precision.wilson(82, 0)
+        self.assertAlmostEqual(low, 82 / (82 + precision.WILSON_Z ** 2), places=6)
+        self.assertEqual(high, 1.0)
+        # 1 of 4: p = 0.25, n = 4, z² = 3.84 gives (0.250 + 0.480 ∓ 0.641) / 1.960 by hand.
+        low, high = precision.wilson(1, 3)
+        self.assertEqual((round(100 * low, 1), round(100 * high, 1)), (4.6, 69.9))
+        self.assertEqual(precision.wilson(0, 4)[0], 0.0)
+        self.assertIsNone(precision.wilson(0, 0))
+        self.assertEqual(precision.interval(1, 3, 0), "4.6–69.9 %")
+        self.assertEqual(precision.interval(1, 3, 1), "pending")
+        self.assertEqual(precision.interval(0, 0, 0), "n/a")
+
+    def test_weighted_precision_weights_projects_by_findings(self):
+        results = [
+            {"findings": 300, "TP": 9, "FP": 1, "pending": []},
+            {"findings": 100, "TP": 5, "FP": 5, "pending": []},
+            {"findings": 50, "TP": 0, "FP": 0, "pending": []},
+        ]
+        # Pooled, 14 of 20 is 70 %; weighted by findings, (300 · 0.9 + 100 · 0.5) / 400 is 80 %.
+        self.assertAlmostEqual(precision.weighted(results), 0.8)
+        self.assertIsNone(precision.weighted([dict(results[0], pending=[("k",)])]))
+        self.assertIsNone(precision.weighted([results[2]]))
+
+
+class TierTableTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.corpus = SyntheticCorpus(self.directory.name)
+
+    def test_scorecard_lists_each_tier_with_its_interval_and_the_weighted_figure(self):
+        sampled = self.corpus.sampled()
+        certain = [row for row in sampled if row[7] == "certain"]
+        likely = [row for row in sampled if row[7] == "likely"]
+        self.corpus.write(ROWS, adjudications=[verdict(row) for row in certain] + [verdict(row, "FP") for row in likely])
+        out = self.corpus.run(precision, "--markdown", "--stdout")[1]
+        low, _ = precision.wilson(len(certain), 0)
+        self.assertIn(f"| demo | `certain` | {len(certain)} | {len(certain)} | 0 | 0 | 100.0 % | {100 * low:.1f}–100.0 % |", out)
+        _, high = precision.wilson(0, len(likely))
+        self.assertIn(f"| demo | `likely` | {len(likely)} | 0 | {len(likely)} | 0 | 0.0 % | 0.0–{100 * high:.1f} % |", out)
+        self.assertIn(f"| **All** | `certain` | {len(certain)} |", out)
+        pooled = f"{100 * len(certain) / len(sampled):.1f} %"
+        self.assertIn(f"Over every sampled finding, pooled: {pooled}; with each project weighted by its findings: {pooled}.", out)
+        report = self.corpus.run(precision)[1]
+        self.assertIn(f"; certain 100.0 % ({100 * low:.1f}–100.0 %) over {len(certain)}, likely 0.0 % (0.0–{100 * high:.1f} %) over {len(likely)}", report)
+        self.assertIn(f"weighted by findings {pooled}", report)
+
+    def test_tier_rows_wait_for_their_own_verdicts(self):
+        sampled = self.corpus.sampled()
+        likely = next(row for row in sampled if row[7] == "likely")
+        self.corpus.write(ROWS, adjudications=[verdict(row) for row in sampled if row is not likely])
+        out = self.corpus.run(precision, "--markdown", "--stdout")[1]
+        self.assertRegex(out, r"\| demo \| `likely` \| \d+ \| \d+ \| 0 \| 1 \| pending \| pending \|")
+        self.assertRegex(out, r"\| demo \| `certain` \| \d+ \| \d+ \| 0 \| 0 \| 100\.0 % \| [0-9.]+–100\.0 % \|")
+        self.assertIn("with each project weighted by its findings: pending.", out)
 
 
 class SampleTest(unittest.TestCase):

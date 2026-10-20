@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- The precision scorecard gives each confidence tier its own precision with a 95 % Wilson score interval, per project and overall, and the overall precision weighted by each project's findings beside the pooled figure: at the current verdicts `certain` is 100.0 % over 82 sampled findings (95.5–100.0 %), `likely` 12.5 % over 8 (2.2–47.1 %), pooled 92.2 % and weighted 96.0 %. `corpus/precision.py` prints the same per project, and the README quotes the `certain` interval ([#193](https://github.com/albovsky/lethen/issues/193)).
 
 ##### Bug Fixes
 
