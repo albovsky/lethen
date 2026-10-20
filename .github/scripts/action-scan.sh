@@ -8,6 +8,11 @@
 # because it would read as a failure when strict is false. Any other failure of the scan
 # fails the step.
 #
+# With strict on and no min-confidence input, the step fails only on `certain` results.
+# In the github-actions format the scan still reports every result, so `likely` ones stay
+# visible as notices, and the count is that of the `certain` results' warnings; in other
+# formats the scan runs with `--min-confidence certain`, when the binary has the option.
+#
 # lethen makes result paths relative to the directory it scans, but GitHub resolves
 # annotation paths from the repository root, so for the github-actions format the working
 # directory's path inside GITHUB_WORKSPACE is prefixed to each annotation, on the log and
@@ -49,8 +54,17 @@ command=("$binary" scan --format "$format" --relative-results --disable-update-c
 if [ -n "${LETHEN_BASELINE:-}" ]; then
     command+=(--baseline "$LETHEN_BASELINE")
 fi
-if [ -n "${LETHEN_MIN_CONFIDENCE:-}" ]; then
-    command+=(--min-confidence "$LETHEN_MIN_CONFIDENCE")
+min_confidence="${LETHEN_MIN_CONFIDENCE:-}"
+count_warnings=false
+if [ -z "$min_confidence" ] && [ "$strict" = true ]; then
+    if [ "$format" = github-actions ]; then
+        count_warnings=true
+    elif "$binary" scan --help 2>/dev/null | grep -q -- '--min-confidence'; then
+        min_confidence=certain
+    fi
+fi
+if [ -n "$min_confidence" ]; then
+    command+=(--min-confidence "$min_confidence")
 fi
 # The args input is parsed with shell quoting, as it would be on a command line.
 extra=()
@@ -75,7 +89,7 @@ property="${property//:/%3A}"
 property="${property//,/%2C}"
 escaped_prefix="$(printf '%s' "$property" | sed 's/[\\&|]/\\&/g')"
 annotate() {
-    sed "s|^::warning file=|::warning file=$escaped_prefix|"
+    sed -e "s|^::warning file=|::warning file=$escaped_prefix|" -e "s|^::notice file=|::notice file=$escaped_prefix|"
 }
 
 echo "Running ${command[*]}"
@@ -102,15 +116,30 @@ if [ "$status" -ne 0 ]; then
     count="$found"
 fi
 
+total="$count"
+if [ "$count_warnings" = true ] && [ "$count" -gt 0 ]; then
+    # One warning per `certain` result, except that a redundant protocol adds one for each
+    # conformance. The properties escape `:`, so the message follows the first `::` after
+    # the command.
+    warnings="$(grep -cE '^::warning [^:]*::' "$results_file" || true)"
+    conformances="$(grep -cE "^::warning [^:]*::Redundant protocol conformance '" "$results_file" || true)"
+    count=$((warnings - conformances))
+fi
+
 {
     echo "results-file=$results_file"
     echo "count=$count"
 } >> "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 
+results() { if [ "$1" -eq 1 ]; then echo result; else echo results; fi; }
+if [ "$total" -gt "$count" ]; then
+    likely=$((total - count))
+    echo "Lethen reported $likely likely $(results "$likely"), annotated as notices; set min-confidence to likely to fail the step on them."
+fi
 if [ "$count" -eq 0 ]; then
-    echo "Lethen reported no results."
+    echo "Lethen reported no $([ "$total" -gt 0 ] && echo "certain ")results."
 elif [ "$strict" = true ]; then
-    fail "Lethen reported $count $([ "$count" -eq 1 ] && echo result || echo results)."
+    fail "Lethen reported $count $(results "$count")."
 else
-    echo "Lethen reported $count $([ "$count" -eq 1 ] && echo result || echo results); strict is false, so the step passes."
+    echo "Lethen reported $count $(results "$count"); strict is false, so the step passes."
 fi
