@@ -27,6 +27,9 @@ public final class SourceGraph {
     public private(set) var extensions: [Declaration: Set<Declaration>] = [:]
     public private(set) var commandIgnoredDeclarations: [Declaration: CommandIgnoreKind] = [:]
     public private(set) var functionsWithIgnoredParameters: Set<Declaration> = []
+    /// Names in a `periphery:ignore:parameters` command on a same-USR copy the graph did not keep that no parameter of
+    /// that copy has. They ignore nothing, whatever the kept copy calls its own parameters.
+    public private(set) var ignoredParameterNamesNamingNothing: [Declaration: Set<String>] = [:]
     /// The mutator that retained each declaration, recorded only for `lethen explain`.
     public private(set) var retentionSources: [Declaration: String] = [:]
     /// Whether mutator runs record `retentionSources`. Off for scans, which never read them.
@@ -112,6 +115,10 @@ public final class SourceGraph {
 
     public func markHasIgnoredParameters(_ declaration: Declaration) {
         _ = functionsWithIgnoredParameters.insert(declaration)
+    }
+
+    public func markIgnoredParameterNamingNothing(_ declaration: Declaration, name: String) {
+        ignoredParameterNamesNamingNothing[declaration, default: []].insert(name)
     }
 
     public func markRetained(_ declaration: Declaration) {
