@@ -120,6 +120,25 @@ final class ScanCommandPipelineTest: XCTestCase {
         """)
     }
 
+    func testHeadersStayBetweenTheirGroupsWhenBothStreamsShareAPipe() throws {
+        try makePackage()
+        StubScan.results = [result("Bar", line: 1, confidence: .likely), result("Foo", line: 2)]
+
+        let merged = try captureMergedOutput {
+            try run(["--disable-update-check"])
+        }
+
+        let file = projectRoot.appending("Sources/A.swift").string
+        XCTAssertEqual(merged, """
+
+        \(file):2:1: warning: Unused class 'Foo'
+        Likely unused, check by hand:
+        \(file):1:1: warning: Unused class 'Bar'
+        2 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.
+
+        """)
+    }
+
     func testQuietXcodeFormatPrintsNoHeaderButKeepsTheGroupOrder() throws {
         try makePackage()
         StubScan.results = [result("Bar", line: 1, confidence: .likely), result("Foo", line: 2)]
