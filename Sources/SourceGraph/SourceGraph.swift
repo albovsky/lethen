@@ -2,6 +2,7 @@ import Configuration
 import Foundation
 import Logger
 import Shared
+import SystemPackage
 
 public final class SourceGraph {
     public private(set) var allDeclarations: Set<Declaration> = []
@@ -335,10 +336,18 @@ public final class SourceGraph {
     }
 
     func markUnusedModuleImport(_ statement: ImportStatement) {
-        let location = statement.location.relativeTo(configuration.projectRoot)
+        // The id is relative to the project's real root, so it does not depend on whether the root was reached
+        // through a symbolic link.
+        let root = configuration.projectRoot.isEmpty ? configuration.projectRoot : Self.resolvingSymlinks(configuration.projectRoot)
+        let file = SourceFile(path: Self.resolvingSymlinks(statement.location.file.path), modules: [])
+        let location = Location(file: file, line: statement.location.line, column: statement.location.column).relativeTo(root)
         let usr = "import-\(statement.qualifiedModule)-\(location)"
         let decl = Declaration(name: statement.qualifiedModule, kind: .module, usrs: [usr], location: statement.location)
         unusedModuleImports.insert(decl)
+    }
+
+    private static func resolvingSymlinks(_ path: FilePath) -> FilePath {
+        FilePath(URL(fileURLWithPath: path.lexicallyNormalized().string).resolvingSymlinksInPath().path)
     }
 
     func markExtension(_ extensionDecl: Declaration, extending extendedDecl: Declaration) {

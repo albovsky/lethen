@@ -90,6 +90,40 @@ final class UnusedImportMarkerTest: XCTestCase {
         XCTAssertEqual(try unusedImports(referencing: [], configure: { $0.retainFiles = ["/project/*.m"]; $0.buildFilenameMatchers() }), [])
     }
 
+    /// The id of an unused import is relative to the project's real root, whether the root or the file is reached
+    /// through a symbolic link, so the same finding keeps its id however `--project-root` is spelled.
+    func testUnusedImportIDIsRelativeToTheRealProjectRoot() throws {
+        let real = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen-import-\(UUID().uuidString)").path)
+        let link = FilePath(real.string + "-link")
+        try FileManager.default.createDirectory(atPath: real.appending("Sources").string, withIntermediateDirectories: true)
+        try "".write(toFile: real.appending("Sources/File.m").string, atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(atPath: link.string, withDestinationPath: real.string)
+        defer {
+            try? FileManager.default.removeItem(atPath: link.string)
+            try? FileManager.default.removeItem(atPath: real.string)
+        }
+
+        for (root, directory) in [(real, real), (link, real), (real, link), (link, link)] {
+            let ids = try unusedImportIDs(file: directory.appending("Sources/File.m"), projectRoot: root)
+            XCTAssertEqual(ids, ["import-WMF.WMFLogging-Sources/File.m:1:1"], "root \(root), file under \(directory)")
+        }
+    }
+
+    private func unusedImportIDs(file path: FilePath, projectRoot: FilePath) throws -> [String] {
+        let configuration = Configuration()
+        configuration.projectRoot = projectRoot
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+        let graph = SourceGraph(configuration: configuration, logger: logger)
+        let file = SourceFile(path: path, modules: [])
+        file.importStatements = ClangImportScanner.imports(in: Array("@import WMF.WMFLogging;\n".utf8), file: file)
+        graph.addIndexedSourceFile(file)
+        graph.addIndexedModules(["WMF"])
+
+        let shell = ShellImpl(logger: logger)
+        try UnusedImportMarker(graph: graph, configuration: configuration, swiftVersion: SwiftVersion(shell: shell)).mutate()
+        return graph.unusedModuleImports.flatMap(\.usrs).sorted()
+    }
+
     /// The imports the scanner reads from `source`, run through the marker with `referenced` as the modules
     /// the file uses.
     private func unusedImports(inSource source: String, referencing referenced: Set<String>) throws -> [String] {
