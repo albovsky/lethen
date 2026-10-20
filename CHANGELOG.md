@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- The reason of an assign-only property, shown by `--verbose` and in the `json` and `csv` formats, is now `assigned but never read; if it exists to keep its value alive, mark it // periphery:ignore - reason`, so a write-only strong reference that is intentional, such as a window a coordinator holds, says how to record that. The `xcode` message, `Assign-only property 'x' is assigned, but never used`, is unchanged ([#202](https://github.com/albovsky/lethen/issues/202)).
 
 ##### Bug Fixes
 
