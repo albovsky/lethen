@@ -159,6 +159,27 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertNil(collect("let a = Handler()()").uses["callAsFunction"], "It reaches the file reader only")
     }
 
+    /// A capitalized name the file binds to a value is called like a type, `Handler()`, which can run its
+    /// `callAsFunction`.
+    func testCapitalizedValueCallsReachTheFileReaderAsCallAsFunction() {
+        func names(_ source: String) -> [String] {
+            var seen: [String] = []
+            _ = NameUseCollector(Syntax(Parser.parse(source: source))) { seen.append($0.name) }
+            return seen
+        }
+        XCTAssertTrue(names("let Handler = Callable(size: 1)\nHandler()").contains("callAsFunction"), "A local")
+        XCTAssertTrue(names("func run(Handler: Callable) { Handler() }").contains("callAsFunction"), "A parameter")
+        XCTAssertTrue(names("func run(with Handler: Callable) { Handler(1) }").contains("callAsFunction"), "A parameter's local name")
+        XCTAssertTrue(names("let run: (Callable) -> Void = { Handler in Handler() }").contains("callAsFunction"), "A closure parameter")
+        XCTAssertTrue(names("let run = { (Handler: Callable) in Handler() }").contains("callAsFunction"))
+        XCTAssertTrue(names("if let Handler = Store.shared { Handler() }").contains("callAsFunction"), "A bound optional")
+        XCTAssertTrue(names("struct S { let Handler: Callable\n func run() { self.Handler() } }").contains("callAsFunction"), "A property")
+        // Controls: a construction, with no value of the name, and an argument label that binds nothing.
+        XCTAssertFalse(names("let handler = 1\nlet a = Handler(size: 1)").contains("callAsFunction"))
+        XCTAssertFalse(names("let Other = Callable(size: 1)\nlet a = Handler()").contains("callAsFunction"))
+        XCTAssertFalse(names("func run(Handler _: Callable) { _ = Handler() }").contains("callAsFunction"), "`Handler` is only a label")
+    }
+
     /// A member spelled through its type is also reported as `Type.member`, so a match can be placed at a use
     /// of this type's member rather than at any type's.
     func testQualifiedMemberUsesReachTheFileReader() throws {
