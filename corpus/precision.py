@@ -270,12 +270,16 @@ def describe(key):
 
 
 def tiers_summary(r):
-    """`certain 100.0 % (88.3–100.0 %) over 29, likely n/a over 0`, with intervals only for complete tiers."""
+    """`certain 100.0 % (88.3–100.0 %) over 29, likely n/a over 0`. A tier still waiting for verdicts reads
+    `certain 100.0 % so far, 1 of 17 adjudicated`, with no interval, as the report's other partial figures do."""
     parts = []
     for tier in TIERS:
-        tp, fp, pending = r[f"{tier}_TP"], r[f"{tier}_FP"], r[f"{tier}_pending"]
-        bounds = "" if pending or not tp + fp else f" ({interval(tp, fp, pending)})"
-        parts.append(f"{tier} {precision(tp, fp)}{bounds} over {r[f'{tier}_sampled']}")
+        tp, fp, pending, sampled = r[f"{tier}_TP"], r[f"{tier}_FP"], r[f"{tier}_pending"], r[f"{tier}_sampled"]
+        if pending:
+            parts.append(f"{tier} {precision(tp, fp)} so far, {sampled - pending} of {sampled} adjudicated")
+        else:
+            bounds = f" ({interval(tp, fp, pending)})" if tp + fp else ""
+            parts.append(f"{tier} {precision(tp, fp)}{bounds} over {sampled}")
     return ", ".join(parts)
 
 

@@ -238,6 +238,10 @@ class TierTableTest(unittest.TestCase):
         self.assertRegex(out, r"\| demo \| `likely` \| \d+ \| \d+ \| 0 \| 1 \| pending \| pending \|")
         self.assertRegex(out, r"\| demo \| `certain` \| \d+ \| \d+ \| 0 \| 0 \| 100\.0 % \| [0-9.]+–100\.0 % \|")
         self.assertIn("with each project weighted by its findings: pending.", out)
+        likely_count = sum(1 for row in sampled if row[7] == "likely")
+        report = self.corpus.run(precision)[1]
+        self.assertIn(f"likely 100.0 % so far, {likely_count - 1} of {likely_count} adjudicated", report)
+        self.assertIn("weighted by findings pending", report)
 
 
 class SampleTest(unittest.TestCase):
