@@ -267,6 +267,18 @@ final class NameUseCollectorTest: XCTestCase {
         )
     }
 
+    /// A capitalized value is not a type, so a member reached through it has no receiver, inside a clause too.
+    func testACapitalizedValueIsNotAReceiver() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: "func use(Store: B.Type) {\n #if os(Windows)\n _ = Store.shared\n _ = Other.shared\n #endif\n}")
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["shared"], [
+            Spelling(isMember: true, isMemberAccess: true, qualifier: "Store"),
+            Spelling(receiver: "Other", isMember: true, isMemberAccess: true, qualifier: "Other"),
+        ])
+    }
+
     func testAGenericParameterIsNotAReceiver() {
         typealias Spelling = NameSites.Spelling
         let collector = collect("func make<T: Base>(_: T.Type) { _ = T.shared }\nfunc other() { _ = U.shared }")
