@@ -2332,6 +2332,29 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testConfidenceSkippedBranchInheritedPlaceholderReceivers() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureConformer7")) {
+                // `Element` is the generic parameter `Array` declares, so `Element(size: 1)` can construct this.
+                self.assertNotReferenced(.functionConstructor("init(size:)"))
+                self.assertConfidence(.functionConstructor("init(size:)"), .likely)
+                // A type the scan declares still narrows the construction inside the extension.
+                self.assertNotReferenced(.functionConstructor("init(label:)"))
+                self.assertConfidence(.functionConstructor("init(label:)"), .certain)
+                // Used-but-not-compared control.
+                self.assertReferenced(.functionConstructor("init(count:)"))
+            }
+            assertReferenced(.struct("FixtureNamed7")) {
+                self.assertConfidence(.functionConstructor("init(label:)"), .likely)
+            }
+            // Control: an initializer no skipped use spells the labels of stays certain.
+            assertReferenced(.struct("FixtureOther7")) {
+                self.assertNotReferenced(.functionConstructor("init(weight:)"))
+                self.assertConfidence(.functionConstructor("init(weight:)"), .certain)
+            }
+        }
+    }
+
     func testConfidenceSkippedBranchCannotNameFileScopeDeclarations() throws {
         let other = FixturesProjectPath.appending("Sources/RetentionFixtures/testConfidenceSkippedBranchCannotNameFileScopeDeclarationsOther.swift")
 
