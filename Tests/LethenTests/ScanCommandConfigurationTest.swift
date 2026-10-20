@@ -88,9 +88,11 @@ final class ScanCommandConfigurationTest: XCTestCase {
         let parent = projectRoot.removingLastComponent()
         _ = FileManager.default.changeCurrentDirectoryPath(parent.string)
         let name = try XCTUnwrap(projectRoot.lastComponent?.string)
+        // The working directory is the parent as the system resolves it: /private/var for /var on macOS.
+        let expected = FilePath.current.appending(name)
 
         let configuration = try ScanCommand.parse(["--project-root", name, "--setup"]).makeConfiguration()
-        XCTAssertEqual(configuration.projectRoot, projectRoot)
+        XCTAssertEqual(configuration.projectRoot, expected)
     }
 
     func testProjectRootDefaultsToBazelWorkspaceDirectory() throws {
