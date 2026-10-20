@@ -5,7 +5,9 @@ import SwiftSyntax
 /// Local variables are absent from the index, so resolve their lexical bindings here.
 public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var arguments: [Location: Set<Location>] = [:]
-    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>)]] = [:]
+    /// Keyed by a call's callee location: each argument's label, origins, and, for an element such as `values[0]`, the
+    /// origins of its collection, which only the opaque encoding check reads.
+    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>, elementOrigins: Set<Location>)]] = [:]
     public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
     /// Keyed by a function's name location: see `Declaration.returnTypeNames`.
     public private(set) var returnTypeNames: [Location: Set<String>] = [:]
@@ -21,9 +23,8 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
     private var scopes: [[String: Set<Location>]] = [[:]]
-    /// Whether `Type.self` resolves to the type's own reference, and an element `values[0]` to its collection. Only the
-    /// per-argument lists want that; the unioned value uses that equality and encoding rules read treat a metatype,
-    /// and a subscript, as no value.
+    /// Whether `Type.self` resolves to the type's own reference. Only the per-argument lists want that; the unioned
+    /// value uses that equality and encoding rules read treat a metatype as no value.
     private var resolvesMetatypes = false
 
     public init(locations: SourceLocationBuilder) {
@@ -117,7 +118,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         let callee = calleeLocation(node.calledExpression)
         arguments[callee, default: []].formUnion(values)
         resolvesMetatypes = true
-        argumentLists[callee] = node.arguments.map { (label: $0.label?.text, origins: origins(of: $0.expression)) }
+        argumentLists[callee] = node.arguments.map {
+            (label: $0.label?.text, origins: origins(of: $0.expression), elementOrigins: elementOrigins(of: $0.expression))
+        }
         resolvesMetatypes = false
         if let type = Self.contextualType(of: node) {
             recordSpecializations(in: type)
@@ -244,10 +247,6 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             // Passing value.field passes the field, not the containing value.
             return [locations.location(at: member.declName.baseName.positionAfterSkippingLeadingTrivia)]
         }
-        // An element, `values[0]`, comes from the collection; only the per-argument lists follow it.
-        if let subscripted = expression.as(SubscriptCallExprSyntax.self) {
-            return resolvesMetatypes ? origins(of: subscripted.calledExpression) : []
-        }
         if let array = expression.as(ArrayExprSyntax.self) {
             return array.elements.reduce(into: []) { $0.formUnion(origins(of: $1.expression)) }
         }
@@ -270,6 +269,26 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return origins(of: tried.expression)
         }
         return []
+    }
+
+    /// The origins of the collection an element such as `values[0]`, `values[0]!` or `try values[key]` is read from;
+    /// none for any other expression.
+    private func elementOrigins(of expression: ExprSyntax) -> Set<Location> {
+        var current = expression
+        while true {
+            if let forced = current.as(ForceUnwrapExprSyntax.self) {
+                current = forced.expression
+            } else if let optional = current.as(OptionalChainingExprSyntax.self) {
+                current = optional.expression
+            } else if let tried = current.as(TryExprSyntax.self) {
+                current = tried.expression
+            } else if let awaited = current.as(AwaitExprSyntax.self) {
+                current = awaited.expression
+            } else {
+                break
+            }
+        }
+        return current.as(SubscriptCallExprSyntax.self).map { origins(of: $0.calledExpression) } ?? []
     }
 
     /// A shorthand getter, or an accessor list with a getter, setter, `_read` or `_modify`; `willSet` and `didSet`

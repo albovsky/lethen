@@ -2930,6 +2930,14 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedDecodeSubscriptedMetatypeIsNotAKeyRead() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct180Key")) {
+                self.assertAssignOnlyProperty(.varInstance("keyField"))
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeExistentialComposition() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct322Composed")) {

@@ -111,7 +111,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         }
 
         return encoded.contains { argument in
-            argument.isUnresolved || argument.references.contains { reference in
+            argument.isUnresolved || argument.references.union(argument.elementReferences).contains { reference in
                 isEncodableExistential(reference) || graph.declaration(withUsr: reference.usr).map(producesEncodableExistential) == true
             }
         }
