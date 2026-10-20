@@ -144,8 +144,14 @@ public enum ScanResultBuilder {
             let reason = "never \(participle) through \(proto.name)"
             guard !witnesses.isEmpty else { return reason }
 
-            let direct = witnesses.count { graph.usedDeclarations.contains($0) }
-            return "\(reason); \(direct) of \(witnesses.count) witness\(witnesses.count == 1 ? "" : "es") \(direct == 1 ? "is" : "are") \(participle) directly"
+            // Only a reference from used code, or from top-level code, is a direct call: a witness used through another
+            // protocol it conforms to, or kept by a retainer, is used without one.
+            let direct = witnesses.count { witness in
+                graph.references(to: witness).contains { reference in
+                    reference.kind == .normal && reference.parent.map { graph.usedDeclarations.contains($0) } ?? true
+                }
+            }
+            return "\(reason); \(direct) of \(witnesses.count) witness\(witnesses.count == 1 ? "" : "es") \(direct <= 1 ? "is" : "are") \(participle) directly"
         }
 
         let requirements = references.compactMapSet(\.parent)

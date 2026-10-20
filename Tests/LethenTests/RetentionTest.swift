@@ -180,6 +180,19 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
                 self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), witness)
             }
+            // A witness used only through a second protocol it conforms to is not called directly.
+            assertReferenced(.protocol("FixtureReasonFirstProtocol")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonShared()"))
+                self.assertReason(.functionMethodInstance("fixtureReasonShared()"), "never called through FixtureReasonFirstProtocol; 0 of 1 witness is called directly")
+            }
+            assertReferenced(.struct("FixtureReasonBothProtocols")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonShared()"))
+            }
+            // A witness kept only by --retain-public is used, but nothing calls it directly.
+            assertReferenced(.protocol("FixtureReasonRetainedProtocol")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonRetained()"))
+                self.assertReason(.functionMethodInstance("fixtureReasonRetained()"), "never called through FixtureReasonRetainedProtocol; 0 of 1 witness is called directly")
+            }
         }
     }
 
