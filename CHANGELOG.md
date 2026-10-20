@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- An unused protocol requirement and its uncalled witnesses now have reasons that tie them together, in `--verbose` output and the `json` and `csv` formats. A requirement that nothing references but its witnesses reads `never called through Repository; 1 of 3 witnesses is called directly` (`used` for a property), and a witness that only such a requirement references reads `witness of Repository.update(_:), which nothing calls through the protocol; remove it with the requirement`, where both said `no references in the scanned modules` or `referenced only from 1 unused declaration` before. Other reasons, and what is reported, do not change ([#201](https://github.com/albovsky/lethen/issues/201)).
 
 ##### Bug Fixes
 

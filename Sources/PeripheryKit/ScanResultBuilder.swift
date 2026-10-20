@@ -108,7 +108,11 @@ public enum ScanResultBuilder {
             if declaration.kind == .module {
                 return "no declaration of the module is used in this file"
             }
-            let referencing = Set(graph.references(to: declaration).compactMap(\.parent))
+            let references = graph.references(to: declaration)
+            if let reason = protocolReason(for: declaration, references: references, graph: graph) {
+                return reason
+            }
+            let referencing = Set(references.compactMap(\.parent))
             if referencing.isEmpty {
                 return "no references in the scanned modules"
             }
@@ -124,6 +128,34 @@ public enum ScanResultBuilder {
         case .unconstructedEnumCase:
             return "matched in patterns but never constructed"
         }
+    }
+
+    /// The reason of an unused protocol requirement that nothing references but its own witnesses, and of a witness
+    /// that only unused requirements reference. The protocol conformance builder points a requirement's `related`
+    /// references at its witnesses, and a default implementation's back at the requirement.
+    private static func protocolReason(for declaration: Declaration, references: Set<Reference>, graph: SourceGraph) -> String? {
+        let (participle, verb) = declaration.kind.isFunctionKind ? ("called", "calls") : ("used", "uses")
+        if let proto = declaration.parent, proto.kind == .protocol {
+            guard references.allSatisfy({ $0.kind == .related }) else { return nil }
+
+            let witnesses = declaration.related
+                .compactMapSet { graph.declaration(withUsr: $0.usr) }
+                .filter { $0.parent?.kind != .protocol }
+            let reason = "never \(participle) through \(proto.name)"
+            guard !witnesses.isEmpty else { return reason }
+
+            let direct = witnesses.count { graph.usedDeclarations.contains($0) }
+            return "\(reason); \(direct) of \(witnesses.count) witness\(witnesses.count == 1 ? "" : "es") \(direct == 1 ? "is" : "are") \(participle) directly"
+        }
+
+        let requirements = references.compactMapSet(\.parent)
+        guard let requirement = requirements.first, requirements.count == 1,
+              let proto = requirement.parent, proto.kind == .protocol,
+              references.allSatisfy({ $0.kind == .related }),
+              !graph.usedDeclarations.contains(requirement)
+        else { return nil }
+
+        return "witness of \(proto.name).\(requirement.name), which nothing \(verb) through the protocol; remove it with the requirement"
     }
 
     /// Checks if a declaration has references from code that is not part of the command ignored set.

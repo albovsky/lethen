@@ -158,6 +158,31 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testReasonsForUnusedProtocolRequirementsAndWitnesses() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.protocol("FixtureReasonRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonLoad()"))
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), "never called through FixtureReasonRepository; 1 of 3 witnesses is called directly")
+            }
+            assertReferenced(.struct("FixtureReasonDirectRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+            }
+            let witness = "witness of FixtureReasonRepository.fixtureReasonUpdate(_:), which nothing calls through the protocol; remove it with the requirement"
+            assertReferenced(.struct("FixtureReasonUncalledRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonLoad()"))
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), witness)
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonHelper(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonHelper(_:)"), "referenced only from 1 unused declaration")
+            }
+            assertReferenced(.struct("FixtureReasonOtherRepository")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), witness)
+            }
+        }
+    }
+
     func testRedundantProtocolThatInheritsAnyObject() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass121"))
