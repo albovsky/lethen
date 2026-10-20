@@ -589,7 +589,7 @@ public final class ConfidenceAssessor {
 
     /// The names a runtime lookup can spell for the declaration: its Swift base name, the Objective-C
     /// name of an exposed declaration when `@objc(name)` differs from it, and the setter selector of an
-    /// exposed property (`setFoo` for `foo`). An initializer is reachable only by its Objective-C name
+    /// exposed property that has a setter (`setFoo` for `foo`). An initializer is reachable only by its Objective-C name
     /// (`initWithFoo`); `init` alone is not a lookup.
     static func lookupNames(of declaration: Declaration) -> Set<String> {
         var names: Set<String> = declaration.kind == .functionConstructor ? [] : [SourceGraph.baseName(of: declaration.name)]
@@ -597,7 +597,7 @@ public final class ConfidenceAssessor {
             guard let name = objcName(fromUSR: usr) else { continue }
 
             names.insert(name)
-            if declaration.kind.isVariableKind, let first = name.first {
+            if declaration.kind.isVariableKind, !declaration.isReadOnly, let first = name.first {
                 names.insert("set" + first.uppercased() + name.dropFirst())
             }
         }
@@ -606,13 +606,16 @@ public final class ConfidenceAssessor {
 
     /// The whole selectors the Objective-C runtime knows the declaration by: the selector of a method or
     /// initializer from its clang USR (`load:from:`), and the getter and setter of a property (`title`,
-    /// `setTitle:`), from its USR when it has one, since `@objc(name)` may rename it, else from its Swift name.
+    /// `setTitle:`; a read-only one has no setter), from its USR when it has one, since `@objc(name)` may rename it, else from its Swift name.
     /// `nil` for a kind no selector names, and for a method whose clang USR is missing, since Swift's rules for
     /// naming it depend on its labels and `@objc(name)`.
     static func objcSelectors(of declaration: Declaration) -> Set<String>? {
         let fromUSRs = Set(declaration.usrs.compactMap { objcSelector(fromUSR: $0) })
         if declaration.kind.isVariableKind {
             let getters = fromUSRs.isEmpty ? [SourceGraph.baseName(of: declaration.name)] : fromUSRs
+            // A read-only property has no setter, so `setTitle:` names some other declaration.
+            guard !declaration.isReadOnly else { return getters }
+
             return getters.reduce(into: getters) { selectors, getter in
                 if let first = getter.first { selectors.insert("set" + first.uppercased() + getter.dropFirst() + ":") }
             }
