@@ -10,6 +10,7 @@ final class StringLiteralConfidenceTest: XCTestCase {
         kind: Declaration.Kind = .functionMethodInstance,
         usrs: Set<String> = ["s:swiftOnly"],
         attributes: [String] = [],
+        isReadOnly: Bool = false,
         evidence configure: (inout ConfidenceEvidence) -> Void
     ) -> ConfidenceAssessment {
         let graph = SourceGraph(configuration: Configuration(), logger: Logger(quiet: true, verbose: false, colorMode: .never))
@@ -20,6 +21,7 @@ final class StringLiteralConfidenceTest: XCTestCase {
         let file = SourceFile(path: FilePath("/p/A.swift"), modules: ["A"])
         let declaration = Declaration(name: name, kind: kind, usrs: usrs, location: Location(file: file, line: 1, column: 1))
         declaration.attributes = Set(attributes.map { DeclarationAttribute(name: $0, arguments: nil) })
+        declaration.isReadOnly = isReadOnly
         return ConfidenceAssessor(evidence: evidence, graph: graph, configuration: Configuration()).assess(declaration)
     }
 
@@ -117,6 +119,21 @@ final class StringLiteralConfidenceTest: XCTestCase {
         XCTAssertEqual(property { $0.addClangLiteralTokens(["title"]) }.confidence, .likely)
         XCTAssertEqual(property { $0.addClangLiteralSelectors(["setTitle:forState:"]) }.confidence, .certain)
         XCTAssertEqual(property { $0.addClangLiteralSelectors(["title:"]) }.confidence, .certain)
+    }
+
+    func testReadOnlyObjcPropertyIsNotNamedByASetterSelector() {
+        func property(usrs: Set<String> = ["s:swiftOnly"], _ configure: @escaping (inout ConfidenceEvidence) -> Void) -> ConfidenceAssessment {
+            assess(name: "title", kind: .varInstance, usrs: usrs, attributes: ["objc"], isReadOnly: true, evidence: configure)
+        }
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["setTitle:"]) }.confidence, .certain)
+        XCTAssertEqual(property { $0.addLiteralSelectors(["setTitle:"]) }.confidence, .certain)
+        XCTAssertEqual(property(usrs: ["s:swiftTitle", "c:@M@A@objc(cs)Store(py)title"]) { $0.addClangLiteralSelectors(["setTitle:"]) }.confidence, .certain)
+        XCTAssertEqual(property(usrs: ["s:swiftTitle", "c:@M@A@objc(cs)Store(py)title"]) { $0.addLiteralTokens(["setTitle"]) }.confidence, .certain)
+        // Its getter still names it.
+        XCTAssertEqual(property { $0.addClangLiteralSelectors(["title"]) }.confidence, .likely)
+        XCTAssertEqual(property { $0.addLiteralTokens(["title"]) }.confidence, .likely)
+        // Control: a settable property is named by its setter.
+        XCTAssertEqual(assess(name: "title", kind: .varInstance, attributes: ["objc"]) { $0.addClangLiteralSelectors(["setTitle:"]) }.confidence, .likely)
     }
 
     func testPropertySelectorsComeFromItsObjcUSRWhenItHasOne() {
