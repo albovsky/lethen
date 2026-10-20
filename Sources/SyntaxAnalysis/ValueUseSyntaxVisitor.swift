@@ -325,6 +325,15 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let identifier = type.as(IdentifierTypeSyntax.self), identifier.genericArgumentClause == nil {
             return [identifier.name]
         }
+        // A standard container spelled out, `Array<Model>`, `Optional<Model>` or `Swift.Dictionary<Key, Model>`,
+        // passes its arguments through as the shorthand forms do.
+        if let (name, clause) = genericName(of: type), let clause, SpecializationCollector.transparent.contains(name.text) {
+            return clause.arguments.flatMap { argument -> [TokenSyntax] in
+                guard case let .type(argumentType) = argument.argument else { return [] }
+
+                return simpleTypeTokens(in: argumentType)
+            }
+        }
         if let array = type.as(ArrayTypeSyntax.self) {
             return simpleTypeTokens(in: array.element)
         }
@@ -339,6 +348,16 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return simpleTypeTokens(in: optional.wrappedType)
         }
         return []
+    }
+
+    private static func genericName(of type: TypeSyntax) -> (TokenSyntax, GenericArgumentClauseSyntax?)? {
+        if let identifier = type.as(IdentifierTypeSyntax.self) {
+            return (identifier.name, identifier.genericArgumentClause)
+        }
+        if let member = type.as(MemberTypeSyntax.self), member.baseType.trimmedDescription == "Swift" {
+            return (member.name, member.genericArgumentClause)
+        }
+        return nil
     }
 
     private func recordParameterTypeNames(
@@ -475,7 +494,7 @@ private final class TypeNameCollector: SyntaxVisitor {
 }
 
 private final class SpecializationCollector: SyntaxVisitor {
-    private static let transparent: Set<String> = ["Array", "Optional", "Set", "Dictionary", "ContiguousArray"]
+    static let transparent: Set<String> = ["Array", "Optional", "Set", "Dictionary", "ContiguousArray"]
     var specializations: [(name: TokenSyntax, clause: GenericArgumentClauseSyntax)] = []
 
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {

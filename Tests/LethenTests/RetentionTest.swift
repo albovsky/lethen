@@ -2791,6 +2791,25 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedDecodeInferredExplicitContainerArguments() throws {
+        try analyze(retainPublic: true) {
+            for (type, property) in [
+                ("FixtureStruct277ArrayElement", "arrayElementDecoded"),
+                ("FixtureStruct277OptionalElement", "optionalElementDecoded"),
+                ("FixtureStruct277DictionaryValue", "dictionaryValueDecoded"),
+                ("FixtureStruct277QualifiedElement", "qualifiedElementDecoded"),
+                ("FixtureStruct277ShorthandElement", "shorthandElementDecoded"),
+            ] {
+                assertReferenced(.struct(type)) {
+                    self.assertNotAssignOnlyProperty(.varInstance(property))
+                }
+            }
+            assertReferenced(.struct("FixtureStruct277PhantomElement")) {
+                self.assertAssignOnlyProperty(.varInstance("phantomElementNotDecoded"))
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeInferredReturn() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct315Bound")) {
