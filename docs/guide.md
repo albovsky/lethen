@@ -350,7 +350,18 @@ In the CI formats a `likely` result is reported one severity lower than a `certa
 
 ### Reusing a build in CI
 
-If the pipeline has already built the project, skip lethen's build and scan the existing index store:
+If the pipeline has already built the project, skip lethen's build. Prefer a route that verifies the store: `--skip-build` without `--index-store-path` checks every index unit against its source and fails with a stale-index error when a source is newer than its unit, so a scan never reads code the build did not see.
+
+For a Swift package, build with the index store and the same build arguments the scan gets after `--`, then scan with `--skip-build`. lethen finds the store with `swift build --show-bin-path` and those arguments, so a build with other arguments, such as `-c release` for the build and none for the scan, is another build and is not found:
+
+```sh
+swift build --build-tests --enable-index-store
+lethen scan --skip-build --format github-actions --relative-results --baseline baseline.json --strict
+```
+
+For an Xcode project built into Xcode's default DerivedData, `--skip-build` alone reads and verifies that index in the same way.
+
+`--index-store-path` names a store explicitly, and an explicit path is authoritative: lethen never checks it for staleness, so use it only for a store you know matches the sources, such as one a pipeline built into a custom `-derivedDataPath` in the same job:
 
 - Xcode: `~/Library/Developer/Xcode/DerivedData/<Project>-<hash>/Index.noindex/DataStore`, or wherever `-derivedDataPath` pointed.
 - Swift packages: `$(swift build --show-bin-path)/index/store` after a build with `--enable-index-store`.
