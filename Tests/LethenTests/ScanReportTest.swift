@@ -319,6 +319,28 @@ final class ScanReportTest: XCTestCase {
         )
     }
 
+    /// The nested scan of `--bazel` is a generic project run by `bazel run`, and reports the Bazel workspace.
+    func testScopeOfTheNestedBazelScanIsTheBazelWorkspace() {
+        let generic = ProjectKind.generic(genericProjectConfig: "bazel-out/k8-fastbuild/bin/project_config.json")
+        let nested = ScanReport.scannedKind(generic, environment: ["BUILD_WORKSPACE_DIRECTORY": "/work"])
+        XCTAssertEqual(
+            ScanReport.scope(of: nested, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Bazel workspace on macOS with Swift 6.4."
+        )
+        // Control: a generic project run directly keeps its configuration file.
+        let direct = ScanReport.scannedKind(generic, environment: [:])
+        XCTAssertEqual(
+            ScanReport.scope(of: direct, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the project described by bazel-out/k8-fastbuild/bin/project_config.json on macOS with Swift 6.4."
+        )
+        // A project of another kind run by `bazel run` is not a Bazel scan.
+        let package = ScanReport.scannedKind(.spm, environment: ["BUILD_WORKSPACE_DIRECTORY": "/work"])
+        XCTAssertEqual(
+            ScanReport.scope(of: package, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Swift package on macOS with Swift 6.4."
+        )
+    }
+
     // MARK: - Private
 
     private func writeBaseline(_ usrs: [String]) throws -> FilePath {

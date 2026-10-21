@@ -191,6 +191,15 @@ struct ScanReport {
         return line + "."
     }
 
+    /// A Bazel scan runs again under `bazel run` as a generic project, from a configuration it generates; what was
+    /// scanned is still the Bazel workspace, which `bazel run` names in `BUILD_WORKSPACE_DIRECTORY`.
+    static func scannedKind(_ kind: ProjectKind, environment: [String: String] = ProcessInfo.processInfo.environment) -> ProjectKind {
+        if case .generic = kind, environment["BUILD_WORKSPACE_DIRECTORY"] != nil {
+            return .bazel
+        }
+        return kind
+    }
+
     static let hostPlatform: String = {
         #if os(macOS)
             "macOS"
