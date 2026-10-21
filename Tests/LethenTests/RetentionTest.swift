@@ -2982,6 +2982,49 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     }
 
     /// The macro's generated extension must not keep its own class alive.
+    /// Dead declarations that must stay reported beside used twins (#192), so a retention rule that retains too much
+    /// fails here rather than only lowering recall on the corpus.
+    func testRecallCanaries() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureCanaryActor")) {
+                self.assertReferenced(.functionMethodInstance("liveActorMethod()"))
+                self.assertNotReferenced(.functionMethodInstance("deadActorMethod()"))
+            }
+            assertReferenced(.class("FixtureCanaryLiveState")) {
+                self.assertReferenced(.varInstance("liveObserved"))
+            }
+            assertNotReferenced(.class("FixtureCanaryDeadState"))
+            assertReferenced(.struct("FixtureCanaryWitness")) {
+                self.assertReferenced(.functionMethodInstance("liveRequirement()"))
+                self.assertNotReferenced(.functionMethodInstance("deadRequirement()"))
+            }
+            assertReferenced(.protocol("FixtureCanaryDeadProtocol")) {
+                self.assertNotReferenced(.functionMethodInstance("deadRequirement()"))
+            }
+            assertReferenced(.struct("FixtureCanaryRecord")) {
+                self.assertReferenced(.varInstance("liveField"))
+                self.assertAssignOnlyProperty(.varInstance("deadAssignOnly"))
+            }
+            assertReferenced(.class("FixtureCanaryPublicAPI")) {
+                self.assertReferenced(.functionMethodInstance("liveHelper()"))
+                self.assertNotReferenced(.functionMethodInstance("deadHelper()"))
+            }
+            assertReferenced(.functionFree("fixtureCanaryLiveCallee()"))
+            assertNotReferenced(.functionFree("fixtureCanaryDeadCaller()"))
+            assertNotReferenced(.functionFree("fixtureCanaryDeadCallee()"))
+            #if canImport(SwiftUI)
+                assertReferenced(.struct("FixtureCanaryLiveView"))
+                assertNotReferenced(.struct("FixtureCanaryDeadView"))
+            #endif
+            #if canImport(ObjectiveC)
+                assertReferenced(.class("FixtureCanaryObjc")) {
+                    self.assertReferenced(.functionMethodInstance("liveObjc()"))
+                    self.assertNotReferenced(.functionMethodInstance("deadObjc()"))
+                }
+            #endif
+        }
+    }
+
     func testReportsUnusedObservableClass() throws {
         try analyze(retainPublic: true) {
             assertNotReferenced(.class("FixtureClass227"))
