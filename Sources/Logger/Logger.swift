@@ -35,6 +35,13 @@ public struct Logger: Sendable {
     let colorMode: LoggerColorMode
     /// Records how long each interval takes, when a scan reports statistics.
     public let intervalRecorder: IntervalRecorder?
+    /// Shared by every copy of the logger, so a warning counts wherever it is written.
+    private let warnings = WarningCounter()
+
+    /// How many warnings this logger, or a copy of it, has written.
+    public var warningCount: Int {
+        warnings.count
+    }
 
     #if canImport(os)
         let signposter = OSSignposter()
@@ -110,6 +117,7 @@ public struct Logger: Sendable {
         }
         let text = colorize("warning: ", .boldYellow) + text
         log(text, output: stderr)
+        warnings.increment()
     }
 
     // periphery:ignore
@@ -201,6 +209,18 @@ public struct SignpostInterval {
     #if canImport(os)
         let state: OSSignpostIntervalState
     #endif
+}
+
+final class WarningCounter: Sendable {
+    private let value = Mutex(0)
+
+    var count: Int {
+        value.withLock { $0 }
+    }
+
+    func increment() {
+        value.withLock { $0 += 1 }
+    }
 }
 
 /// The total time spent in each named interval. Intervals that end more than once, such as one per

@@ -3,6 +3,7 @@ import Foundation
 import Logger
 import PeripheryKit
 import Shared
+import SystemPackage
 
 /// The results a scan reports once the baseline and report filters are applied, with the files the
 /// configuration asks for.
@@ -144,6 +145,87 @@ struct ScanReport {
         }
 
         return summary + "."
+    }
+
+    /// "Scanned the Xcode project App.xcodeproj (schemes App and Widgets; configurations Debug and Release) on macOS
+    /// with Swift 6.4; 2 warnings above." What the results cover, printed before the footer: the project, the schemes
+    /// and configurations it was told to build, the platform lethen ran on and the one the build arguments target, the
+    /// toolchain, and how many warnings, such as unindexed files or unscanned targets, the scan wrote.
+    static func scope(
+        of kind: ProjectKind,
+        configuration: Configuration,
+        swiftVersion: String,
+        warningCount: Int,
+        platform: String = hostPlatform
+    ) -> String {
+        var subject = switch kind {
+        case let .xcode(projectPath):
+            "the Xcode \(projectPath.extension == "xcworkspace" ? "workspace" : "project") \(projectPath.lastComponent?.string ?? projectPath.string)"
+        case .spm:
+            "the Swift package"
+        case .bazel:
+            "the Bazel workspace"
+        case let .generic(genericProjectConfig):
+            "the project described by \(genericProjectConfig.string)"
+        }
+
+        var details: [String] = []
+        if !configuration.schemes.isEmpty {
+            details.append("\(configuration.schemes.count == 1 ? "scheme" : "schemes") \(list(configuration.schemes))")
+        }
+        if !configuration.configurations.isEmpty {
+            details.append("\(configuration.configurations.count == 1 ? "configuration" : "configurations") \(list(configuration.configurations))")
+        }
+        if !details.isEmpty {
+            subject += " (\(details.joined(separator: "; ")))"
+        }
+
+        var line = "Scanned \(subject) on \(platform)"
+        if let target = buildTarget(in: configuration.buildArguments) {
+            line += " for \(target)"
+        }
+        line += " with Swift \(swiftVersion)"
+        if warningCount > 0 {
+            line += "; \(warningCount) \(warningCount == 1 ? "warning" : "warnings") above"
+        }
+        return line + "."
+    }
+
+    /// A Bazel scan runs again under `bazel run` as a generic project, from a configuration it generates; what was
+    /// scanned is still the Bazel workspace, which `bazel run` names in `BUILD_WORKSPACE_DIRECTORY`.
+    static func scannedKind(_ kind: ProjectKind, environment: [String: String] = ProcessInfo.processInfo.environment) -> ProjectKind {
+        if case .generic = kind, environment["BUILD_WORKSPACE_DIRECTORY"] != nil {
+            return .bazel
+        }
+        return kind
+    }
+
+    static let hostPlatform: String = {
+        #if os(macOS)
+            "macOS"
+        #elseif os(Linux)
+            "Linux"
+        #elseif os(Windows)
+            "Windows"
+        #else
+            "this platform"
+        #endif
+    }()
+
+    /// The destination, SDK, triple or Swift SDK the build arguments pick, which decides the compiled `#if` branches.
+    private static func buildTarget(in arguments: [String]) -> String? {
+        let options: Set = ["-destination", "-sdk", "--triple", "--swift-sdk"]
+        for (index, argument) in arguments.enumerated() where options.contains(argument) && index + 1 < arguments.count {
+            return arguments[index + 1]
+        }
+        return nil
+    }
+
+    /// "A", "A and B", "A, B and C".
+    private static func list(_ items: [String]) -> String {
+        guard let last = items.last, items.count > 1 else { return items.first ?? "" }
+
+        return items.dropLast().joined(separator: ", ") + " and " + last
     }
 
     /// Throws `foundIssues` in strict mode when any result remains.
