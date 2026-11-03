@@ -141,11 +141,16 @@ final class UnusedImportMarkerTest: XCTestCase {
         let external = temp.appending("Outside.m")
         try "".write(toFile: external.string, atomically: true, encoding: .utf8)
         try "".write(toFile: root.appending("File.m").string, atomically: true, encoding: .utf8)
+        let externalLink = temp.appending("OutsideAlias.m")
+        try FileManager.default.createSymbolicLink(atPath: externalLink.string, withDestinationPath: external.string)
+        let removed = temp.appending("Removed.m")
         let alias = temp.appending("ProjectAlias")
         try FileManager.default.createSymbolicLink(atPath: alias.string, withDestinationPath: root.string)
         try FileManager.default.createSymbolicLink(atPath: root.appending("Self").string, withDestinationPath: root.string)
         for projectRoot in [root, alias] {
             XCTAssertEqual(try unusedImportIDs(file: external, projectRoot: projectRoot), ["import-WMF.WMFLogging-../Outside.m:1:1"])
+            XCTAssertEqual(try unusedImportIDs(file: externalLink, projectRoot: projectRoot), ["import-WMF.WMFLogging-../OutsideAlias.m:1:1"])
+            XCTAssertEqual(try unusedImportIDs(file: removed, projectRoot: projectRoot), ["import-WMF.WMFLogging-../Removed.m:1:1"])
             for directory in [root, alias] {
                 let file = directory.appending("Self/File.m")
                 XCTAssertEqual(try unusedImportIDs(file: file, projectRoot: projectRoot), ["import-WMF.WMFLogging-Self/File.m:1:1"])
@@ -155,10 +160,9 @@ final class UnusedImportMarkerTest: XCTestCase {
 
     func testUnsetOrMissingProjectRootKeepsTheOriginalRelativeID() throws {
         let file: FilePath = "Sources/File.m"
-        for root in [FilePath(), FilePath("missing-\(UUID().uuidString)")] {
-            let expected = file.relativeTo(root)
-            XCTAssertEqual(try unusedImportIDs(file: file, projectRoot: root), ["import-WMF.WMFLogging-\(expected):1:1"])
-        }
+        XCTAssertEqual(try unusedImportIDs(file: file, projectRoot: FilePath()), ["import-WMF.WMFLogging-Sources/File.m:1:1"])
+        let missing = FilePath("missing-\(UUID().uuidString)")
+        XCTAssertEqual(try unusedImportIDs(file: file, projectRoot: missing), ["import-WMF.WMFLogging-../Sources/File.m:1:1"])
     }
 
     private func unusedImportIDs(file path: FilePath, projectRoot: FilePath) throws -> [String] {

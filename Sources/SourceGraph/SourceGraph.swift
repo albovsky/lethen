@@ -351,22 +351,25 @@ public final class SourceGraph {
             return location.relativeTo(realRoot)
         }
 
-        // Find the outermost spelling of the project root in the index path. Keep links below
-        // it in the ID, including a link back to the root itself.
+        // Express the root in the indexed file's spelling. Use their closest shared physical
+        // directory, keeping the outermost spelling on a tie (a link back to the root).
         var directory = file
-        var indexedRoot: FilePath?
+        var shared: (indexed: FilePath, real: FilePath)?
         while directory.removeLastComponent() {
-            if directory == realRoot || Self.realPath(directory) == realRoot {
-                indexedRoot = directory
+            if let real = Self.realPath(directory), realRoot.starts(with: real),
+               shared.map({ real.starts(with: $0.real) }) ?? true
+            {
+                shared = (directory, real)
             }
             // A suffix containing ".." cannot be made relative lexically across a symlink.
             if directory.lastComponent?.kind == .parentDirectory { break }
         }
-        if let indexedRoot { return location.relativeTo(indexedRoot) }
+        if let shared {
+            let indexedRoot = shared.indexed.pushing(realRoot.relativeTo(shared.real))
+            return location.relativeTo(indexedRoot)
+        }
 
-        guard let realFile = Self.realPath(file) else { return location.relativeTo(root) }
-
-        let source = SourceFile(path: realFile, modules: [])
+        let source = SourceFile(path: Self.realPath(file) ?? file, modules: [])
         return Location(file: source, line: location.line, column: location.column).relativeTo(realRoot)
     }
 
