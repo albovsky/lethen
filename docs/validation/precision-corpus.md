@@ -1150,3 +1150,5 @@ All four projects re-scanned on the Mac (Xcode 27.0, Swift 6.4, `corpus/scan.sh`
 | Row | Kind | Verdict | Evidence |
 | --- | --- | --- | --- |
 | `Packages/Env/Sources/Env/CurrentAccount.swift:15` `isUpdating` | var.instance | TP, now reported in every scan | Declared `public private(set)` and never read or assigned; every other `isUpdating` in the project belongs to `ListEditViewModel`, `NotificationsPolicyView` or `MediaEditView`. Outside the sample; the verdict is recorded in `corpus/adjudications/IceCubesApp.json`. |
+
+On 2026-11-03, the SwiftPM debug build at `573b1a31` (based on `0a2d1d06`) reproduced all four expectations on arm64 macOS 27.2 (26B123), Xcode 27.0 (27A266a), Apple Swift 6.4 (swiftlang-6.4.0.34.1). Alamofire had 88 findings, swift-nio 308, Wikipedia iOS 2,568 and IceCubesApp 448. Three more IceCubesApp scans in separate processes with `--skip-build` produced the same 448 canonical rows from the existing index, including `CurrentAccount.isUpdating`. The full Swift 6.4 verification passed all 1,070 tests. Clean, warm and native fixture scans matched, and the strict self-scan reported no unused code.
