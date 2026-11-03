@@ -37,19 +37,27 @@ while [ $# -gt 0 ]; do
 done
 {
     if [ "$format" = github-actions ]; then
-        echo "::warning file=Sources/A.swift,line=1,col=6,title=unused::Unused function 'a()'"
-        echo "::warning file=Sources/P.swift,line=1,col=10,title=redundantProtocol::Redundant protocol 'P' (never used as an existential type)"
-        echo "::warning file=Sources/S.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
-        echo "::warning file=Sources/T.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
-        [ "$min_confidence" = certain ] || echo "::notice file=Sources/B.swift,line=2,col=6,title=unused::Unused function 'b()' [likely: its name appears in a string literal]"
+        if [ -z "${FAKE_ONLY_LIKELY:-}" ]; then
+            echo "::warning file=Sources/A.swift,line=1,col=6,title=unused::Unused function 'a()'"
+            echo "::warning file=Sources/P.swift,line=1,col=10,title=redundantProtocol::Redundant protocol 'P' (never used as an existential type)"
+            echo "::warning file=Sources/S.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
+            echo "::warning file=Sources/T.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
+        fi
+        severity=notice
+        if [ -n "${FAKE_310:-}" ]; then severity=warning; fi
+        if [ "$min_confidence" != certain ]; then
+            echo "::$severity file=Sources/B.swift,line=2,col=6,title=redundantProtocol::Redundant protocol 'B' (never used as an existential type) [likely: its name appears in a string literal]"
+            echo "::$severity file=Sources/U.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'B'"
+        fi
     else
-        printf '%s\n' "certain a()" "certain P"
+        if [ -z "${FAKE_ONLY_LIKELY:-}" ]; then printf '%s\n' "certain a()" "certain P"; fi
         [ "$min_confidence" = certain ] || echo "likely b()"
     fi
 } | tee "$results_file"
-count=3
-[ "$min_confidence" != certain ] || count=2
-if [ "$strict" = true ]; then echo "Error: Found $count issues." >&2; exit 1; fi
+count=0
+if [ -z "${FAKE_ONLY_LIKELY:-}" ]; then count=2; fi
+if [ "$min_confidence" != certain ]; then count=$((count + 1)); fi
+if [ "$strict" = true ] && [ "$count" -gt 0 ]; then echo "Error: Found $count issues." >&2; exit 1; fi
 EOF
 chmod +x "$work/lethen"
 mkdir -p "$work/workspace/App"
@@ -62,14 +70,22 @@ expect() {
     : > "$work/output"
     if (cd "$work/workspace/App" && env LETHEN_BIN="$work/lethen" LETHEN_STRICT="$strict" LETHEN_MIN_CONFIDENCE="$min_confidence" \
         LETHEN_FORMAT="$format" GITHUB_WORKSPACE="$work/workspace" RUNNER_TEMP="$work" GITHUB_OUTPUT="$work/output" \
-        FAKE_ARGUMENTS="$work/arguments" FAKE_OLD="${FAKE_OLD:-}" bash "$script") > "$work/log" 2>&1; then
+        FAKE_ARGUMENTS="$work/arguments" FAKE_OLD="${FAKE_OLD:-}" FAKE_310="${FAKE_310:-}" FAKE_ONLY_LIKELY="${FAKE_ONLY_LIKELY:-}" bash "$script") > "$work/log" 2>&1; then
         actual_outcome=pass
     else
         actual_outcome=fail
     fi
     actual_count="$(sed -n 's/^count=//p' "$work/output")"
     actual_argument="$(grep -A1 -x -- --min-confidence "$work/arguments" | tail -n 1 || true)"
-    if grep -q '^::notice file=App/Sources/B.swift,' "$work/log"; then actual_notice=yes; else actual_notice=no; fi
+    local results_file
+    results_file="$(sed -n 's/^results-file=//p' "$work/output")"
+    # Both the protocol and its conformance must have the same severity in each output.
+    if [ "$(grep -Ec '^::notice file=App/Sources/(B|U)\.swift,' "$work/log" || true)" = 2 ] &&
+        [ "$(grep -Ec '^::notice file=App/Sources/(B|U)\.swift,' "$results_file" || true)" = 2 ]; then
+        actual_notice=yes
+    else
+        actual_notice=no
+    fi
     local actual="$actual_outcome count=$actual_count min-confidence=${actual_argument:-none} notice=$actual_notice"
     local expected="$outcome count=$count min-confidence=$argument notice=$notice"
     if [ "$actual" = "$expected" ]; then
@@ -92,11 +108,14 @@ expect "strict, no min-confidence, json"           true   ""     json           
 expect "no strict, no min-confidence, json"        false  ""     json           pass    3     none     no
 FAKE_OLD=1 expect "strict, json, a lethen without --min-confidence" true "" json fail 3 none no
 
+FAKE_310=1 expect "3.10.0 mixed warnings" true "" github-actions fail 2 none yes
+
 # Only `likely` results: the step passes on them and says so, and the count is 0.
-sed -i.bak -e '/^        echo "::warning/d' -e 's/^count=3$/count=1/' -e 's/^\[ "\$min_confidence" != certain \] || count=2$/[ "$min_confidence" != certain ] || count=0/' "$work/lethen"
-expect "strict, no min-confidence, only likely results" true "" github-actions pass 0 none yes
+FAKE_ONLY_LIKELY=1 expect "strict, no min-confidence, only likely results" true "" github-actions pass 0 none yes
 grep -q '^Lethen reported 1 likely result, annotated as notices' "$work/log" \
     || { echo "::error::The step does not say that the likely result was not counted" >&2; failures=$((failures + 1)); }
+
+FAKE_ONLY_LIKELY=1 FAKE_310=1 expect "3.10.0 only likely warnings" true "" github-actions pass 0 none yes
 
 if [ "$failures" -gt 0 ]; then
     echo "$failures action-scan.sh expectations failed" >&2

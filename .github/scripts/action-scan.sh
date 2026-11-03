@@ -55,10 +55,10 @@ if [ -n "${LETHEN_BASELINE:-}" ]; then
     command+=(--baseline "$LETHEN_BASELINE")
 fi
 min_confidence="${LETHEN_MIN_CONFIDENCE:-}"
-count_warnings=false
+count_certain=false
 if [ -z "$min_confidence" ] && [ "$strict" = true ]; then
     if [ "$format" = github-actions ]; then
-        count_warnings=true
+        count_certain=true
     elif "$binary" scan --help 2>/dev/null | grep -q -- '--min-confidence'; then
         min_confidence=certain
     fi
@@ -81,15 +81,28 @@ if [ "$format" = github-actions ] && [ -n "${GITHUB_WORKSPACE:-}" ]; then
 fi
 # The prefix becomes part of each annotation's `file` property, so it is escaped as lethen
 # escapes property values, or a comma, colon or newline in a directory name would end the
-# property or the command. It is then escaped for the replacement side of the sed expression.
+# property or the command.
 property="${prefix//\%/%25}"
 property="${property//$'\r'/%0D}"
 property="${property//$'\n'/%0A}"
 property="${property//:/%3A}"
 property="${property//,/%2C}"
-escaped_prefix="$(printf '%s' "$property" | sed 's/[\\&|]/\\&/g')"
 annotate() {
-    sed -e "s|^::warning file=|::warning file=$escaped_prefix|" -e "s|^::notice file=|::notice file=$escaped_prefix|"
+    # 3.10.0 marks likely findings with a trailing reason but emits every finding as a
+    # warning. Its conformance detail lines follow their protocol and have no reason.
+    ANNOTATION_PREFIX="$property" awk -v count_certain="$count_certain" '
+        /^::(warning|notice) file=/ {
+            if (count_certain == "true") {
+                if ($0 !~ /^::(warning|notice) [^:]*::Redundant protocol conformance /)
+                    likely = ($0 ~ /^::notice / || $0 ~ / \[likely: .*\]$/)
+                if (likely) sub(/^::warning /, "::notice ")
+            }
+            # Insert the path literally, including any ampersand or backslash.
+            pos = index($0, "file=") + 4
+            $0 = substr($0, 1, pos) ENVIRON["ANNOTATION_PREFIX"] substr($0, pos + 1)
+        }
+        { print }
+    '
 }
 
 echo "Running ${command[*]}"
@@ -101,7 +114,7 @@ set +e
 status=$?
 set -e
 
-if [ -n "$prefix" ] && [ -f "$results_file" ]; then
+if { [ -n "$prefix" ] || [ "$count_certain" = true ]; } && [ -f "$results_file" ]; then
     annotate < "$results_file" > "$results_file.annotated"
     mv "$results_file.annotated" "$results_file"
 fi
@@ -117,13 +130,10 @@ if [ "$status" -ne 0 ]; then
 fi
 
 total="$count"
-if [ "$count_warnings" = true ] && [ "$count" -gt 0 ]; then
-    # One warning per `certain` result, except that a redundant protocol adds one for each
-    # conformance. The properties escape `:`, so the message follows the first `::` after
-    # the command.
-    warnings="$(grep -cE '^::warning [^:]*::' "$results_file" || true)"
-    conformances="$(grep -cE "^::warning [^:]*::Redundant protocol conformance '" "$results_file" || true)"
-    count=$((warnings - conformances))
+if [ "$count_certain" = true ] && [ "$count" -gt 0 ]; then
+    # Strict counts findings, while a protocol can have several conformance annotations.
+    likely="$(awk '/^::notice file=/ && !/^::notice [^:]*::Redundant protocol conformance / { n++ } END { print n+0 }' "$results_file")"
+    count=$((total - likely))
 fi
 
 {
