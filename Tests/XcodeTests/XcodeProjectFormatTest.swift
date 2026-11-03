@@ -45,13 +45,19 @@ final class XcodeProjectFormatTest: XCTestCase {
 
     func testScanOfAProjectConvertedByXcodeReportsTheUnsupportedFormat() throws {
         let shell = ShellImpl(logger: Logger(quiet: true, verbose: false, colorMode: .never))
-        // The Swift 6.4 CI job selects Xcode 27.0 but also has 27.2 installed alongside it.
-        let sideBySide = FilePath("/Applications/Xcode_27.2.app/Contents/Developer")
-        let environment = sideBySide.exists ? ["env", "DEVELOPER_DIR=\(sideBySide)"] : []
+        // Keep the parent XCTest process's framework paths out of the other Xcode's processes.
+        let variables = ProcessInfo.processInfo.environment
+        let primaryCI = variables["GITHUB_JOB"] == "swift-6-4"
+        let developerDir = primaryCI ? "/Applications/Xcode_27.2.app/Contents/Developer" : variables["DEVELOPER_DIR"]
+        var environment = ["/usr/bin/env", "-i", "HOME=\(NSHomeDirectory())", "TMPDIR=\(NSTemporaryDirectory())", "PATH=/usr/bin:/bin:/usr/sbin:/sbin"]
+        if let developerDir { environment.append("DEVELOPER_DIR=\(developerDir)") }
         let xcodebuild = environment + ["/usr/bin/xcodebuild"]
         let version = try shell.exec(xcodebuild + ["-version"])
         let number = try XCTUnwrap(version.split(separator: "\n").first?.split(separator: " ").last)
-        try XCTSkipUnless(String(number).isVersion(greaterThanOrEqualTo: "27.2"), "Conversion requires Xcode 27.2 or later; found \(version)")
+        if String(number).isVersion(lessThan: "27.2") {
+            if primaryCI { return XCTFail("Expected Xcode 27.2 or later in the primary CI job; found \(version)") }
+            throw XCTSkip("Conversion requires Xcode 27.2 or later; found \(version)")
+        }
 
         let copy = root.appending("Fixture")
         try FileManager.default.copyItem(atPath: ConfigurationsProjectPath.removingLastComponent().string, toPath: copy.string)
