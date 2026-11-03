@@ -385,6 +385,8 @@ The action is part of every release from 3.10.0; pin the release tag, or a commi
 
 By default a strict scan fails the check only on `certain` results. In the `github-actions` format the `likely` ones are still annotated, as notices, and the step's log says how many there were; in other formats the scan runs with `--min-confidence certain`, so they are left out. Set the Action input `min-confidence: likely` to fail the check on them as well, as releases up to 2026.10.1 did.
 
+Binaries older than 3.10.0 have no confidence filter. With those versions a strict scan counts every finding.
+
 The `count` output is the number of results after the baseline and confidence filters (with `strict` and no `min-confidence`, the number of `certain` results), and `results-file` is the path of the results in the chosen format, for example to upload as an artifact. The scan always runs with `--relative-results --disable-update-check`, and settings from `.periphery.yml` still apply.
 
 macOS release binaries are Apple silicon only, so use an Apple silicon runner such as `macos-26`. On Linux the release binary needs a Swift 6.3 or later toolchain on `PATH`, which it also uses to build the project; the action checks for `swift` but does not install it, so run the job in a container such as `swift:6.4-noble` or install Swift in an earlier step. Release binaries are tested on Ubuntu 22.04 and 24.04 images, and releases from 3.10.0 also on Ubuntu 26.04; the `swift:6.4` tag now points at Ubuntu 26.04, where the 3.9.0 binary cannot load `libxml2.so.2`, so pin an Ubuntu 24.04 image such as `swift:6.4-noble` when installing 3.9.0.

@@ -62,7 +62,7 @@ if [ "$min_confidence" != certain ]; then count=$((count + 1)); fi
 if [ "$strict" = true ] && [ "$count" -gt 0 ]; then echo "Error: Found $count issues." >&2; exit 1; fi
 EOF
 chmod +x "$work/lethen"
-mkdir -p "$work/workspace/App"
+mkdir -p "$work/workspace/App" "$work/workspace/Apps & Tools"
 
 # Runs the scan with the given strict and min-confidence inputs and the format, then compares
 # the outcome, the count, whether --min-confidence reached lethen, and whether the `likely`
@@ -131,6 +131,7 @@ FAKE_ONLY_LIKELY=1 FAKE_310=1 expect "3.10.0 only likely warnings" true "" githu
 
 TEST_PREFIX="" expect "modern mixed findings at the repository root" true "" github-actions fail 2 none yes
 TEST_PREFIX="" FAKE_310=1 expect "3.10.0 mixed findings at the repository root" true "" github-actions fail 2 none yes
+TEST_PREFIX="Apps & Tools/" FAKE_310=1 expect "3.10.0 special-character path" true "" github-actions fail 2 none yes
 FAKE_310=1 expect "3.10.0 non-strict warnings" false "" github-actions pass 3 none no
 
 if [ "$failures" -gt 0 ]; then

@@ -59,8 +59,7 @@ count_certain=false
 if [ -z "$min_confidence" ] && [ "$strict" = true ]; then
     if [ "$format" = github-actions ]; then
         count_certain=true
-    # Consume the full help output: with pipefail, an early grep exit can make the binary fail with SIGPIPE.
-    elif "$binary" scan --help 2>/dev/null | grep -F -- '--min-confidence' > /dev/null; then
+    elif help_text="$("$binary" scan --help 2>/dev/null)" && [[ "$help_text" == *--min-confidence* ]]; then
         min_confidence=certain
     else
         echo "This Lethen binary does not advertise --min-confidence; strict will count all reported findings."
