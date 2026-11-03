@@ -18,7 +18,7 @@ inputs:
   args:
     description: >-
       Further arguments for `lethen scan`, parsed with shell quoting, for example
-      `--schemes App --targets App`. The format, strictness, baseline and results file are set
+      `--schemes App --targets App`. The format, strictness, min-confidence, baseline and results file are set
       by the other inputs. The shell evaluates the value like a `run:` line, so never put pull
       request text such as branch names or titles into it.
     required: false
@@ -35,8 +35,8 @@ inputs:
     default: ""
   strict:
     description: >-
-      Fail the step when any result is reported. With no `min-confidence`, only `certain`
-      results fail it; `likely` ones are still annotated, as notices.
+      Fail the step on findings at the selected confidence. By default only `certain` findings
+      fail it. In the GitHub Actions format, `likely` findings appear as notices.
     required: false
     default: "true"
   format:

@@ -22,6 +22,8 @@ set -euo pipefail
 if [ "${2:-}" = --help ]; then
     echo "USAGE: lethen scan [<options>]"
     if [ -z "${FAKE_OLD:-}" ]; then echo "  --min-confidence <min-confidence>"; fi
+    # A help producer must be able to finish writing after the matching option.
+    awk 'BEGIN { for (i=0; i<16000; i++) print "  another scan option" }'
     exit 0
 fi
 printf '%s\n' "$@" > "$FAKE_ARGUMENTS"
@@ -37,17 +39,17 @@ while [ $# -gt 0 ]; do
 done
 {
     if [ "$format" = github-actions ]; then
-        if [ -z "${FAKE_ONLY_LIKELY:-}" ]; then
-            echo "::warning file=Sources/A.swift,line=1,col=6,title=unused::Unused function 'a()'"
-            echo "::warning file=Sources/P.swift,line=1,col=10,title=redundantProtocol::Redundant protocol 'P' (never used as an existential type)"
-            echo "::warning file=Sources/S.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
-            echo "::warning file=Sources/T.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
-        fi
         severity=notice
         if [ -n "${FAKE_310:-}" ]; then severity=warning; fi
         if [ "$min_confidence" != certain ]; then
             echo "::$severity file=Sources/B.swift,line=2,col=6,title=redundantProtocol::Redundant protocol 'B' (never used as an existential type) [likely: its name appears in a string literal]"
             echo "::$severity file=Sources/U.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'B'"
+        fi
+        if [ -z "${FAKE_ONLY_LIKELY:-}" ]; then
+            echo "::warning file=Sources/A.swift,line=1,col=6,title=unused::Unused function 'a()'"
+            echo "::warning file=Sources/P.swift,line=1,col=10,title=redundantProtocol::Redundant protocol 'P' (never used as an existential type)"
+            echo "::warning file=Sources/S.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
+            echo "::warning file=Sources/T.swift,line=1,col=8,title=redundantProtocol::Redundant protocol conformance 'P'"
         fi
     else
         if [ -z "${FAKE_ONLY_LIKELY:-}" ]; then printf '%s\n' "certain a()" "certain P"; fi
@@ -67,8 +69,10 @@ mkdir -p "$work/workspace/App"
 # result was annotated.
 expect() {
     local name="$1" strict="$2" min_confidence="$3" format="$4" outcome="$5" count="$6" argument="$7" notice="$8"
+    local prefix="${TEST_PREFIX-App/}"
     : > "$work/output"
-    if (cd "$work/workspace/App" && env LETHEN_BIN="$work/lethen" LETHEN_STRICT="$strict" LETHEN_MIN_CONFIDENCE="$min_confidence" \
+    : > "$work/arguments"
+    if (cd "$work/workspace/$prefix" && env LETHEN_BIN="$work/lethen" LETHEN_STRICT="$strict" LETHEN_MIN_CONFIDENCE="$min_confidence" \
         LETHEN_FORMAT="$format" GITHUB_WORKSPACE="$work/workspace" RUNNER_TEMP="$work" GITHUB_OUTPUT="$work/output" \
         FAKE_ARGUMENTS="$work/arguments" FAKE_OLD="${FAKE_OLD:-}" FAKE_310="${FAKE_310:-}" FAKE_ONLY_LIKELY="${FAKE_ONLY_LIKELY:-}" bash "$script") > "$work/log" 2>&1; then
         actual_outcome=pass
@@ -80,11 +84,19 @@ expect() {
     local results_file
     results_file="$(sed -n 's/^results-file=//p' "$work/output")"
     # Both the protocol and its conformance must have the same severity in each output.
-    if [ "$(grep -Ec '^::notice file=App/Sources/(B|U)\.swift,' "$work/log" || true)" = 2 ] &&
-        [ "$(grep -Ec '^::notice file=App/Sources/(B|U)\.swift,' "$results_file" || true)" = 2 ]; then
+    if [ "$(grep -Ec "^::notice file=${prefix}Sources/(B|U)[.]swift," "$work/log" || true)" = 2 ] &&
+        [ "$(grep -Ec "^::notice file=${prefix}Sources/(B|U)[.]swift," "$results_file" || true)" = 2 ]; then
         actual_notice=yes
     else
         actual_notice=no
+    fi
+    if [ "$format" = github-actions ] && [ -z "${FAKE_ONLY_LIKELY:-}" ]; then
+        for file in "$work/log" "$results_file"; do
+            if [ "$(grep -Ec "^::warning file=${prefix}Sources/(A|P|S|T)[.]swift," "$file" || true)" != 4 ]; then
+                echo "::error::$name did not keep all four certain annotations as warnings in $file" >&2
+                failures=$((failures + 1))
+            fi
+        done
     fi
     local actual="$actual_outcome count=$actual_count min-confidence=${actual_argument:-none} notice=$actual_notice"
     local expected="$outcome count=$count min-confidence=$argument notice=$notice"
@@ -116,6 +128,10 @@ grep -q '^Lethen reported 1 likely result, annotated as notices' "$work/log" \
     || { echo "::error::The step does not say that the likely result was not counted" >&2; failures=$((failures + 1)); }
 
 FAKE_ONLY_LIKELY=1 FAKE_310=1 expect "3.10.0 only likely warnings" true "" github-actions pass 0 none yes
+
+TEST_PREFIX="" expect "modern mixed findings at the repository root" true "" github-actions fail 2 none yes
+TEST_PREFIX="" FAKE_310=1 expect "3.10.0 mixed findings at the repository root" true "" github-actions fail 2 none yes
+FAKE_310=1 expect "3.10.0 non-strict warnings" false "" github-actions pass 3 none no
 
 if [ "$failures" -gt 0 ]; then
     echo "$failures action-scan.sh expectations failed" >&2

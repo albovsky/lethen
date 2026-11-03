@@ -379,11 +379,11 @@ The action is part of every release from 3.10.0; pin the release tag, or a commi
 | `args` | none | Further `lethen scan` arguments with shell quoting, such as `--schemes App --targets App` |
 | `working-directory` | `.` | Where to scan from; annotations still point at files from the repository root |
 | `baseline` | none | A baseline file, relative to the working directory |
-| `strict` | `true` | Fail the step when any result is reported; with no `min-confidence`, only `certain` results count |
+| `strict` | `true` | Fail on findings at the selected confidence. By default only `certain` findings count |
 | `format` | `github-actions` | The output format |
-| `min-confidence` | `certain` with `strict`, otherwise the scan's default | `certain` reports only `certain` results; `likely` reports everything and fails a strict check on `likely` results too, such as declarations reachable from Objective-C or named in a string literal |
+| `min-confidence` | unset | `certain` reports only `certain` results; `likely` reports everything and fails a strict check on `likely` results too, such as declarations reachable from Objective-C or named in a string literal |
 
-By default a strict scan fails the check only on `certain` results. In the `github-actions` format the `likely` ones are still annotated, as notices, and the step's log says how many there were; in other formats the scan runs with `--min-confidence certain`, so they are left out. Set `min-confidence: likely` to fail the check on them as well, as releases up to 2026.10.1 did.
+By default a strict scan fails the check only on `certain` results. In the `github-actions` format the `likely` ones are still annotated, as notices, and the step's log says how many there were; in other formats the scan runs with `--min-confidence certain`, so they are left out. Set the Action input `min-confidence: likely` to fail the check on them as well, as releases up to 2026.10.1 did.
 
 The `count` output is the number of results after the baseline and confidence filters (with `strict` and no `min-confidence`, the number of `certain` results), and `results-file` is the path of the results in the chosen format, for example to upload as an artifact. The scan always runs with `--relative-results --disable-update-check`, and settings from `.periphery.yml` still apply.
 

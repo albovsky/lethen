@@ -59,8 +59,11 @@ count_certain=false
 if [ -z "$min_confidence" ] && [ "$strict" = true ]; then
     if [ "$format" = github-actions ]; then
         count_certain=true
-    elif "$binary" scan --help 2>/dev/null | grep -q -- '--min-confidence'; then
+    # Consume the full help output: with pipefail, an early grep exit can make the binary fail with SIGPIPE.
+    elif "$binary" scan --help 2>/dev/null | grep -F -- '--min-confidence' > /dev/null; then
         min_confidence=certain
+    else
+        echo "This Lethen binary does not advertise --min-confidence; strict will count all reported findings."
     fi
 fi
 if [ -n "$min_confidence" ]; then
@@ -133,6 +136,9 @@ total="$count"
 if [ "$count_certain" = true ] && [ "$count" -gt 0 ]; then
     # Strict counts findings, while a protocol can have several conformance annotations.
     likely="$(awk '/^::notice file=/ && !/^::notice [^:]*::Redundant protocol conformance / { n++ } END { print n+0 }' "$results_file")"
+    if [ "$likely" -gt "$total" ]; then
+        fail "The annotations contain $likely likely findings, but Lethen reported only $total findings."
+    fi
     count=$((total - likely))
 fi
 
