@@ -133,6 +133,26 @@ final class UnusedImportMarkerTest: XCTestCase {
         }
     }
 
+    func testExternalFileAndLinkBackToRootKeepTheirIndexedNames() throws {
+        let temp = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path)
+        let root = temp.appending("Project")
+        try FileManager.default.createDirectory(atPath: root.string, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: temp.string) }
+        let external = temp.appending("Outside.m")
+        try "".write(toFile: external.string, atomically: true, encoding: .utf8)
+        try "".write(toFile: root.appending("File.m").string, atomically: true, encoding: .utf8)
+        let alias = temp.appending("ProjectAlias")
+        try FileManager.default.createSymbolicLink(atPath: alias.string, withDestinationPath: root.string)
+        try FileManager.default.createSymbolicLink(atPath: root.appending("Self").string, withDestinationPath: root.string)
+        for projectRoot in [root, alias] {
+            XCTAssertEqual(try unusedImportIDs(file: external, projectRoot: projectRoot), ["import-WMF.WMFLogging-../Outside.m:1:1"])
+            for directory in [root, alias] {
+                let file = directory.appending("Self/File.m")
+                XCTAssertEqual(try unusedImportIDs(file: file, projectRoot: projectRoot), ["import-WMF.WMFLogging-Self/File.m:1:1"])
+            }
+        }
+    }
+
     func testUnsetOrMissingProjectRootKeepsTheOriginalRelativeID() throws {
         let file: FilePath = "Sources/File.m"
         for root in [FilePath(), FilePath("missing-\(UUID().uuidString)")] {

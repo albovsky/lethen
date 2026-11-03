@@ -345,22 +345,24 @@ public final class SourceGraph {
     private func unusedImportLocation(_ location: Location) -> Location {
         let root = configuration.projectRoot
         let file = location.file.path
-        // Preserve baseline IDs for paths already relative to the project, including links inside it.
-        if root.isEmpty || (file.starts(with: root) && !file.components.contains { $0.kind == .parentDirectory }) {
-            return location.relativeTo(root)
-        }
-        guard let realRoot = Self.realPath(root) else { return location.relativeTo(root) }
+        guard !root.isEmpty, let realRoot = Self.realPath(root) else { return location.relativeTo(root) }
 
-        // Find the spelling of the project root in the index path. Keep the names below it even
-        // when two different in-project links point to the same external source.
+        if file.starts(with: realRoot), !file.components.contains(where: { $0.kind == .parentDirectory }) {
+            return location.relativeTo(realRoot)
+        }
+
+        // Find the outermost spelling of the project root in the index path. Keep links below
+        // it in the ID, including a link back to the root itself.
         var directory = file
+        var indexedRoot: FilePath?
         while directory.removeLastComponent() {
-            if directory == root || directory == realRoot || Self.realPath(directory) == realRoot {
-                return location.relativeTo(directory)
+            if directory == realRoot || Self.realPath(directory) == realRoot {
+                indexedRoot = directory
             }
             // A suffix containing ".." cannot be made relative lexically across a symlink.
             if directory.lastComponent?.kind == .parentDirectory { break }
         }
+        if let indexedRoot { return location.relativeTo(indexedRoot) }
 
         guard let realFile = Self.realPath(file) else { return location.relativeTo(root) }
 
