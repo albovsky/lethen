@@ -22,7 +22,7 @@ public struct ConfidenceEvidence: Equatable {
     public private(set) var reflectionSites: [String: String] = [:]
     /// Names used in `#if` clauses this build did not compile, by the module whose file has the clause,
     /// each with the clause that uses it.
-    public private(set) var skippedBranches: [String: NameSites] = [:]
+    public private(set) var skippedBranches: [String: SkippedBranchNames] = [:]
     /// Names used by the Swift files of targets the scanned schemes do not build, by target name.
     public private(set) var unscannedTargets: [String: UnscannedTargetNames] = [:]
     /// Whether the index has a unit for every C and Objective-C file the build compiled. `nil` until the
@@ -59,9 +59,11 @@ public struct ConfidenceEvidence: Equatable {
         }
     }
 
-    public mutating func addSkippedBranchNames(_ sites: NameSites, modules: Set<String>) {
+    /// Records the names the skipped clauses of one file use, for each module that compiles the file.
+    /// `file` is the file holding the clauses: only it can name a `private` or `fileprivate` declaration.
+    public mutating func addSkippedBranchNames(_ sites: NameSites, modules: Set<String>, file: FilePath) {
         for module in modules {
-            skippedBranches[module, default: NameSites()].merge(sites)
+            skippedBranches[module, default: SkippedBranchNames()].add(sites, file: file)
         }
     }
 
@@ -86,5 +88,21 @@ public struct ConfidenceEvidence: Equatable {
     /// Whether any name evidence beyond string literals exists, which is what the origin walk reads.
     var hasNameEvidence: Bool {
         !unscannedTargets.isEmpty || !skippedBranches.isEmpty
+    }
+}
+
+/// The names the `#if` clauses one module did not compile use: every file's together, and each file's own,
+/// since only a clause of a declaration's own file can name a `private` or `fileprivate` declaration.
+public struct SkippedBranchNames: Equatable {
+    /// The names of every skipped clause of the module.
+    public var all = NameSites()
+    /// The names of the skipped clauses of each file, by its normalized path.
+    public var byFile: [FilePath: NameSites] = [:]
+
+    public init() {}
+
+    mutating func add(_ sites: NameSites, file: FilePath) {
+        all.merge(sites)
+        byFile[file.lexicallyNormalized(), default: NameSites()].merge(sites)
     }
 }

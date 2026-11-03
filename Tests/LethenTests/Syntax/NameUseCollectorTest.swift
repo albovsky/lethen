@@ -103,10 +103,14 @@ final class NameUseCollectorTest: XCTestCase {
         typealias Spelling = NameSites.Spelling
         let collector = collect("func f(a: A) {\n _ = A.ready\n _ = .go\n switch a { case .go: break; case A.ready: break }\n}")
         XCTAssertEqual(collector.spellings["ready"], [
-            Spelling(receiver: "A", isMember: true),
-            Spelling(receiver: "A", isMember: true, isPattern: true),
+            Spelling(receiver: "A", isMember: true, isMemberAccess: true, qualifier: "A"),
+            Spelling(receiver: "A", isMember: true, isMemberAccess: true, qualifier: "A", isPattern: true),
         ])
-        XCTAssertEqual(collector.spellings["go"], [Spelling(isMember: true), Spelling(isMember: true, isPattern: true)])
+        // A leading dot is a member access through nothing it names.
+        XCTAssertEqual(collector.spellings["go"], [
+            Spelling(isMember: true, isMemberAccess: true),
+            Spelling(isMember: true, isMemberAccess: true, isPattern: true),
+        ])
     }
 
     /// An `override` names the base member, so its name is a member use; the same declaration without `override`
@@ -223,11 +227,21 @@ final class NameUseCollectorTest: XCTestCase {
             collector.spellings["animate"],
             [Spelling(labels: ["duration", "completion"], hasTrailingClosure: true, isMember: true)]
         )
-        XCTAssertEqual(collector.spellings["load"], [Spelling(labels: [], isMember: true)], "`Store.shared` is not the receiver of `load`")
-        XCTAssertEqual(collector.spellings["init"], [Spelling(labels: ["data"], receiver: "Store", isMember: true)])
+        XCTAssertEqual(
+            collector.spellings["load"],
+            [Spelling(labels: [], isMember: true, isMemberAccess: true)],
+            "`Store.shared` is not the receiver of `load`"
+        )
+        XCTAssertEqual(
+            collector.spellings["init"],
+            [Spelling(labels: ["data"], receiver: "Store", isMember: true, isMemberAccess: true, qualifier: "Store")]
+        )
         XCTAssertEqual(
             collector.spellings["shared"],
-            [Spelling(receiver: "Store", isMember: true), Spelling(isMember: true)],
+            [
+                Spelling(receiver: "Store", isMember: true, isMemberAccess: true, qualifier: "Store"),
+                Spelling(isMember: true, isMemberAccess: true),
+            ],
             "`self.shared` and `Self.shared` name no type"
         )
     }
@@ -237,7 +251,10 @@ final class NameUseCollectorTest: XCTestCase {
         let collector = collect("func make<T: Base>(_: T.Type) { _ = T.shared }\nfunc other() { _ = U.shared }")
         XCTAssertEqual(
             collector.spellings["shared"],
-            [Spelling(isMember: true), Spelling(receiver: "U", isMember: true)]
+            [
+                Spelling(isMember: true, isMemberAccess: true),
+                Spelling(receiver: "U", isMember: true, isMemberAccess: true, qualifier: "U"),
+            ]
         )
     }
 }

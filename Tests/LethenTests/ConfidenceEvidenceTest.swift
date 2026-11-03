@@ -12,12 +12,17 @@ final class ConfidenceEvidenceTest: XCTestCase {
         XCTAssertEqual(a.constructionNames, ["load": "C.swift:3"])
     }
 
-    func testSkippedBranchNamesMergePerModule() {
+    func testSkippedBranchNamesMergePerModuleAndKeepEachFileApart() {
         var evidence = ConfidenceEvidence()
-        evidence.addSkippedBranchNames(NameSites(names: ["Shared": "#if os(Windows) at F.swift:9"]), modules: ["A", "B"])
-        evidence.addSkippedBranchNames(NameSites(names: ["Shared": "#if os(Windows) at F.swift:1"]), modules: ["A"])
-        XCTAssertEqual(evidence.skippedBranches["A"]?.names["Shared"], "#if os(Windows) at F.swift:1")
-        XCTAssertEqual(evidence.skippedBranches["B"]?.names["Shared"], "#if os(Windows) at F.swift:9")
+        evidence.addSkippedBranchNames(NameSites(names: ["Shared": "#if os(Windows) at F.swift:9"]), modules: ["A", "B"], file: FilePath("/p/F.swift"))
+        evidence.addSkippedBranchNames(NameSites(names: ["Shared": "#if os(Windows) at G.swift:1"]), modules: ["A"], file: FilePath("/p/./G.swift"))
+        XCTAssertEqual(evidence.skippedBranches["A"]?.all.names["Shared"], "#if os(Windows) at F.swift:9")
+        XCTAssertEqual(evidence.skippedBranches["B"]?.all.names["Shared"], "#if os(Windows) at F.swift:9")
+        // Each file keeps only its own clauses, under a normalized path, so a `private` declaration is
+        // matched against the file that can see it and no other.
+        XCTAssertEqual(evidence.skippedBranches["A"]?.byFile[FilePath("/p/F.swift")]?.names["Shared"], "#if os(Windows) at F.swift:9")
+        XCTAssertEqual(evidence.skippedBranches["A"]?.byFile[FilePath("/p/G.swift")]?.names["Shared"], "#if os(Windows) at G.swift:1")
+        XCTAssertNil(evidence.skippedBranches["B"]?.byFile[FilePath("/p/G.swift")])
     }
 
     func testUnscannedTargetNamesNormalizeSharedFilesAndKeepTestableModulesApart() {

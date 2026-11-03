@@ -23,8 +23,18 @@
     "commit": "599e4a634b8f24f324c9def932b75f03d57b87e7",
     "kind": "xcode",
     "setup": [
-      "scripts/setup_bundle_id",
-      "ci"
+      [
+        "scripts/setup_bundle_id",
+        "ci"
+      ],
+      [
+        "sed",
+        "-i",
+        "",
+        "-e",
+        "s#if which swiftlint > /dev/null; then#if false; then#",
+        "Wikipedia.xcodeproj/project.pbxproj"
+      ]
     ],
     "arguments": [
       "--project",
