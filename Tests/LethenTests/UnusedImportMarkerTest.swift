@@ -113,6 +113,34 @@ final class UnusedImportMarkerTest: XCTestCase {
         }
     }
 
+    func testLinksInsideTheProjectKeepDistinctBaselineIDs() throws {
+        let temp = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path)
+        let root = temp.appending("Project")
+        let shared = temp.appending("Shared")
+        try FileManager.default.createDirectory(atPath: root.string, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: temp.string) }
+        try FileManager.default.createDirectory(atPath: shared.string, withIntermediateDirectories: true)
+        try "".write(toFile: shared.appending("File.m").string, atomically: true, encoding: .utf8)
+        let rootLink = temp.appending("ProjectAlias")
+        try FileManager.default.createSymbolicLink(atPath: rootLink.string, withDestinationPath: root.string)
+
+        for name in ["Sources", "OtherSources"] {
+            try FileManager.default.createSymbolicLink(atPath: root.appending(name).string, withDestinationPath: shared.string)
+            for indexedRoot in [root, rootLink] {
+                let path = indexedRoot.appending("\(name)/File.m")
+                XCTAssertEqual(try unusedImportIDs(file: path, projectRoot: root), ["import-WMF.WMFLogging-\(name)/File.m:1:1"])
+            }
+        }
+    }
+
+    func testUnsetOrMissingProjectRootKeepsTheOriginalRelativeID() throws {
+        let file: FilePath = "Sources/File.m"
+        for root in [FilePath(), FilePath("missing-\(UUID().uuidString)")] {
+            let expected = file.relativeTo(root)
+            XCTAssertEqual(try unusedImportIDs(file: file, projectRoot: root), ["import-WMF.WMFLogging-\(expected):1:1"])
+        }
+    }
+
     private func unusedImportIDs(file path: FilePath, projectRoot: FilePath) throws -> [String] {
         let configuration = Configuration()
         configuration.projectRoot = projectRoot

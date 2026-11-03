@@ -336,21 +336,40 @@ public final class SourceGraph {
     }
 
     func markUnusedModuleImport(_ statement: ImportStatement) {
-        // The id is relative to the project's real root, so it does not depend on whether the root was reached
-        // through a symbolic link.
-        let root = configuration.projectRoot.isEmpty ? configuration.projectRoot : Self.resolvingSymlinks(configuration.projectRoot)
-        let file = SourceFile(path: Self.resolvingSymlinks(statement.location.file.path), modules: [])
-        let location = Location(file: file, line: statement.location.line, column: statement.location.column).relativeTo(root)
+        let location = unusedImportLocation(statement.location)
         let usr = "import-\(statement.qualifiedModule)-\(location)"
         let decl = Declaration(name: statement.qualifiedModule, kind: .module, usrs: [usr], location: statement.location)
         unusedModuleImports.insert(decl)
     }
 
-    private static func resolvingSymlinks(_ path: FilePath) -> FilePath {
-        // realpath follows a link before evaluating a subsequent "..".
-        guard let resolved = path.withPlatformString({ realpath($0, nil) }) else {
-            return FilePath(path.url.resolvingSymlinksInPath().path)
+    private func unusedImportLocation(_ location: Location) -> Location {
+        let root = configuration.projectRoot
+        let file = location.file.path
+        // Preserve baseline IDs for paths already relative to the project, including links inside it.
+        if root.isEmpty || (file.starts(with: root) && !file.components.contains { $0.kind == .parentDirectory }) {
+            return location.relativeTo(root)
         }
+        guard let realRoot = Self.realPath(root) else { return location.relativeTo(root) }
+
+        // Find the spelling of the project root in the index path. Keep the names below it even
+        // when two different in-project links point to the same external source.
+        var directory = file
+        while directory.removeLastComponent() {
+            if directory == root || directory == realRoot || Self.realPath(directory) == realRoot {
+                return location.relativeTo(directory)
+            }
+            // A suffix containing ".." cannot be made relative lexically across a symlink.
+            if directory.lastComponent?.kind == .parentDirectory { break }
+        }
+
+        guard let realFile = Self.realPath(file) else { return location.relativeTo(root) }
+
+        let source = SourceFile(path: realFile, modules: [])
+        return Location(file: source, line: location.line, column: location.column).relativeTo(realRoot)
+    }
+
+    private static func realPath(_ path: FilePath) -> FilePath? {
+        guard let resolved = path.withPlatformString({ realpath($0, nil) }) else { return nil }
 
         defer { free(resolved) }
         return FilePath(platformString: resolved)
