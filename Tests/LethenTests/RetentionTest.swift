@@ -3006,6 +3006,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             let modifyAccessors = Self.allIndexedDeclarations.filter {
                 $0.kind == .functionAccessorModify && $0.parent?.parent?.name == "FixtureClass326"
             }
+            XCTAssertEqual(modifyAccessors.count, 3)
             XCTAssertEqual(
                 modifyAccessors.mapSet { $0.parent?.name ?? "" },
                 ["readProperty", "neverUsedProperty", "otherNeverUsedProperty"]
