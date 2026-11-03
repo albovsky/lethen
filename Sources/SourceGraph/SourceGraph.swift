@@ -347,7 +347,13 @@ public final class SourceGraph {
     }
 
     private static func resolvingSymlinks(_ path: FilePath) -> FilePath {
-        FilePath(URL(fileURLWithPath: path.lexicallyNormalized().string).resolvingSymlinksInPath().path)
+        // realpath follows a link before evaluating a subsequent "..".
+        guard let resolved = path.withPlatformString({ realpath($0, nil) }) else {
+            return FilePath(path.url.resolvingSymlinksInPath().path)
+        }
+
+        defer { free(resolved) }
+        return FilePath(platformString: resolved)
     }
 
     func markExtension(_ extensionDecl: Declaration, extending extendedDecl: Declaration) {

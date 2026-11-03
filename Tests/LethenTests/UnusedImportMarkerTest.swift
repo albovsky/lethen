@@ -93,19 +93,23 @@ final class UnusedImportMarkerTest: XCTestCase {
     /// The id of an unused import is relative to the project's real root, whether the root or the file is reached
     /// through a symbolic link, so the same finding keeps its id however `--project-root` is spelled.
     func testUnusedImportIDIsRelativeToTheRealProjectRoot() throws {
-        let real = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen-import-\(UUID().uuidString)").path)
-        let link = FilePath(real.string + "-link")
+        let temp = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen-import-\(UUID().uuidString)").path)
+        let real = temp.appending("project")
+        let link = temp.appending("project-link")
+        let sourcesLink = temp.appending("sources-link")
         try FileManager.default.createDirectory(atPath: real.appending("Sources").string, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: temp.string) }
         try "".write(toFile: real.appending("Sources/File.m").string, atomically: true, encoding: .utf8)
         try FileManager.default.createSymbolicLink(atPath: link.string, withDestinationPath: real.string)
-        defer {
-            try? FileManager.default.removeItem(atPath: link.string)
-            try? FileManager.default.removeItem(atPath: real.string)
-        }
+        try FileManager.default.createSymbolicLink(atPath: sourcesLink.string, withDestinationPath: real.appending("Sources").string)
 
-        for (root, directory) in [(real, real), (link, real), (real, link), (link, link)] {
-            let ids = try unusedImportIDs(file: directory.appending("Sources/File.m"), projectRoot: root)
-            XCTAssertEqual(ids, ["import-WMF.WMFLogging-Sources/File.m:1:1"], "root \(root), file under \(directory)")
+        // Walking up from the linked Sources directory reaches the project, not the link's containing directory.
+        let spellings = [real, link, sourcesLink.appending("..")]
+        for root in spellings {
+            for directory in spellings {
+                let ids = try unusedImportIDs(file: directory.appending("Sources/File.m"), projectRoot: root)
+                XCTAssertEqual(ids, ["import-WMF.WMFLogging-Sources/File.m:1:1"], "root \(root), file under \(directory)")
+            }
         }
     }
 
