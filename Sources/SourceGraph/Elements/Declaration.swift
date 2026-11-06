@@ -239,6 +239,11 @@ public final class Declaration {
     /// True for a property whose accessor block has a getter, setter or read/modify body, so it stores nothing,
     /// even when that body references no declaration. Observers on a stored property do not count.
     public var hasAccessorBody: Bool = false
+    /// True for a Swift property with no setter: a `let`, or a `var` with only a getter. Such a property has no
+    /// setter selector at run time.
+    public var isReadOnly: Bool = false
+    /// True for a function declared `async`.
+    public var isAsync: Bool = false
     public var parent: Declaration?
     public var related: Set<Reference> = []
     public var isImplicit: Bool = false
@@ -408,11 +413,15 @@ public struct ParameterTypeNames {
     public let isVariadic: Bool
     /// The parameter type as written.
     public let typeName: String
+    /// The constraints of a generic parameter the parameter is typed by, bare or optional: `Encodable` for
+    /// `value: T` in `func emit<T: Encodable>(value: T)`.
+    public let genericConstraintNames: Set<String>
 
-    public init(label: String?, names: Set<String>, isVariadic: Bool = false, typeName: String = "") {
+    public init(label: String?, names: Set<String>, isVariadic: Bool = false, typeName: String = "", genericConstraintNames: Set<String> = []) {
         self.label = label
         self.names = names
         self.isVariadic = isVariadic
         self.typeName = typeName
+        self.genericConstraintNames = genericConstraintNames
     }
 }

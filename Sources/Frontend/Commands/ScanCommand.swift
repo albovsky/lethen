@@ -233,15 +233,26 @@ struct ScanCommand: ParsableCommand {
         let interval = logger.beginInterval("result:output")
         let report = try ScanReport(results: scanOutput.results, configuration: configuration, logger: logger)
 
-        if let output = report.output {
+        if !report.sections.isEmpty {
             if configuration.outputFormat.supportsAuxiliaryOutput {
                 logger.info("", canQuiet: true)
             }
 
-            logger.info(output, canQuiet: false)
+            for section in report.sections {
+                if let header = section.header {
+                    logger.note(header)
+                }
+                logger.info(section.output, canQuiet: false)
+            }
         }
 
         if let footer = report.footer {
+            logger.note(ScanReport.scope(
+                of: ScanReport.scannedKind(project.kind),
+                configuration: configuration,
+                swiftVersion: swiftVersion.version,
+                warningCount: logger.warningCount
+            ))
             logger.note(footer)
         }
 
@@ -261,7 +272,10 @@ struct ScanCommand: ParsableCommand {
     /// Changes into the project root and builds the configuration from the configuration file and the
     /// command-line options, which take precedence.
     func makeConfiguration() throws -> Configuration {
-        if !FileManager.default.changeCurrentDirectoryPath(projectRoot.string) {
+        // A relative root names a directory from where Lethen was started, which stops being true once it changes
+        // into the root.
+        let root = projectRoot.makeAbsolute()
+        if !FileManager.default.changeCurrentDirectoryPath(root.string) {
             throw LethenError.changeCurrentDirectoryFailed(projectRoot)
         }
 
@@ -272,7 +286,7 @@ struct ScanCommand: ParsableCommand {
         }
 
         configuration.guidedSetup = setup
-        configuration.projectRoot = projectRoot
+        configuration.projectRoot = root
         configuration.apply(\.$project, project)
         configuration.apply(\.$schemes, schemes)
         configuration.apply(\.$indexExclude, indexExclude)
