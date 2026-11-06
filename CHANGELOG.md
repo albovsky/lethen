@@ -2,6 +2,22 @@
 
 ##### Breaking
 
+- None.
+
+##### Enhancements
+
+- None.
+
+##### Bug Fixes
+
+- None.
+
+## 2026.11.1 (2026-11-06)
+
+The GitHub Action now fails a strict scan only on `certain` results by default. The `xcode` format separates `likely` and non-dead-code results under their own headers, the precision scorecard grades each confidence tier with an interval, and `--derived-data-path` reads the index of a build a pipeline made into its own DerivedData. An Xcode compilation-cache hit no longer drops index units, and a set of false positives around `@Observable`, `private(set)`, `Encodable` existentials and skipped `#if` branches is fixed.
+
+##### Breaking
+
 - The GitHub Action fails a strict scan only on `certain` results when `min-confidence` is not set. In the `github-actions` format `likely` results are still annotated, as notices, and the step's log says how many there were, but they no longer fail the step or count in the `count` output; other formats run the scan with `--min-confidence certain`. Set `min-confidence: likely` to keep the previous behavior. The precision corpus at 2026.10.1 found no false positive among 81 sampled `certain` results but only 2 true positives among 9 sampled `likely` ones. `likely` notices from a `working-directory` below the repository root now point at the right file, as warnings already did ([#190](https://github.com/albovsky/lethen/issues/190)).
 
 ##### Enhancements
