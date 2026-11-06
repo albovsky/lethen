@@ -2449,6 +2449,13 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 // A local function of that name in the method is what the clause reads.
                 self.assertNotReferenced(.functionMethodInstance("localized9()"))
                 self.assertConfidence(.functionMethodInstance("localized9()"), .certain)
+                // An accessor's parameter of that name, written or implicit, is what the clause reads.
+                self.assertNotReferenced(.varInstance("setterParameter9"))
+                self.assertConfidence(.varInstance("setterParameter9"), .certain)
+                self.assertNotReferenced(.varInstance("newValue"))
+                self.assertConfidence(.varInstance("newValue"), .certain)
+                self.assertNotReferenced(.varInstance("oldValue"))
+                self.assertConfidence(.varInstance("oldValue"), .certain)
                 // Used-but-not-compared control.
                 self.assertReferenced(.varInstance("readNormally9"))
             }

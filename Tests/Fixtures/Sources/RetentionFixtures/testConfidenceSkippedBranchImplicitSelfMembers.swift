@@ -15,6 +15,44 @@ public class FixtureStorage9 {
     func show9(message _: String) {}
     // A local function of the same name is what the skipped clause reads.
     func localized9() -> Int { 0 }
+    // A setter's parameter of the same name is what the skipped clause reads.
+    var setterParameter9 = 0
+    // The implicit parameters of a setter and an observer are what the skipped clauses read.
+    var newValue = 0
+    var oldValue = 0
+    private var stored9 = 0
+
+    public var computed9: Int {
+        get { stored9 }
+        set(setterParameter9) {
+            #if os(Windows)
+                stored9 = setterParameter9
+            #else
+                stored9 = setterParameter9 + 1
+            #endif
+        }
+    }
+
+    public var implicitlyComputed9: Int {
+        get { stored9 }
+        set {
+            #if os(Windows)
+                stored9 = newValue
+            #else
+                stored9 = newValue + 1
+            #endif
+        }
+    }
+
+    public var observed9 = 0 {
+        didSet {
+            #if os(Windows)
+                stored9 = oldValue
+            #else
+                stored9 = oldValue + 1
+            #endif
+        }
+    }
 
     public init() {}
 

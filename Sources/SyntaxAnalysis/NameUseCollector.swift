@@ -382,8 +382,9 @@ public struct NameUseCollector {
         names.formUnion(bound.filter { $0.first?.isUppercase == true })
     }
 
-    /// The names `node` binds to values: `let` and `var` bindings and other identifier patterns, and function and
-    /// closure parameters by their local names.
+    /// The names `node` binds to values: `let` and `var` bindings and other identifier patterns, function and
+    /// closure parameters by their local names, and the parameters of accessors, `set(value)` or the implicit
+    /// `newValue` and `oldValue`.
     private static func collectBoundValueNames(_ node: Syntax, into names: inout Set<String>) {
         let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
             pattern.identifier
@@ -393,11 +394,20 @@ public struct NameUseCollector {
             parameter.secondName ?? parameter.firstName
         } else if let parameter = node.as(ClosureShorthandParameterSyntax.self) {
             parameter.name
+        } else if let parameters = node.as(AccessorParametersSyntax.self) {
+            parameters.name
         } else {
             nil
         }
         if let name = bound?.identifier?.name {
             names.insert(name)
+        }
+        if let accessor = node.as(AccessorDeclSyntax.self), accessor.parameters == nil {
+            switch accessor.accessorSpecifier.tokenKind {
+            case .keyword(.set), .keyword(.willSet): names.insert("newValue")
+            case .keyword(.didSet): names.insert("oldValue")
+            default: break
+            }
         }
         for child in node.children(viewMode: .sourceAccurate) {
             collectBoundValueNames(child, into: &names)
