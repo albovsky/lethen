@@ -104,18 +104,29 @@ public final class ConfidenceAssessor {
         {
             // `Foundation.TimeInterval(...)` constructs a type of another module, which no type of the scan is,
             // whatever its name.
-            let isOfAnotherModule = isOfAnotherModule(spelling, receiver: receiver, modules: modules)
+            let isQualifiedByAnotherModule = isOfAnotherModule(spelling, receiver: receiver, modules: modules)
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
-                return !isOfAnotherModule && !isDistinct(receiver: receiver, from: enclosing)
+                // An extension in `App` of `Models.Widget` is reached through `Models.Widget(...)` too.
+                if isQualifiedByAnotherModule,
+                   isOfAnotherModule(spelling, receiver: receiver, modules: Self.modules(of: enclosing))
+                {
+                    return false
+                }
+                return !isDistinct(receiver: receiver, from: enclosing)
             }
             if let extended = unscannedExtendedType(of: declaration) {
-                if isOfAnotherModule {
+                if isQualifiedByAnotherModule {
                     return receiver == extended.name || Self.sdkTypeAliases[receiver]?.contains(extended.name) == true
                 }
                 return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
             }
         }
         return true
+    }
+
+    /// The modules a declaration belongs to: those the index recorded it in, else those that compile its file.
+    private static func modules(of declaration: Declaration) -> Set<String> {
+        declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
     }
 
     /// Whether a type is spelled through a qualifier that names neither a type of the scan, `Outer` in `Outer.Inner(...)`,
