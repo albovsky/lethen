@@ -7,6 +7,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     func testNonReferencedClass() throws {
         try analyze {
             assertNotReferenced(.class("FixtureClass1"))
+            assertReason(.class("FixtureClass1"), "no references in the scanned modules")
         }
     }
 
@@ -155,6 +156,44 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                                     .class("FixtureClass114"),
                                     .class("FixtureClass115"),
                                     .struct("FixtureStruct116"))
+        }
+    }
+
+    func testReasonsForUnusedProtocolRequirementsAndWitnesses() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.protocol("FixtureReasonRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonLoad()"))
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), "never called through FixtureReasonRepository; 1 of 3 witnesses is called directly")
+            }
+            assertReferenced(.struct("FixtureReasonDirectRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+            }
+            let witness = "witness of FixtureReasonRepository.fixtureReasonUpdate(_:), which nothing calls through the protocol; remove it with the requirement"
+            assertReferenced(.struct("FixtureReasonUncalledRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonLoad()"))
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), witness)
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonHelper(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonHelper(_:)"), "referenced only from 1 unused declaration")
+            }
+            assertReferenced(.struct("FixtureReasonOtherRepository")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), witness)
+            }
+            // A witness used only through a second protocol it conforms to is not called directly.
+            assertReferenced(.protocol("FixtureReasonFirstProtocol")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonShared()"))
+                self.assertReason(.functionMethodInstance("fixtureReasonShared()"), "never called through FixtureReasonFirstProtocol; 0 of 1 witness is called directly")
+            }
+            assertReferenced(.struct("FixtureReasonBothProtocols")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonShared()"))
+            }
+            // A witness kept only by --retain-public is used, but nothing calls it directly.
+            assertReferenced(.protocol("FixtureReasonRetainedProtocol")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonRetained()"))
+                self.assertReason(.functionMethodInstance("fixtureReasonRetained()"), "never called through FixtureReasonRetainedProtocol; 0 of 1 witness is called directly")
+            }
         }
     }
 
@@ -1425,6 +1464,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct13_NotCodable")) {
                 self.assertAssignOnlyProperty(.varInstance("assignOnly"))
+                self.assertReason(.varInstance("assignOnly"), "assigned but never read; if it exists to keep its value alive, mark it // periphery:ignore - reason")
                 self.assertNotAssignOnlyProperty(.varInstance("used"))
             }
         }
@@ -2556,6 +2596,26 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeIgnoresAsyncAndMutatingOverloads() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass152AsyncSub")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaAsyncOverload"))
+            }
+            assertReferenced(.class("FixtureClass152SyncSub")) {
+                self.assertAssignOnlyProperty(.varInstance("viaSyncWitness"))
+            }
+            assertReferenced(.struct("FixtureStruct152Mutating")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaMutatingOverload"))
+            }
+            assertReferenced(.struct("FixtureStruct152Async")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaAsyncExtension"))
+            }
+            assertReferenced(.struct("FixtureStruct152NotEncoded")) {
+                self.assertAssignOnlyProperty(.varInstance("neverEncoded"))
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeReadsThroughStoredProperty() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.class("FixtureClass226Stored")) {
@@ -2791,6 +2851,50 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedDecodeInferredExplicitContainerArguments() throws {
+        try analyze(retainPublic: true) {
+            for (type, property) in [
+                ("FixtureStruct277ArrayElement", "arrayElementDecoded"),
+                ("FixtureStruct277OptionalElement", "optionalElementDecoded"),
+                ("FixtureStruct277DictionaryValue", "dictionaryValueDecoded"),
+                ("FixtureStruct277QualifiedElement", "qualifiedElementDecoded"),
+                ("FixtureStruct277ShorthandElement", "shorthandElementDecoded"),
+            ] {
+                assertReferenced(.struct(type)) {
+                    self.assertNotAssignOnlyProperty(.varInstance(property))
+                }
+            }
+            assertReferenced(.struct("FixtureStruct277PhantomElement")) {
+                self.assertAssignOnlyProperty(.varInstance("phantomElementNotDecoded"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedDecodeInferredBranchesAndQualifiers() throws {
+        try analyze(retainPublic: true) {
+            for (type, property) in [
+                ("FixtureStruct278IfBody", "ifBodyDecoded"),
+                ("FixtureStruct278SwitchBody", "switchBodyDecoded"),
+                ("FixtureStruct278IfInitializer", "ifInitializerDecoded"),
+                ("FixtureStruct278Bound", "boundByIfDecoded"),
+                ("FixtureStruct278Item", "itemDecoded"),
+            ] {
+                assertReferenced(.struct(type)) {
+                    self.assertNotAssignOnlyProperty(.varInstance(property))
+                }
+            }
+            assertReferenced(.struct("FixtureStruct278NotWhole")) {
+                self.assertAssignOnlyProperty(.varInstance("notWholeNotDecoded"))
+            }
+            assertReferenced(.struct("FixtureStruct278Outer")) {
+                self.assertAssignOnlyProperty(.varInstance("outerNotDecoded"))
+                self.assertReferenced(.struct("Model")) {
+                    self.assertNotAssignOnlyProperty(.varInstance("qualifiedModelDecoded"))
+                }
+            }
+        }
+    }
+
     func testCodableSynthesizedDecodeInferredReturn() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct315Bound")) {
@@ -2892,6 +2996,52 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    func testCodableSynthesizedEncodeExistentialConstrainedGenericParameter() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct176Generic")) {
+                self.assertAssignOnlyProperty(.varInstance("genericValue"))
+                self.assertConfidence(.varInstance("genericValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialConstrainedGenericOtherParameter() throws {
+        try analyze(retainPublic: true) {
+            // Control: the constrained parameter receives a literal, and the unresolved value goes elsewhere.
+            assertReferenced(.struct("FixtureStruct177Skipped")) {
+                self.assertAssignOnlyProperty(.varInstance("skippedGenericValue"))
+                self.assertConfidence(.varInstance("skippedGenericValue"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialSubscript() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct178Element")) {
+                self.assertAssignOnlyProperty(.varInstance("elementValue"))
+                self.assertConfidence(.varInstance("elementValue"), .likely)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeConcreteSubscript() throws {
+        try analyze(retainPublic: true) {
+            // Control: an element of an array of integers is no opaque value.
+            assertReferenced(.struct("FixtureStruct179Element")) {
+                self.assertAssignOnlyProperty(.varInstance("unencodedElementValue"))
+                self.assertConfidence(.varInstance("unencodedElementValue"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedDecodeSubscriptedMetatypeIsNotAKeyRead() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct180Key")) {
+                self.assertAssignOnlyProperty(.varInstance("keyField"))
+            }
+        }
+    }
+
     func testCodableSynthesizedEncodeExistentialComposition() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.struct("FixtureStruct322Composed")) {
@@ -2941,6 +3091,53 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertAssignOnlyProperty(.varInstance("duration"))
                 self.assertConfidence(.varInstance("duration"), .certain)
                 self.assertConfidenceReason(.varInstance("duration"), nil)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialConfiguredProtocol() throws {
+        // CustomStringConvertible doesn't actually inherit Encodable, we're just using it because we don't have an
+        // external module in which to declare our own type.
+        for configured in [(encodable: ["CustomStringConvertible"], codable: []), (encodable: [], codable: ["CustomStringConvertible"])] {
+            try analyze(retainPublic: true, externalCodableProtocols: configured.codable, externalEncodableProtocols: configured.encodable) {
+                assertReferenced(.struct("FixtureStruct330Mute")) {
+                    self.assertAssignOnlyProperty(.varInstance("duration"))
+                    self.assertConfidence(.varInstance("duration"), .likely)
+                    // Used-but-not-compared control: read in code, so it is not reported at all.
+                    self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+                }
+            }
+        }
+
+        // Control: unconfigured, the protocol is not `Encodable`, so nothing is encoded.
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct330Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .certain)
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialUnindexedLaterArgument() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.struct("FixtureStruct331Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .likely)
+                // Used-but-not-compared control: read in code, so it is not reported at all.
+                self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeExistentialStandardLaterArgument() throws {
+        try analyze(retainPublic: true) {
+            // Control: the standard container encodes its first argument, not the unresolved key.
+            assertReferenced(.struct("FixtureStruct332Mute")) {
+                self.assertAssignOnlyProperty(.varInstance("duration"))
+                self.assertConfidence(.varInstance("duration"), .certain)
+            }
+            assertReferenced(.struct("FixtureStruct332Item")) {
+                self.assertNotAssignOnlyProperty(.varInstance("itemEncoded"))
             }
         }
     }
