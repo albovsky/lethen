@@ -18,7 +18,9 @@ heading of that document, up to the next heading of the same or a higher level, 
   <project>: <baseline count> -> <current count> findings, adjudicated
 
 with thousands separators optional, for example (not recorded) `example-app: 2,567 -> 2,480 findings, adjudicated`.
-Text in backticks is ignored, and both counts must match the ones computed, so a later drop needs a new item.
+Text in backticks is ignored. The counts must match the ones computed, in one item or as a chain of items
+(`120 -> 100` and `100 -> 90` adjudicate a drop from 120 to 90), so a later drop needs a new item and the
+earlier items stay valid once its branch merges and the baseline moves back to the release tag.
 
 Usage:
   corpus/drop_gate.py                        compare with the merge base or the newest release tag
@@ -120,18 +122,36 @@ def section_lines(document: str) -> List[str]:
     return found
 
 
-def adjudicated(document: str, project: str, before: int, after: int) -> bool:
-    """True when the gate's section holds a list item with the adjudication line for exactly these counts.
+def adjudications(document: str, project: str) -> List[Tuple[int, int]]:
+    """The (before, after) counts of every list item in the gate's section that adjudicates a drop of `project`.
     Text in backticks never counts, so examples in prose cannot adjudicate a drop."""
     number = r"\d{1,3}(?:,\d{3})+|\d+"
     pattern = re.compile(rf"{re.escape(project)}: ({number}) (?:->|→) ({number}) findings, adjudicated")
+    found = []
     for line in section_lines(document):
         item = re.match(r"\s*- (.*)", line)
         if not item:
             continue
         match = pattern.search(re.sub(r"`[^`]*`", "", item.group(1)))
-        if match and int(match.group(1).replace(",", "")) == before and int(match.group(2).replace(",", "")) == after:
-            return True
+        if match:
+            found.append((int(match.group(1).replace(",", "")), int(match.group(2).replace(",", ""))))
+    return found
+
+
+def adjudicated(document: str, project: str, before: int, after: int) -> bool:
+    """True when the section's items for `project` lead from `before` to `after`, in one item or as a chain.
+    A chain (`120 -> 100`, `100 -> 90`) keeps earlier adjudications valid when a merged branch's baseline moves
+    back from the merge base to the release tag."""
+    edges = adjudications(document, project)
+    reached, frontier = {before}, [before]
+    while frontier:
+        count = frontier.pop()
+        for start, end in edges:
+            if start == count and end not in reached:
+                if end == after:
+                    return True
+                reached.add(end)
+                frontier.append(end)
     return False
 
 

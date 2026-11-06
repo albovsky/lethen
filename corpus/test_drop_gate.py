@@ -66,6 +66,19 @@ class DropGateTest(unittest.TestCase):
     def test_adjudication_with_thousands_separator_passes(self):
         self.assertEqual(self.run_gate(2567, 2480, note=SECTION + "- demo: 2,567 -> 2,480 findings, adjudicated")[0], 0)
 
+    def test_chain_of_adjudications_passes(self):
+        # Master adjudicated 120 -> 100 since the release; a merged branch adjudicated 100 -> 90.
+        # On master the baseline is the release tag again, so the two items must adjudicate 120 -> 90 together.
+        note = SECTION + "- demo: 120 -> 100 findings, adjudicated\n- demo: 100 -> 90 findings, adjudicated"
+        self.assertEqual(self.run_gate(120, 90, note=note)[0], 0)
+        self.assertEqual(self.run_gate(100, 90, note=note)[0], 0)
+
+    def test_broken_chain_fails(self):
+        note = SECTION + "- demo: 120 -> 100 findings, adjudicated\n- demo: 95 -> 90 findings, adjudicated"
+        self.assertEqual(self.run_gate(120, 90, note=note)[0], 1)
+        cycle = SECTION + "- demo: 120 -> 100 findings, adjudicated\n- demo: 100 -> 120 findings, adjudicated"
+        self.assertEqual(self.run_gate(120, 90, note=cycle)[0], 1)
+
     def test_adjudication_with_other_counts_or_project_fails(self):
         self.assertEqual(self.run_gate(100, 97, note="demo: 100 -> 98 findings, adjudicated")[0], 1)
         self.assertEqual(self.run_gate(100, 97, note="other: 100 -> 97 findings, adjudicated")[0], 1)
