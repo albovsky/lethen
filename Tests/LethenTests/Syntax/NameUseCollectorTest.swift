@@ -351,6 +351,23 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(collector.spellings["logger"], [Spelling(), Spelling(isMember: true, implicitSelfTypes: ["Store"])])
         // The local type ``struct `shadow` {}`` is what `shadow` names.
         XCTAssertEqual(collector.spellings["shadow"], [Spelling()])
+
+        // An escaped extension too.
+        let extensionTree = Parser.parse(source: """
+        extension `Store` {
+            func run() {
+                #if os(Windows)
+                _ = logger
+                #endif
+            }
+        }
+        """)
+        let extensionClause = try XCTUnwrap(findIfConfig(Syntax(extensionTree)))
+        let extensionElements = try XCTUnwrap(extensionClause.clauses.first?.elements)
+        XCTAssertEqual(
+            NameUseCollector(Syntax(extensionElements)).spellings["logger"],
+            [Spelling(), Spelling(isMember: true, implicitSelfTypes: ["Store"])]
+        )
     }
 
     func testAGenericParameterIsNotAReceiver() {

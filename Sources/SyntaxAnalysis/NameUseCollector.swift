@@ -324,10 +324,10 @@ public struct NameUseCollector {
     /// The last component of a type's name, without generic arguments: `Array` for `Swift.Array<Int>`.
     private static func baseName(of type: TypeSyntax) -> String {
         if let member = type.as(MemberTypeSyntax.self) {
-            return member.name.text
+            return member.name.identifier?.name ?? member.name.text
         }
         if let identifier = type.as(IdentifierTypeSyntax.self) {
-            return identifier.name.text
+            return identifier.name.identifier?.name ?? identifier.name.text
         }
         return type.trimmedDescription
     }
