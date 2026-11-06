@@ -3,13 +3,13 @@ import SystemPackage
 
 /// Whether the index has a unit for every source file of a target it built. A compilation-cache hit compiles nothing
 /// and so writes no unit, which would leave the scan without that file's references.
-package enum IndexCompleteness {
+public enum IndexCompleteness {
     /// A target of the project: its module names and its collectable compiled files, lexically normalized.
-    package struct Target {
-        package let moduleNames: Set<String>
-        package let sourceFiles: Set<FilePath>
+    public struct Target {
+        public let moduleNames: Set<String>
+        public let sourceFiles: Set<FilePath>
 
-        package init(moduleNames: Set<String>, sourceFiles: Set<FilePath>) {
+        public init(moduleNames: Set<String>, sourceFiles: Set<FilePath>) {
             self.moduleNames = moduleNames
             self.sourceFiles = sourceFiles
         }
@@ -21,7 +21,7 @@ package enum IndexCompleteness {
     /// unit counts for a target unless the file's modules show another target of the project compiled it
     /// instead. A unit whose module matches no target, such as a clang one, counts for every target that
     /// compiles the file, which errs toward scanned.
-    package static func indexedFiles<ID: Hashable>(
+    public static func indexedFiles<ID: Hashable>(
         byTarget targets: [ID: Target],
         indexedModules: [FilePath: Set<String>]
     ) -> [ID: Set<FilePath>] {
@@ -58,7 +58,7 @@ package enum IndexCompleteness {
     /// compile of a file it shares with a built target was a cache hit. A unit whose module this target shares
     /// with another cannot say which of them built the file, and a unit of a module no target claims, such as a
     /// clang one, may be this target's, so both count as present.
-    package static func missingFiles(
+    public static func missingFiles(
         byTarget targets: [some Hashable: Target],
         indexedModules: [FilePath: Set<String>]
     ) -> [FilePath] {
@@ -85,7 +85,7 @@ package enum IndexCompleteness {
     }
 
     /// Throws `LethenError.incompleteIndexStore` for `store` when `missingFiles` is not empty.
-    package static func check(
+    public static func check(
         byTarget targets: [some Hashable: Target],
         indexedModules: [FilePath: Set<String>],
         store: FilePath

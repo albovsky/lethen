@@ -1,4 +1,4 @@
-@testable import Indexer
+import Indexer
 import Shared
 import SystemPackage
 import XCTest

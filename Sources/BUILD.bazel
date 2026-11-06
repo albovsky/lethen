@@ -244,6 +244,7 @@ swift_library(
         "Indexer/ClangImportScanner.swift",
         "Indexer/ClangLiteralScanner.swift",
         "Indexer/ClangModuleSymbolMap.swift",
+        "Indexer/IndexCompleteness.swift",
         "Indexer/IndexPipeline.swift",
         "Indexer/IndexPlan.swift",
         "Indexer/Indexer.swift",
