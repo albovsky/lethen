@@ -2449,6 +2449,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 // A local function of that name in the method is what the clause reads.
                 self.assertNotReferenced(.functionMethodInstance("localized9()"))
                 self.assertConfidence(.functionMethodInstance("localized9()"), .certain)
+                // A bare `catch`'s implicit `error` is what the clause reads.
+                self.assertNotReferenced(.varInstance("error"))
+                self.assertConfidence(.varInstance("error"), .certain)
                 // A closure's capture of that name is what the clause reads.
                 self.assertNotReferenced(.varInstance("captured9"))
                 self.assertConfidence(.varInstance("captured9"), .certain)
@@ -2461,6 +2464,11 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertConfidence(.varInstance("oldValue"), .certain)
                 // Used-but-not-compared control.
                 self.assertReferenced(.varInstance("readNormally9"))
+            }
+            // A sibling method's parameter in a type-level clause does not hide the read.
+            assertReferenced(.class("FixtureConditional9")) {
+                self.assertNotReferenced(.varInstance("conditionalRead9"))
+                self.assertConfidence(.varInstance("conditionalRead9"), .likely)
             }
             // The same name in an unrelated type is not read by the other type's clause.
             assertReferenced(.class("FixtureOther9")) {

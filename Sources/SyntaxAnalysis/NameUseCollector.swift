@@ -253,7 +253,8 @@ public struct NameUseCollector {
         while let syntax = current {
             if let name = Self.typeName(of: syntax) {
                 types.append(name)
-            } else if types.isEmpty, syntax.parent?.is(MemberBlockItemSyntax.self) == true {
+            } else if types.isEmpty, member == nil, syntax.parent?.is(MemberBlockItemSyntax.self) == true {
+                // The innermost one: a type-level `#if` around the method is a member too, holding its siblings.
                 member = syntax
             }
             current = syntax.parent
@@ -383,8 +384,8 @@ public struct NameUseCollector {
     }
 
     /// The names `node` binds to values: `let` and `var` bindings and other identifier patterns, function and
-    /// closure parameters by their local names, a closure's captures, `[logger = …]`, and the parameters of
-    /// accessors, `set(value)` or the implicit `newValue` and `oldValue`.
+    /// closure parameters by their local names, a closure's captures, `[logger = …]`, the parameters of
+    /// accessors, `set(value)` or the implicit `newValue` and `oldValue`, and a bare `catch`'s implicit `error`.
     private static func collectBoundValueNames(_ node: Syntax, into names: inout Set<String>) {
         let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
             pattern.identifier
@@ -403,6 +404,9 @@ public struct NameUseCollector {
         }
         if let name = bound?.identifier?.name {
             names.insert(name)
+        }
+        if let clause = node.as(CatchClauseSyntax.self), clause.catchItems.isEmpty {
+            names.insert("error")
         }
         if let accessor = node.as(AccessorDeclSyntax.self), accessor.parameters == nil {
             switch accessor.accessorSpecifier.tokenKind {

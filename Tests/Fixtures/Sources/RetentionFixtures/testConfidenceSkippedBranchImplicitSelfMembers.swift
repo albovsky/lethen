@@ -17,6 +17,8 @@ public class FixtureStorage9 {
     func localized9() -> Int { 0 }
     // A closure's capture of the same name is what the skipped clause reads.
     var captured9 = 0
+    // A bare `catch`'s implicit `error` is what the skipped clause reads.
+    var error = 0
     // A setter's parameter of the same name is what the skipped clause reads.
     var setterParameter9 = 0
     // The implicit parameters of a setter and an observer are what the skipped clauses read.
@@ -77,6 +79,20 @@ public class FixtureStorage9 {
         #endif
     }
 
+    func fixtureThrowing9() throws {}
+
+    public func caught() {
+        do {
+            try fixtureThrowing9()
+        } catch {
+            #if os(Windows)
+                _ = error
+            #else
+                print(error)
+            #endif
+        }
+    }
+
     public func capture() -> () -> Int {
         { [captured9 = 1] in
             #if os(Windows)
@@ -95,6 +111,18 @@ public class FixtureStorage9 {
             return shadowed9 + 1
         #endif
     }
+}
+
+public class FixtureConditional9 {
+    // Read bare in a skipped type-level clause whose other method has a parameter of the same name.
+    var conditionalRead9 = 0
+
+    public init() {}
+
+    #if os(Windows)
+        func run() -> Int { conditionalRead9 }
+        func other(conditionalRead9: Int) -> Int { conditionalRead9 }
+    #endif
 }
 
 public class FixtureOther9 {
