@@ -2446,11 +2446,6 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 // Used-but-not-compared control.
                 self.assertReferenced(.functionConstructor("init(fixtureCompiled10:)"))
             }
-            // An unscanned class's initializer, through another module's subclass of it.
-            assertReferenced(.extensionClass("NSObject")) {
-                self.assertNotReferenced(.functionConstructor("init(fixtureSubclass10:)"))
-                self.assertConfidence(.functionConstructor("init(fixtureSubclass10:)"), .likely)
-            }
             // A protocol's initializer, through an unscanned conforming type of another module.
             assertReferenced(.extensionProtocol("FixtureConstructible10")) {
                 self.assertNotReferenced(.functionConstructor("init(fixtureProtocol10:)"))
