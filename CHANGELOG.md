@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- `--derived-data-path` lets `--skip-build` read the index of an Xcode project that a pipeline built into its own `-derivedDataPath`, and verify it like Xcode's default DerivedData: a source file edited after the build stops the scan with a stale-index error, which `--index-store-path` never does. It requires `--skip-build` and is rejected with `--index-store-path`, with `--configurations`, and for projects other than Xcode ([#195](https://github.com/albovsky/lethen/issues/195)).
 
 ##### Bug Fixes
 

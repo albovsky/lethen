@@ -57,6 +57,9 @@ struct ScanCommand: ParsableCommand {
     @Option(parsing: .upToNextOption, help: "Index store paths. Implies '--skip-build', so not supported for Bazel projects")
     var indexStorePath: [FilePath] = defaultConfiguration.$indexStorePath.defaultValue
 
+    @Option(help: "DerivedData directory a pipeline built into, whose index '--skip-build' reads and verifies. Xcode projects only")
+    var derivedDataPath: FilePath?
+
     @Flag(help: "Retain all public declarations, recommended for framework/library projects")
     var retainPublic: Bool = defaultConfiguration.$retainPublic.defaultValue
 
@@ -304,6 +307,7 @@ struct ScanCommand: ParsableCommand {
         configuration.apply(\.$minConfidence, minConfidence)
         configuration.apply(\.$stats, stats)
         configuration.apply(\.$indexStorePath, indexStorePath)
+        configuration.apply(\.$derivedDataPath, derivedDataPath)
         configuration.apply(\.$skipBuild, skipBuild)
         configuration.apply(\.$excludeTests, excludeTests)
         configuration.apply(\.$excludeTargets, excludeTargets)
