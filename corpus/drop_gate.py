@@ -40,10 +40,28 @@ class GateError(Exception):
     pass
 
 
-def run_git(root: Path, *arguments: str) -> Optional[str]:
-    """The stdout of a git command run in `root`, or None when it fails."""
+def run_git(root: Path, *arguments: str) -> Tuple[int, str, str]:
+    """(exit status, stdout, stderr) of a git command run in `root`."""
     result = subprocess.run(["git", "-C", str(root), *arguments], capture_output=True, text=True)
-    return result.stdout if result.returncode == 0 else None
+    return result.returncode, result.stdout, result.stderr
+
+
+def resolve(root: Path, revision: str) -> str:
+    """The commit `revision` names, or a GateError when it names none."""
+    status, out, _ = run_git(root, "rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}")
+    if status != 0 or not out.strip():
+        raise GateError(f"--base {revision!r} does not name a revision")
+    return out.strip()
+
+
+def show(root: Path, revision: str, path: str) -> Optional[str]:
+    """The file at `revision`, None when the revision has no such path, a GateError on any other failure."""
+    status, out, err = run_git(root, "show", f"{revision}:{path}")
+    if status == 0:
+        return out
+    if "does not exist in" in err or "exists on disk, but not in" in err:
+        return None
+    raise GateError(f"git show {revision}:{path} failed: {err.strip()}")
 
 
 def project_names(root: Path) -> List[str]:
@@ -58,26 +76,31 @@ def row_count(text: str, where: str) -> int:
 
 
 def latest_release_tag(root: Path) -> Optional[str]:
-    tags = run_git(root, "tag", "--list", "20*", "--sort=-v:refname")
-    if tags and tags.split():
+    status, tags, _ = run_git(root, "tag", "--list", "20*", "--sort=-v:refname")
+    if status == 0 and tags.split():
         return tags.split()[0]
-    described = run_git(root, "describe", "--tags", "--abbrev=0")
-    return described.strip() if described and described.strip() else None
+    status, described, _ = run_git(root, "describe", "--tags", "--abbrev=0")
+    return described.strip() if status == 0 and described.strip() else None
 
 
 def baseline_text(root: Path, project: str, current: str, base: Optional[str]) -> Tuple[str, Optional[str]]:
     """(revision, expectation text at that revision or None when absent) for one project."""
     path = f"corpus/expected/{project}.json"
-    if base is None:
-        merge_base = run_git(root, "merge-base", "HEAD", "origin/master")
-        candidate = merge_base.strip() if merge_base else None
-        text = run_git(root, "show", f"{candidate}:{path}") if candidate else None
-        if candidate and (text is None or text != current):
-            return candidate, text
-        base = latest_release_tag(root)
-        if base is None:
-            raise GateError("no baseline: origin/master and release tags are unavailable; pass --base <rev>")
-    return base, run_git(root, "show", f"{base}:{path}")
+    if base is not None:
+        revision = resolve(root, base)
+        return base, show(root, revision, path)
+    status, out, _ = run_git(root, "merge-base", "HEAD", "origin/master")
+    candidate = out.strip() if status == 0 and out.strip() else None
+    text = show(root, candidate, path) if candidate else None
+    if candidate and (text is None or text != current):
+        return candidate, text
+    tag = latest_release_tag(root)
+    if tag is not None:
+        return tag, show(root, tag, path)
+    if candidate:
+        # A checkout of origin/master without tags: nothing older to compare with.
+        return candidate, text
+    raise GateError("no baseline: origin/master and release tags are unavailable; pass --base <rev>")
 
 
 def adjudicated(document: str, project: str, before: int, after: int) -> bool:
