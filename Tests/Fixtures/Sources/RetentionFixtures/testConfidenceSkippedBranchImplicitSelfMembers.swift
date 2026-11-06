@@ -17,6 +17,8 @@ public class FixtureStorage9 {
     func localized9() -> Int { 0 }
     // A local type of the same name is what the skipped clause reads.
     var localType9 = 0
+    // A generic parameter of the same name is what the skipped clause reads.
+    var Generic9 = 0
     // A closure's capture of the same name is what the skipped clause reads.
     var captured9 = 0
     // A bare `catch`'s implicit `error` is what the skipped clause reads.
@@ -104,6 +106,27 @@ public class FixtureStorage9 {
                 print(error)
             #endif
         }
+    }
+
+    public func caughtWhere() throws {
+        do {
+            try fixtureThrowing9()
+        } catch where error is CancellationError {
+            #if os(Windows)
+                _ = error
+            #else
+                print(error)
+            #endif
+        }
+    }
+
+    public func generic<Generic9>(_: Generic9.Type) -> Any {
+        #if os(Windows)
+            return Generic9.self
+        #else
+            _ = readNormally9
+            return Generic9.self
+        #endif
     }
 
     public func capture() -> () -> Int {

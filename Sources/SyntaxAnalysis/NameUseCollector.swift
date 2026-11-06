@@ -171,7 +171,10 @@ public struct NameUseCollector {
             )
             // Inside a type's body a bare name, `logger` or the `logger` of `logger.info()`, can read a member of that
             // type without `self.`, unless the member around it binds a value of that name.
-            if !isMember, !isMemberAccess, reference.baseName.identifier != nil, let types = implicitSelfTypes(of: name, at: node) {
+            // A generic parameter of that name, `T` in `func f<T>()`, is what the name refers to.
+            if !isMember, !isMemberAccess, reference.baseName.identifier != nil, !placeholderTypeNames.contains(name),
+               let types = implicitSelfTypes(of: name, at: node)
+            {
                 record(
                     name, isMember: true, isConstruction: !inPattern, at: node, spellingOnly: true, inPattern: inPattern,
                     labels: labels, implicitSelfTypes: types
@@ -407,7 +410,8 @@ public struct NameUseCollector {
         if let name = bound?.identifier?.name {
             names.insert(name)
         }
-        if let clause = node.as(CatchClauseSyntax.self), clause.catchItems.isEmpty {
+        // `catch` and `catch where error is Failure` bind `error` themselves; `catch let failure` does not.
+        if let clause = node.as(CatchClauseSyntax.self), clause.catchItems.isEmpty || clause.catchItems.contains(where: { $0.pattern == nil }) {
             names.insert("error")
         }
         if let accessor = node.as(AccessorDeclSyntax.self), accessor.parameters == nil {
