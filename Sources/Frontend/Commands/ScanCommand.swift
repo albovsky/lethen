@@ -233,12 +233,17 @@ struct ScanCommand: ParsableCommand {
         let interval = logger.beginInterval("result:output")
         let report = try ScanReport(results: scanOutput.results, configuration: configuration, logger: logger)
 
-        if let output = report.output {
+        if !report.sections.isEmpty {
             if configuration.outputFormat.supportsAuxiliaryOutput {
                 logger.info("", canQuiet: true)
             }
 
-            logger.info(output, canQuiet: false)
+            for section in report.sections {
+                if let header = section.header {
+                    logger.note(header)
+                }
+                logger.info(section.output, canQuiet: false)
+            }
         }
 
         if let footer = report.footer {

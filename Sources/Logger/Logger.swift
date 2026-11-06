@@ -147,7 +147,14 @@ public struct Logger: Sendable {
     // MARK: - Private
 
     func log(_ line: String, output: UnsafeMutablePointer<FILE>) {
-        _ = outputQueue.sync { fputs(line + "\n", output) }
+        _ = outputQueue.sync {
+            // Standard output is buffered when it is not a terminal, so results written before a line on standard
+            // error are flushed first, keeping the two in order when they share a pipe or file.
+            if output == stderr {
+                fflush(stdout)
+            }
+            return fputs(line + "\n", output)
+        }
     }
 
     private var isColorOutputCapable: Bool = {

@@ -11,9 +11,21 @@ struct ScanReport {
     let results: [ScanResult]
     /// The formatted results for the terminal, colored when the format and the terminal support it.
     let output: String?
+    /// `output` in the groups the terminal prints: in the xcode format, the `certain` dead code, then the `likely` dead
+    /// code and then the access-level and ignore-comment results, each of the last two after a header that goes to
+    /// standard error unless quiet. Otherwise one group without a header.
+    let sections: [Section]
     /// The summary printed on standard error after the xcode format's results, unless quiet: the
     /// counts, how many `--min-confidence` hid, and where to go next.
     let footer: String?
+
+    struct Section {
+        let header: String?
+        let output: String
+    }
+
+    static let likelyHeader = "Likely unused, check by hand:"
+    static let housekeepingHeader = "Redundant public accessibility and superfluous ignore comments:"
 
     private let configuration: Configuration
     private let formatter: OutputFormatter
@@ -30,7 +42,12 @@ struct ScanReport {
 
         let printsFooter = configuration.outputFormat == .xcode && !configuration.quiet
         let filter = OutputDeclarationFilter(configuration: configuration, logger: logger, notesHiddenResults: !printsFooter)
-        let filteredResults = try filter.filter(results, with: baseline)
+        var filteredResults = try filter.filter(results, with: baseline)
+        let isGrouped = configuration.outputFormat == .xcode
+        let groups = isGrouped ? Self.groups(of: filteredResults) : [(header: nil, results: filteredResults)]
+        if isGrouped {
+            filteredResults = groups.flatMap(\.results)
+        }
 
         if let baselinePath = configuration.writeBaseline {
             let usrs = filteredResults
@@ -47,6 +64,11 @@ struct ScanReport {
 
         self.results = filteredResults
         output = try formatter.format(filteredResults, colored: isColored)
+        sections = try groups.count == 1
+            ? output.map { [Section(header: groups[0].header, output: $0)] } ?? []
+            : groups.compactMap { group in
+                try formatter.format(group.results, colored: isColored).map { Section(header: group.header, output: $0) }
+            }
         footer = printsFooter ? Self.footer(for: filteredResults, hiddenByConfidence: filter.hiddenByConfidenceCount, configuration: configuration) : nil
         self.configuration = configuration
         self.formatter = formatter
@@ -69,6 +91,21 @@ struct ScanReport {
         try output.write(to: resultsPath.url, atomically: true, encoding: .utf8)
     }
 
+    /// The xcode format's groups, each in the filter's order: dead code that is `certain`, dead code that is `likely`,
+    /// and the results that are not dead code. Groups without results are left out; only the `certain` one has no
+    /// header.
+    static func groups(of results: [ScanResult]) -> [(header: String?, results: [ScanResult])] {
+        let housekeeping = results.filter { !$0.kind.isDeadCode }
+        let deadCode = results.filter(\.kind.isDeadCode)
+        let groups: [(header: String?, results: [ScanResult])] = [
+            (nil, deadCode.filter { $0.confidence == .certain }),
+            (likelyHeader, deadCode.filter { $0.confidence == .likely }),
+            (housekeepingHeader, housekeeping),
+        ]
+        let nonEmpty = groups.filter { !$0.results.isEmpty }
+        return nonEmpty.isEmpty ? [(nil, [])] : nonEmpty
+    }
+
     /// "3 results, 1 likely. `lethen explain <name>` shows why; …", or only the `--min-confidence`
     /// note when no result remains. The baseline hint is left out once a baseline is in use.
     static func footer(for results: [ScanResult], hiddenByConfidence: Int, configuration: Configuration) -> String? {
@@ -81,6 +118,15 @@ struct ScanReport {
         }
 
         var summary = "\(results.count) \(results.count == 1 ? "result" : "results")"
+        let kinds = ScanResult.Kind.allCases.compactMap { kind -> String? in
+            let count = results.count { $0.kind == kind }
+            return count > 0 ? "\(count) \(kind.summaryName)" : nil
+        }
+
+        if kinds.count > 1 {
+            summary += " (\(kinds.joined(separator: ", ")))"
+        }
+
         let likelyCount = results.count { $0.confidence == .likely }
 
         if likelyCount > 0 {
