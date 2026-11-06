@@ -91,6 +91,26 @@ final class NameUseCollectorTest: XCTestCase {
         ])
     }
 
+    /// A use with a receiver inside an extension carries the extended type, whose generic parameters the extension
+    /// uses without declaring them, whether the extension is around the clause or inside it.
+    func testReceiversInsideAnExtensionCarryTheExtendedType() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: "extension Swift.Array where Element: P {\n #if os(Windows)\n _ = Element(size: 1)\n #endif\n}")
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["init"], [
+            Spelling(labels: ["size"], receiver: "Element", isMember: true, extendedType: "Array"),
+        ])
+
+        let collector = collect("extension Outer.Inner<Int> {\n func f() { _ = Element(size: 1) }\n}\nfunc g() { _ = Widget(size: 1) }")
+        XCTAssertEqual(collector.spellings["init"], [
+            Spelling(labels: ["size"], receiver: "Element", isMember: true, extendedType: "Inner"),
+            Spelling(labels: ["size"], receiver: "Widget", isMember: true),
+        ])
+        // The extended type's own spelling is outside the extension.
+        XCTAssertEqual(collector.spellings["Inner"], [Spelling(receiver: "Outer", isMember: true, isMemberAccess: true, qualifier: "Outer")])
+    }
+
     private func findIfConfig(_ node: Syntax) -> IfConfigDeclSyntax? {
         if let found = node.as(IfConfigDeclSyntax.self) { return found }
         for child in node.children(viewMode: .sourceAccurate) {

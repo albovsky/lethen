@@ -120,4 +120,27 @@ final class ValueUseAnalysisTest: XCTestCase {
         XCTAssertFalse(stored.isInitializedConstant, "The control: a var is not a constant")
         XCTAssertFalse(stored.hasAccessorBody)
     }
+
+    func testReadOnlyPropertiesAreTheLetsAndTheGetterOnlyVars() throws {
+        let source = """
+        let constant = 1
+        let uninitialized: Int
+        var implicitGetter: Int { 1 }
+        var explicitGetter: Int { get { 1 } }
+        var readAccessor: Int { _read { yield 1 } }
+        var stored = 1
+        var observed = 1 { didSet {} }
+        var settable: Int { get { 1 } set {} }
+        var modifiable: Int { get { 1 } _modify { var x = 1; yield &x } }
+        """
+        let sourceFile = SourceFile(path: FilePath("/t/T.swift"), modules: ["T"])
+        let names = ["constant", "uninitialized", "implicitGetter", "explicitGetter", "readAccessor", "stored", "observed", "settable", "modifiable"]
+        let declarations = names.enumerated().map { index, name in
+            Declaration(name: name, kind: .varGlobal, usrs: ["s:\(name)"], location: Location(file: sourceFile, line: index + 1, column: 5))
+        }
+        let (file, _, _, _) = makeIndexedFile(source: source, declarations: declarations)
+        try ValueUseAnalysis(configuration: Configuration()).apply(to: file)
+
+        XCTAssertEqual(declarations.filter(\.isReadOnly).map(\.name), ["constant", "uninitialized", "implicitGetter", "explicitGetter", "readAccessor"])
+    }
 }

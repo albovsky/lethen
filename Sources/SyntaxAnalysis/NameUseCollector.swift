@@ -41,6 +41,9 @@ public struct NameUseCollector {
     /// The generic parameters and associated types the syntax declares: `T.make()` names whatever `T` is, so no
     /// type narrows the member it uses.
     private var placeholderTypeNames: Set<String> = []
+    /// The type extended by the extension around the node being collected, which can use generic parameters and
+    /// associated types of that type that no syntax declares.
+    private var extendedTypeName: String?
     /// The capitalized names the file binds to values, `let Handler = …` or a parameter `Handler`, against the Swift
     /// API guidelines: calling one, `Handler()`, can run a `callAsFunction` rather than construct a type, and
     /// `Store.shared` through one names no type. Gathered on first use, across the whole file rather than by scope, so
@@ -55,6 +58,7 @@ public struct NameUseCollector {
         self.onUse = onUse
         Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
         Self.collectEnclosingPlaceholderTypeNames(of: node, into: &placeholderTypeNames)
+        extendedTypeName = Self.enclosingExtendedTypeName(of: node)
         root = node.root
         collect(node, inPattern: false)
     }
@@ -79,16 +83,16 @@ public struct NameUseCollector {
         isMemberAccess: Bool = false,
         qualifier: String? = nil
     ) {
+        let spelling = NameSites.Spelling(
+            labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess,
+            qualifier: qualifier, isPattern: inPattern, extendedType: receiver == nil ? nil : extendedTypeName
+        )
         if spellingOnly {
-            spellings[name, default: []].insert(
-                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, qualifier: qualifier, isPattern: inPattern)
-            )
+            spellings[name, default: []].insert(spelling)
             return
         }
         if !forFileReaderOnly {
-            spellings[name, default: []].insert(
-                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, qualifier: qualifier, isPattern: inPattern)
-            )
+            spellings[name, default: []].insert(spelling)
             uses[name] = (uses[name] ?? false) || isMember
             if isConstruction { constructionUses.insert(name) }
         }
@@ -214,9 +218,39 @@ public struct NameUseCollector {
         } else if let macro = node.as(MacroExpansionDeclSyntax.self) {
             record(macro.macroName.text, isMember: false, isConstruction: false, at: node, forFileReaderOnly: true)
         }
+        let outerExtendedTypeName = extendedTypeName
+        let extensionDecl = node.as(ExtensionDeclSyntax.self)
         for child in node.children(viewMode: .sourceAccurate) {
+            // The extended type itself is spelled outside the extension's scope.
+            if let extensionDecl, child.id != extensionDecl.extendedType.id {
+                extendedTypeName = Self.baseName(of: extensionDecl.extendedType)
+            }
             collect(child, inPattern: inPattern)
+            extendedTypeName = outerExtendedTypeName
         }
+    }
+
+    /// The type extended by the innermost extension around `node`.
+    private static func enclosingExtendedTypeName(of node: Syntax) -> String? {
+        var current = node.parent
+        while let ancestor = current {
+            if let extensionDecl = ancestor.as(ExtensionDeclSyntax.self) {
+                return baseName(of: extensionDecl.extendedType)
+            }
+            current = ancestor.parent
+        }
+        return nil
+    }
+
+    /// The last component of a type's name, without generic arguments: `Array` for `Swift.Array<Int>`.
+    private static func baseName(of type: TypeSyntax) -> String {
+        if let member = type.as(MemberTypeSyntax.self) {
+            return member.name.text
+        }
+        if let identifier = type.as(IdentifierTypeSyntax.self) {
+            return identifier.name.text
+        }
+        return type.trimmedDescription
     }
 
     /// The call whose callee is `reference`, spelled `foo(...)`, `base.foo(...)` or either with generic arguments.
