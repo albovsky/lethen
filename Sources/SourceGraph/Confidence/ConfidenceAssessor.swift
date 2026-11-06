@@ -99,7 +99,9 @@ public final class ConfidenceAssessor {
         {
             return false
         }
-        if declaration.kind != .functionFree, let receiver = spelling.receiver {
+        if declaration.kind != .functionFree, let receiver = spelling.receiver,
+           !mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType)
+        {
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
                 return !isDistinct(receiver: receiver, from: enclosing)
             }
@@ -108,6 +110,17 @@ public final class ConfidenceAssessor {
             }
         }
         return true
+    }
+
+    /// Whether a type name spelled inside an extension may be a generic parameter or associated type of the extended
+    /// type, which the extension uses without declaring it and which stands for any type: `Element` in `extension
+    /// Array where Element: Buildable`. Only when the scan declares neither the extended type, whose own generic
+    /// parameters and associated types it would declare, nor a type of that name. Such a name can also be an
+    /// unscanned type, `String`, which then no longer narrows the use.
+    private func mayBeInheritedPlaceholder(_ receiver: String, inExtensionOf extended: String?) -> Bool {
+        guard let extended, receiver != extended else { return false }
+
+        return typeDeclarationsByName[extended, default: []].isEmpty && typeDeclarationsByName[receiver, default: []].isEmpty
     }
 
     /// The name of the concrete type, `UIColor` or `String`, that a declaration of an extension adds a member
@@ -589,7 +602,7 @@ public final class ConfidenceAssessor {
 
     /// The names a runtime lookup can spell for the declaration: its Swift base name, the Objective-C
     /// name of an exposed declaration when `@objc(name)` differs from it, and the setter selector of an
-    /// exposed property (`setFoo` for `foo`). An initializer is reachable only by its Objective-C name
+    /// exposed property that has a setter (`setFoo` for `foo`). An initializer is reachable only by its Objective-C name
     /// (`initWithFoo`); `init` alone is not a lookup.
     static func lookupNames(of declaration: Declaration) -> Set<String> {
         var names: Set<String> = declaration.kind == .functionConstructor ? [] : [SourceGraph.baseName(of: declaration.name)]
@@ -597,7 +610,7 @@ public final class ConfidenceAssessor {
             guard let name = objcName(fromUSR: usr) else { continue }
 
             names.insert(name)
-            if declaration.kind.isVariableKind, let first = name.first {
+            if declaration.kind.isVariableKind, !declaration.isReadOnly, let first = name.first {
                 names.insert("set" + first.uppercased() + name.dropFirst())
             }
         }
@@ -606,13 +619,16 @@ public final class ConfidenceAssessor {
 
     /// The whole selectors the Objective-C runtime knows the declaration by: the selector of a method or
     /// initializer from its clang USR (`load:from:`), and the getter and setter of a property (`title`,
-    /// `setTitle:`), from its USR when it has one, since `@objc(name)` may rename it, else from its Swift name.
+    /// `setTitle:`; a read-only one has no setter), from its USR when it has one, since `@objc(name)` may rename it, else from its Swift name.
     /// `nil` for a kind no selector names, and for a method whose clang USR is missing, since Swift's rules for
     /// naming it depend on its labels and `@objc(name)`.
     static func objcSelectors(of declaration: Declaration) -> Set<String>? {
         let fromUSRs = Set(declaration.usrs.compactMap { objcSelector(fromUSR: $0) })
         if declaration.kind.isVariableKind {
             let getters = fromUSRs.isEmpty ? [SourceGraph.baseName(of: declaration.name)] : fromUSRs
+            // A read-only property has no setter, so `setTitle:` names some other declaration.
+            guard !declaration.isReadOnly else { return getters }
+
             return getters.reduce(into: getters) { selectors, getter in
                 if let first = getter.first { selectors.insert("set" + first.uppercased() + getter.dropFirst() + ":") }
             }

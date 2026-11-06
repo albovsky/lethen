@@ -147,6 +147,10 @@ final class SwiftIndexer: Indexer {
                 let isImplicit: Bool
                 let isObjcAccessible: Bool
                 let location: Location
+                /// The names of the declarations this one is a child of. A macro expansion's declarations all
+                /// sit at the attach site, and some have no name (the `_modify` accessor of every property an
+                /// `@Observable` class tracks), so without their parents distinct siblings would share a key.
+                let parentNames: [String]
             }
 
             let usr: String
@@ -155,11 +159,19 @@ final class SwiftIndexer: Indexer {
             let isImplicit: Bool
             let isObjcAccessible: Bool
             let location: Location
+            let parentNames: [String]
             /// The module of the index unit that recorded the declaration.
             var module = ""
 
             var key: Key {
-                Key(kind: kind, name: name, isImplicit: isImplicit, isObjcAccessible: isObjcAccessible, location: location)
+                Key(
+                    kind: kind,
+                    name: name,
+                    isImplicit: isImplicit,
+                    isObjcAccessible: isObjcAccessible,
+                    location: location,
+                    parentNames: parentNames
+                )
             }
         }
 
@@ -237,8 +249,10 @@ final class SwiftIndexer: Indexer {
             // Declarations are equal when their USRs are, so when two keys share USRs (an index built from
             // code that failed to type-check can give overloads the same USR) the first one inserted wins.
             // Walking keys in a fixed order keeps that choice the same in every process.
-            let orderedKeys = rawDeclsByKey.keys.sorted {
-                ($0.location, $0.name, $0.kind.rawValue, $0.isImplicit ? 1 : 0) < ($1.location, $1.name, $1.kind.rawValue, $1.isImplicit ? 1 : 0)
+            let orderedKeys = rawDeclsByKey.keys.sorted { lhs, rhs in
+                let lhsOrder = (lhs.location, lhs.name, lhs.kind.rawValue, lhs.isImplicit ? 1 : 0)
+                let rhsOrder = (rhs.location, rhs.name, rhs.kind.rawValue, rhs.isImplicit ? 1 : 0)
+                return lhsOrder == rhsOrder ? lhs.parentNames.lexicographicallyPrecedes(rhs.parentNames) : lhsOrder < rhsOrder
             }
 
             // Only the first copy of a USR set reaches the graph. Later copies (a declaration written in both
@@ -630,7 +644,8 @@ final class SwiftIndexer: Indexer {
                 name: occurrence.symbol.name,
                 isImplicit: occurrence.roles.contains(.implicit),
                 isObjcAccessible: usr.hasPrefix("c:"),
-                location: location
+                location: location,
+                parentNames: relations.filter { $0.roles.contains(.childOf) }.map(\.symbol.name).sorted()
             )
 
             return (decl, relations)

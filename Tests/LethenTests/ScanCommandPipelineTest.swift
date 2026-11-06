@@ -113,7 +113,72 @@ final class ScanCommandPipelineTest: XCTestCase {
         \(file):1:1: warning: Unused class 'Bar'
 
         """)
-        XCTAssertEqual(standardError, "3 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.\n")
+        let scope = try scopeLine()
+        XCTAssertEqual(standardError, """
+        Likely unused, check by hand:
+        \(scope)
+        3 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.
+
+        """)
+    }
+
+    func testHeadersStayBetweenTheirGroupsWhenBothStreamsShareAPipe() throws {
+        try makePackage()
+        StubScan.results = [result("Bar", line: 1, confidence: .likely), result("Foo", line: 2)]
+
+        let merged = try captureMergedOutput {
+            try run(["--disable-update-check"])
+        }
+
+        let file = projectRoot.appending("Sources/A.swift").string
+        let scope = try scopeLine()
+        XCTAssertEqual(merged, """
+
+        \(file):2:1: warning: Unused class 'Foo'
+        Likely unused, check by hand:
+        \(file):1:1: warning: Unused class 'Bar'
+        \(scope)
+        2 results, 1 likely. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.
+
+        """)
+    }
+
+    func testQuietXcodeFormatPrintsNoHeaderButKeepsTheGroupOrder() throws {
+        try makePackage()
+        StubScan.results = [result("Bar", line: 1, confidence: .likely), result("Foo", line: 2)]
+        var standardOutput = ""
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            standardOutput = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--disable-update-check", "--quiet"])
+            }
+        }
+
+        let file = projectRoot.appending("Sources/A.swift").string
+        XCTAssertEqual(standardOutput, "\(file):2:1: warning: Unused class 'Foo'\n\(file):1:1: warning: Unused class 'Bar'\n")
+        XCTAssertEqual(standardError, "")
+    }
+
+    /// The scope line counts the warnings the scan wrote, through whichever copy of the logger.
+    func testScopeLineCountsTheScansWarnings() throws {
+        try makePackage()
+        StubScan.results = [result("Foo", line: 1)]
+        StubScan.warnings = ["Target Widgets is in the project but not built by the scanned schemes.", "Not every Objective-C file was indexed."]
+
+        let standardError = try captureOutput(of: STDERR_FILENO) {
+            _ = try captureOutput(of: STDOUT_FILENO) {
+                try run(["--disable-update-check"])
+            }
+        }
+
+        let scope = try scopeLine().dropLast() + "; 2 warnings above."
+        XCTAssertEqual(standardError, """
+        warning: Target Widgets is in the project but not built by the scanned schemes.
+        warning: Not every Objective-C file was indexed.
+        \(scope)
+        1 result. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.
+
+        """)
     }
 
     func testFooterFoldsInResultsHiddenByMinimumConfidence() throws {
@@ -126,7 +191,7 @@ final class ScanCommandPipelineTest: XCTestCase {
             }
         }
 
-        XCTAssertEqual(standardError, "1 result; --min-confidence certain hid 2 results. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.\n")
+        try XCTAssertEqual(standardError, scopeLine() + "\n1 result; --min-confidence certain hid 2 results. `lethen explain <name>` shows why; `--write-baseline baseline.json` records these so the next scan reports only new ones.\n")
     }
 
     func testFooterIsOnlyTheMinimumConfidenceNoteWhenEveryResultIsHidden() throws {
@@ -139,7 +204,7 @@ final class ScanCommandPipelineTest: XCTestCase {
             }
         }
 
-        XCTAssertEqual(standardError, "--min-confidence certain hid 1 result.\n")
+        try XCTAssertEqual(standardError, scopeLine() + "\n--min-confidence certain hid 1 result.\n")
     }
 
     func testFooterIsAbsentWithoutResults() throws {
@@ -165,7 +230,7 @@ final class ScanCommandPipelineTest: XCTestCase {
             }
         }
 
-        XCTAssertEqual(standardError, "1 result. `lethen explain <name>` shows why.\n")
+        try XCTAssertEqual(standardError, scopeLine() + "\n1 result. `lethen explain <name>` shows why.\n")
     }
 
     func testFooterIsAbsentForMachineReadableFormatsAndQuiet() throws {
@@ -530,19 +595,26 @@ final class ScanCommandPipelineTest: XCTestCase {
         static var results: [ScanResult] = []
         static var configurations: [Configuration] = []
         static var projectKinds: [ProjectKind] = []
+        /// Written as the scan's own warnings, as a driver writes coverage warnings.
+        static var warnings: [String] = []
+
+        private let logger: Logger
 
         static func reset() {
             results = []
             configurations = []
             projectKinds = []
+            warnings = []
         }
 
-        init(configuration: Configuration, logger _: Logger, swiftVersion _: SwiftVersion) {
+        init(configuration: Configuration, logger: Logger, swiftVersion _: SwiftVersion) {
             Self.configurations.append(configuration)
+            self.logger = logger
         }
 
         func perform(project: Project) throws -> Scan.Output {
             Self.projectKinds.append(project.kind)
+            Self.warnings.forEach { logger.warn($0) }
             return Scan.Output(results: Self.results)
         }
     }
@@ -565,6 +637,12 @@ final class ScanCommandPipelineTest: XCTestCase {
     private func updateChecker(_ arguments: [String]) throws -> UpdateChecker {
         let configuration = try ScanCommand.parse(["--project-root", projectRoot.string] + arguments).makeConfiguration()
         return UpdateChecker(logger: Logger(quiet: true, verbose: false, colorMode: .never), configuration: configuration)
+    }
+
+    /// The line naming what was scanned, which the xcode format prints before the footer.
+    private func scopeLine() throws -> String {
+        let version = try SwiftVersion(shell: ShellImpl(logger: Logger(quiet: true, verbose: false, colorMode: .never))).version
+        return "Scanned the Swift package on \(ScanReport.hostPlatform) with Swift \(version)."
     }
 
     private func makePackage() throws {

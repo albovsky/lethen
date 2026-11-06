@@ -131,6 +131,9 @@ public final class Configuration {
     @Setting(key: "index_store_path", defaultValue: [], setter: filePathArraySetter)
     public var indexStorePath: [FilePath]
 
+    @Setting(key: "derived_data_path", defaultValue: nil, setter: filePathSetter)
+    public var derivedDataPath: FilePath?
+
     @Setting(key: "skip_build", defaultValue: false)
     public var skipBuild: Bool
 
@@ -242,7 +245,7 @@ public final class Configuration {
         $retainObjcAnnotated, $retainUnusedProtocolFuncParams, $retainSwiftUIPreviews, $disableRedundantPublicAnalysis,
         $disableUnusedImportAnalysis, $superfluousIgnoreComments, $retainUnusedImportedModules,
         $externalEncodableProtocols, $externalCodableProtocols, $externalTestCaseClasses, $verbose, $quiet, $color,
-        $disableUpdateCheck, $strict, $minConfidence, $stats, $indexStorePath,
+        $disableUpdateCheck, $strict, $minConfidence, $stats, $indexStorePath, $derivedDataPath,
         $skipBuild, $skipSchemesValidation, $cleanBuild, $buildArguments, $configurations, $xcodeListArguments, $relativeResults,
         $jsonPackageManifestPath, $retainCodableProperties, $retainEncodableProperties, $retainEquatableProperties,
         $retainHashableProperties, $baseline, $writeBaseline,
