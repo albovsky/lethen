@@ -283,6 +283,17 @@
       "note": "TimelineDatasource.swift names no Env symbol; the import on line 1 is unused.",
       "adjudicated_on": "2026-10-06",
       "lethen_commit": "c410a1d"
+    },
+    {
+      "path": "Packages/Env/Sources/Env/CurrentAccount.swift",
+      "line": 15,
+      "column": 27,
+      "kind": "var.instance",
+      "name": "isUpdating",
+      "verdict": "TP",
+      "note": "Declared `public private(set)` and never read or assigned: every other `isUpdating` in the project belongs to `ListEditViewModel`, `NotificationsPolicyView` or `MediaEditView`. Reported in every scan once the `_modify` accessors of `@Observable` properties stopped merging into one declaration; before, it was reported in about one scan in eight.",
+      "adjudicated_on": "2026-10-15",
+      "lethen_commit": "b6e4a4b"
     }
   ]
 }
