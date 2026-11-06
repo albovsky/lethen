@@ -370,13 +370,13 @@ public struct NameUseCollector {
             for child in ancestor.children(viewMode: .sourceAccurate) {
                 if let clause = child.as(GenericParameterClauseSyntax.self) {
                     for parameter in clause.parameters {
-                        names.insert(parameter.name.text)
+                        names.insert(parameter.name.identifier?.name ?? parameter.name.text)
                     }
                 }
             }
             if let protocolDecl = ancestor.as(ProtocolDeclSyntax.self) {
                 for member in protocolDecl.memberBlock.members {
-                    if let associated = member.decl.as(AssociatedTypeDeclSyntax.self) { names.insert(associated.name.text) }
+                    if let associated = member.decl.as(AssociatedTypeDeclSyntax.self) { names.insert(associated.name.identifier?.name ?? associated.name.text) }
                 }
             }
             current = ancestor.parent
@@ -438,9 +438,9 @@ public struct NameUseCollector {
 
     private static func collectPlaceholderTypeNames(_ node: Syntax, into names: inout Set<String>) {
         if let parameter = node.as(GenericParameterSyntax.self) {
-            names.insert(parameter.name.text)
+            names.insert(parameter.name.identifier?.name ?? parameter.name.text)
         } else if let associated = node.as(AssociatedTypeDeclSyntax.self) {
-            names.insert(associated.name.text)
+            names.insert(associated.name.identifier?.name ?? associated.name.text)
         }
         for child in node.children(viewMode: .sourceAccurate) {
             collectPlaceholderTypeNames(child, into: &names)

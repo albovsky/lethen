@@ -352,6 +352,20 @@ final class NameUseCollectorTest: XCTestCase {
         // The local type ``struct `shadow` {}`` is what `shadow` names.
         XCTAssertEqual(collector.spellings["shadow"], [Spelling()])
 
+        // An escaped generic parameter is what `T` names.
+        let genericTree = Parser.parse(source: """
+        class Store {
+            func run<`T`>(_: T.Type) {
+                #if os(Windows)
+                _ = T.self
+                #endif
+            }
+        }
+        """)
+        let genericClause = try XCTUnwrap(findIfConfig(Syntax(genericTree)))
+        let genericElements = try XCTUnwrap(genericClause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(genericElements)).spellings["T"], [Spelling()])
+
         // An escaped extension too.
         let extensionTree = Parser.parse(source: """
         extension `Store` {
