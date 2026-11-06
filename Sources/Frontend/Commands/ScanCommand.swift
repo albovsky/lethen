@@ -247,6 +247,12 @@ struct ScanCommand: ParsableCommand {
         }
 
         if let footer = report.footer {
+            logger.note(ScanReport.scope(
+                of: ScanReport.scannedKind(project.kind),
+                configuration: configuration,
+                swiftVersion: swiftVersion.version,
+                warningCount: logger.warningCount
+            ))
             logger.note(footer)
         }
 

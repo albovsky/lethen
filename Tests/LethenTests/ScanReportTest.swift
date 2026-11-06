@@ -277,6 +277,70 @@ final class ScanReportTest: XCTestCase {
         XCTAssertEqual(ScanReport.footer(for: [result("A"), result("B")], hiddenByConfidence: 0, configuration: configuration), "2 results. `lethen explain <name>` shows why.")
     }
 
+    // MARK: - Scope line
+
+    func testScopeNamesTheProjectSchemesConfigurationsPlatformAndToolchain() {
+        let configuration = Configuration()
+        configuration.schemes = ["App", "Widgets"]
+        configuration.configurations = ["Debug", "Release", "Beta"]
+        XCTAssertEqual(
+            ScanReport.scope(of: .xcode(projectPath: "/work/App.xcodeproj"), configuration: configuration, swiftVersion: "6.4", warningCount: 2, platform: "macOS"),
+            "Scanned the Xcode project App.xcodeproj (schemes App and Widgets; configurations Debug, Release and Beta) on macOS with Swift 6.4; 2 warnings above."
+        )
+
+        configuration.schemes = ["App"]
+        configuration.configurations = []
+        configuration.buildArguments = ["-destination", "generic/platform=iOS"]
+        XCTAssertEqual(
+            ScanReport.scope(of: .xcode(projectPath: "App.xcworkspace"), configuration: configuration, swiftVersion: "6.4", warningCount: 1, platform: "macOS"),
+            "Scanned the Xcode workspace App.xcworkspace (scheme App) on macOS for generic/platform=iOS with Swift 6.4; 1 warning above."
+        )
+    }
+
+    func testScopeOfOtherProjectKindsWithoutWarnings() {
+        let configuration = Configuration()
+        XCTAssertEqual(
+            ScanReport.scope(of: .spm, configuration: configuration, swiftVersion: "6.3.1", warningCount: 0, platform: "Linux"),
+            "Scanned the Swift package on Linux with Swift 6.3.1."
+        )
+        configuration.configurations = ["release"]
+        configuration.buildArguments = ["--swift-sdk", "x86_64-swift-linux-musl"]
+        XCTAssertEqual(
+            ScanReport.scope(of: .spm, configuration: configuration, swiftVersion: "6.4", warningCount: 0, platform: "Linux"),
+            "Scanned the Swift package (configuration release) on Linux for x86_64-swift-linux-musl with Swift 6.4."
+        )
+        XCTAssertEqual(
+            ScanReport.scope(of: .bazel, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Bazel workspace on macOS with Swift 6.4."
+        )
+        XCTAssertEqual(
+            ScanReport.scope(of: .generic(genericProjectConfig: "generic.json"), configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the project described by generic.json on macOS with Swift 6.4."
+        )
+    }
+
+    /// The nested scan of `--bazel` is a generic project run by `bazel run`, and reports the Bazel workspace.
+    func testScopeOfTheNestedBazelScanIsTheBazelWorkspace() {
+        let generic = ProjectKind.generic(genericProjectConfig: "bazel-out/k8-fastbuild/bin/project_config.json")
+        let nested = ScanReport.scannedKind(generic, environment: ["BUILD_WORKSPACE_DIRECTORY": "/work"])
+        XCTAssertEqual(
+            ScanReport.scope(of: nested, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Bazel workspace on macOS with Swift 6.4."
+        )
+        // Control: a generic project run directly keeps its configuration file.
+        let direct = ScanReport.scannedKind(generic, environment: [:])
+        XCTAssertEqual(
+            ScanReport.scope(of: direct, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the project described by bazel-out/k8-fastbuild/bin/project_config.json on macOS with Swift 6.4."
+        )
+        // A project of another kind run by `bazel run` is not a Bazel scan.
+        let package = ScanReport.scannedKind(.spm, environment: ["BUILD_WORKSPACE_DIRECTORY": "/work"])
+        XCTAssertEqual(
+            ScanReport.scope(of: package, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Swift package on macOS with Swift 6.4."
+        )
+    }
+
     // MARK: - Private
 
     private func writeBaseline(_ usrs: [String]) throws -> FilePath {
