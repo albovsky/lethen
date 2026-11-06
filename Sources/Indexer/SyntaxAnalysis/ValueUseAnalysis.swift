@@ -60,6 +60,9 @@ struct ValueUseAnalysis: SyntaxAnalysis {
                 if valueUses.initializedConstantLocations.contains(declaration.location) {
                     declaration.isInitializedConstant = true
                 }
+                if valueUses.readOnlyPropertyLocations.contains(declaration.location) {
+                    declaration.isReadOnly = true
+                }
             }
         }
     }

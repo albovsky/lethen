@@ -17,6 +17,8 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var specializationArgumentLocations: Set<Location> = []
     public private(set) var accessorBodyLocations: Set<Location> = []
     public private(set) var initializedConstantLocations: Set<Location> = []
+    /// Properties without a setter: a `let`, or a `var` whose accessors are only a getter.
+    public private(set) var readOnlyPropertyLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
@@ -99,6 +101,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
 
             if let block = binding.accessorBlock, Self.isComputed(block) {
                 accessorBodyLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
+            }
+
+            if node.bindingSpecifier.tokenKind == .keyword(.let) || binding.accessorBlock.map(Self.isGetterOnly) == true {
+                readOnlyPropertyLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
             }
 
             let annotation = binding.typeAnnotation.map { tokens(in: $0.type) } ?? []
@@ -275,6 +281,17 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             true
         case let .accessors(list):
             list.contains { ["get", "set", "_read", "_modify", "unsafeAddress", "unsafeMutableAddress"].contains($0.accessorSpecifier.text) }
+        }
+    }
+
+    /// A computed property, or a protocol requirement, with a getter and nothing to set it: `{ value }`, `{ get }`,
+    /// `{ get async throws { ... } }` or `{ _read { ... } }`. Observers belong to a stored, settable property.
+    private static func isGetterOnly(_ block: AccessorBlockSyntax) -> Bool {
+        switch block.accessors {
+        case .getter:
+            true
+        case let .accessors(list):
+            list.allSatisfy { ["get", "_read"].contains($0.accessorSpecifier.text) }
         }
     }
 

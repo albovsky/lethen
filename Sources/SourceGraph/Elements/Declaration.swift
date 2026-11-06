@@ -239,6 +239,9 @@ public final class Declaration {
     /// True for a property whose accessor block has a getter, setter or read/modify body, so it stores nothing,
     /// even when that body references no declaration. Observers on a stored property do not count.
     public var hasAccessorBody: Bool = false
+    /// True for a Swift property with no setter: a `let`, or a `var` with only a getter. Such a property has no
+    /// setter selector at run time.
+    public var isReadOnly: Bool = false
     public var parent: Declaration?
     public var related: Set<Reference> = []
     public var isImplicit: Bool = false
