@@ -32,4 +32,4 @@ The cache can outlive a Lethen clean when something moves it outside DerivedData
 
 ## Decision
 
-Units do go missing, so the fix in the issue applies: managed builds pass `COMPILATION_CACHE_ENABLE_CACHING=NO` after the user's build arguments, and `--skip-build` rejects a store in which a compiled file of a scanned target has no unit.
+Units do go missing, so the fix in the issue applies, and it is in the fix PR for #196: managed builds pass `COMPILATION_CACHE_ENABLE_CACHING=NO` after the user's build arguments, and `--skip-build` rejects a store in which a compiled file of a scanned target has no unit.
