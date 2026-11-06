@@ -3033,4 +3033,33 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
         }
     }
+
+    /// The alias is the declaration the reference to its target sits in, not the live declaration that starts the line.
+    func testDanglingReferenceInsideContainerReportsDeadNeighbor() throws {
+        try analyze(retainPublic: true) {
+            // Used control: the neighbor is used by the public function and is never reported.
+            assertReferenced(.struct("FixtureDanglingLiveNeighbor1"))
+            assertNotReferenced(.typealias("FixtureDanglingDeadAlias1"))
+            assertNotReferenced(.struct("FixtureDanglingDeadTarget1"))
+        }
+    }
+
+    /// The target is used only through the live alias, so it stays even though a dead declaration starts the line.
+    func testDanglingReferenceInsideContainerRetainsUsedTarget() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.typealias("FixtureDanglingLiveAlias2"))
+            assertReferenced(.struct("FixtureDanglingUsedTarget2"))
+            assertNotReferenced(.struct("FixtureDanglingDeadNeighbor2"))
+        }
+    }
+
+    /// Passes with the nearest-declaration rule and with the range rule: only the alias is on its line.
+    func testDanglingReferenceAgreementControl() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.typealias("FixtureDanglingUsedAlias3"))
+            assertReferenced(.struct("FixtureDanglingUsedTarget3"))
+            assertNotReferenced(.typealias("FixtureDanglingUnusedAlias3"))
+            assertNotReferenced(.struct("FixtureDanglingUnusedTarget3"))
+        }
+    }
 }

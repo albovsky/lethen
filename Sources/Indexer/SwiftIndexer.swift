@@ -333,7 +333,8 @@ final class SwiftIndexer: Indexer {
             )
             associateLatentReferences()
             associateDanglingReferences(
-                topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder)
+                topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder),
+                declarationRanges: declarationSyntaxVisitor.rangesByLocation
             )
             visitDeclarations(using: declarationSyntaxVisitor)
             let file = IndexedFile(
@@ -407,7 +408,14 @@ final class SwiftIndexer: Indexer {
 
         // Swift does not associate some type references with the containing declaration, resulting in references
         // with no clear parent. Property references are one example: https://github.com/apple/swift/issues/56163
-        private func associateDanglingReferences(topLevelStatements: [ClosedRange<Location>]) {
+        //
+        // A reference is held by the innermost declaration whose syntax range contains it. Only a reference no
+        // recorded range contains falls back to the declaration on its line, or to the nearest one before it, which
+        // is wrong whenever an unrelated declaration starts between the container's first line and the reference.
+        private func associateDanglingReferences(
+            topLevelStatements: [ClosedRange<Location>],
+            declarationRanges: [Location: ClosedRange<Location>]
+        ) {
             guard !danglingReferences.isEmpty else { return }
 
             // Sort declarations to ensure deterministic candidate selection when
@@ -428,6 +436,11 @@ final class SwiftIndexer: Indexer {
                 // References from top-level code have no parent declaration by definition. Leaving them unassociated
                 // makes them root references; attributing them to a nearby declaration would hide their uses.
                 if topLevelStatements.contains(where: { $0.contains(ref.location) }) {
+                    continue
+                }
+
+                if let decl = innermostDeclaration(containing: ref, in: sortedDeclarations, ranges: declarationRanges) {
+                    associate(ref, with: keptDeclarationsByUsrs[decl.usrs] ?? decl)
                     continue
                 }
 
@@ -460,6 +473,45 @@ final class SwiftIndexer: Indexer {
                     associate(ref, with: keptDeclarationsByUsrs[decl.usrs] ?? decl)
                 }
             }
+        }
+
+        /// The declaration with the smallest syntax range that contains the reference, other than one the reference
+        /// names or is a member of. Between equal ranges, such as a property and its accessor, a declaration without a
+        /// parent wins, then the first in declaration order, as for declarations on the same line.
+        private func innermostDeclaration(
+            containing ref: Reference,
+            in sortedDeclarations: [Declaration],
+            ranges: [Location: ClosedRange<Location>]
+        ) -> Declaration? {
+            var best: (decl: Declaration, size: (lines: Int, columns: Int))?
+
+            for decl in sortedDeclarations {
+                guard let range = ranges[decl.location],
+                      range.contains(ref.location),
+                      !decl.usrs.contains(ref.usr),
+                      !decl.ancestralDeclarations.contains(where: { $0.usrs.contains(ref.usr) })
+                else { continue }
+
+                let size = (
+                    lines: range.upperBound.line - range.lowerBound.line,
+                    columns: range.upperBound.column - range.lowerBound.column
+                )
+
+                guard let current = best else {
+                    best = (decl, size)
+                    continue
+                }
+
+                let isSmaller = (size.lines, size.columns) < (current.size.lines, current.size.columns)
+                let isEqual = size == current.size
+                // `sortedDeclarations` is ordered, so on a tie the earlier candidate is kept unless this one has no
+                // parent and the kept one does.
+                if isSmaller || (isEqual && decl.parent == nil && current.decl.parent != nil) {
+                    best = (decl, size)
+                }
+            }
+
+            return best?.decl
         }
 
         private func visitDeclarations(using declarationVisitor: DeclarationSyntaxVisitor) {
