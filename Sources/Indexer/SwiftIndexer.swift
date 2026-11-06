@@ -475,9 +475,11 @@ final class SwiftIndexer: Indexer {
             }
         }
 
-        /// The declaration with the smallest syntax range that contains the reference, other than one the reference
-        /// names or is a member of. Between equal ranges, such as a property and its accessor, a declaration without a
-        /// parent wins, then the first in declaration order, as for declarations on the same line.
+        /// The declaration with the smallest syntax range that contains the reference, its lexical container. A
+        /// reference that names the container or one of its ancestors is held by it all the same, and
+        /// `AncestralReferenceEliminator` removes it later. Between equal ranges, such as a property and its accessor,
+        /// a declaration without a parent wins, then the first in declaration order, as for declarations on the same
+        /// line.
         private func innermostDeclaration(
             containing ref: Reference,
             in sortedDeclarations: [Declaration],
@@ -487,9 +489,7 @@ final class SwiftIndexer: Indexer {
 
             for decl in sortedDeclarations {
                 guard let range = ranges[decl.location],
-                      range.contains(ref.location),
-                      !decl.usrs.contains(ref.usr),
-                      !decl.ancestralDeclarations.contains(where: { $0.usrs.contains(ref.usr) })
+                      range.contains(ref.location)
                 else { continue }
 
                 let size = (

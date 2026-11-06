@@ -3062,4 +3062,14 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertNotReferenced(.struct("FixtureDanglingUnusedTarget3"))
         }
     }
+
+    /// A reference to an enclosing type from inside one of its members stays with that member, so the ancestor rule drops it.
+    func testDanglingReferenceToAncestorIsNotPromotedToTheContainer() throws {
+        try analyze(retainPublic: true) {
+            // Used control: the namespace is used by the public function and is never reported.
+            assertReferenced(.enum("FixtureDanglingNamespace4")) {
+                self.assertNotReferenced(.struct("Target"))
+            }
+        }
+    }
 }

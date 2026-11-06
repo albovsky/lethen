@@ -261,10 +261,7 @@ struct ScanCommand: ParsableCommand {
     /// Changes into the project root and builds the configuration from the configuration file and the
     /// command-line options, which take precedence.
     func makeConfiguration() throws -> Configuration {
-        // A relative root names a directory from where Lethen was started, which stops being true once it changes
-        // into the root.
-        let root = projectRoot.makeAbsolute()
-        if !FileManager.default.changeCurrentDirectoryPath(root.string) {
+        if !FileManager.default.changeCurrentDirectoryPath(projectRoot.string) {
             throw LethenError.changeCurrentDirectoryFailed(projectRoot)
         }
 
@@ -275,7 +272,7 @@ struct ScanCommand: ParsableCommand {
         }
 
         configuration.guidedSetup = setup
-        configuration.projectRoot = root
+        configuration.projectRoot = projectRoot
         configuration.apply(\.$project, project)
         configuration.apply(\.$schemes, schemes)
         configuration.apply(\.$indexExclude, indexExclude)
