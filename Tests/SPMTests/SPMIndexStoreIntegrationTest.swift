@@ -90,6 +90,55 @@ final class SPMIndexStoreIntegrationTest: XCTestCase {
         }
     }
 
+    /// A unit a `--skip-build` scan expects can be absent from a store Lethen did not build, as after an interrupted
+    /// build or a compilation-cache hit. The scan stops and names the file; an explicit store is read as given.
+    func testSkipBuildRejectsAStoreMissingAUnitOfABuiltTarget() throws {
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+        let shell = ShellImpl(logger: logger)
+        let root = FilePath(FileManager.default.temporaryDirectory.appendingPathComponent("lethen incomplete index \(UUID().uuidString)").path)
+        try FileManager.default.createDirectory(at: root.url, withIntermediateDirectories: true)
+        for input in ["Package.swift", "Sources"] {
+            try FileManager.default.copyItem(at: fixturePath.appending(input).url, to: root.appending(input).url)
+        }
+        // A target with no unit of its own cannot be told from one the build left out, so the target needs a second
+        // file whose unit proves it was built.
+        try "public enum Companion {}\n".write(to: root.appending("Sources/TargetA/Companion.swift").url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: root.url) }
+
+        try root.chdir {
+            let pkg = SPM.Package(configuration: Configuration(), shell: shell, logger: logger)
+            try pkg.clean()
+            try pkg.build(additionalArguments: [])
+            let store = try pkg.indexStorePath(additionalArguments: [])
+            let source = pkg.path.appending("Sources/TargetA/PublicEnumWithAssociatedValue.swift")
+            let units = store.appending("v5/units")
+            // Units are named after the compiled file, `Name.swift-<hash>` or `Name.o-<hash>` depending on the build system.
+            let doomed = try FileManager.default.contentsOfDirectory(atPath: units.string).filter { $0.hasPrefix("PublicEnumWithAssociatedValue.") }
+            XCTAssertFalse(doomed.isEmpty, "No unit of PublicEnumWithAssociatedValue.swift in \(units)")
+            for unit in doomed {
+                try FileManager.default.removeItem(atPath: units.appending(unit).string)
+            }
+
+            let configuration = Configuration()
+            configuration.skipBuild = true
+            let driver = SPMProjectDriver(pkg: SPM.Package(configuration: configuration, shell: shell, logger: logger), configuration: configuration, logger: logger)
+            XCTAssertThrowsError(try driver.plan(logger: logger.contextualized(with: "test"))) { error in
+                guard case let LethenError.incompleteIndexStore(path, files) = error else { return XCTFail("\(error)") }
+
+                XCTAssertEqual(path, store.string)
+                XCTAssertEqual(files, [source.string])
+            }
+
+            let explicit = Configuration()
+            explicit.skipBuild = true
+            explicit.indexStorePath = [store]
+            let unchecked = SPMProjectDriver(pkg: SPM.Package(configuration: explicit, shell: shell, logger: logger), configuration: explicit, logger: logger)
+            let plan = try unchecked.plan(logger: logger.contextualized(with: "test"))
+            XCTAssertFalse(plan.sourceFiles.keys.contains { $0.path == source }, "An explicit store is read as given")
+            XCTAssertTrue(plan.sourceFiles.keys.contains { $0.path == pkg.path.appending("Sources/TargetA/Companion.swift") })
+        }
+    }
+
     private func assertFixtureCoverage(_ driver: SPMProjectDriver, logger: Logger) throws {
         let plan = try driver.plan(logger: logger.contextualized(with: "test"))
         let paths = Set(plan.sourceFiles.keys.map { $0.path.relativeTo(fixturePath).string })

@@ -126,7 +126,7 @@ swift build --enable-index-store
 lethen scan --skip-build --index-store-path "$(swift build --show-bin-path --enable-index-store)/index/store"
 ```
 
-With `--skip-build` and no `--index-store-path`, lethen reads the package's build directory and stops with a "stale" error when a source file is newer than every index unit for it. An explicit `--index-store-path` is used as-is, so use it only with an index you know is current. Packages that only build for iOS or another Apple platform cannot be built by `swift build`; build them with `xcodebuild` and scan the DerivedData index store the same way (see Continuous integration).
+With `--skip-build` and no `--index-store-path`, lethen reads the package's build directory and stops with a "stale" error when a source file is newer than every index unit for it, and with an "incomplete" error when a compiled file of a target the build compiled has no unit at all, as after an interrupted build or a compilation-cache hit; a target with no unit of its own module is not checked, since it may simply not have been built. An explicit `--index-store-path` is used as-is, so use it only with an index you know is current. Packages that only build for iOS or another Apple platform cannot be built by `swift build`; build them with `xcodebuild` and scan the DerivedData index store the same way (see Continuous integration).
 
 Code inside `#if DEBUG` or its `#else` is compiled in only one configuration, so a function called only in release builds looks unused in a debug scan. `--configurations debug release` (`configurations: [debug, release]` in the configuration file) builds each configuration with `-c` and scans their index stores together: a reference found in either counts. A configuration that fails to build fails the scan. Do not also pass `-c` or `--configuration` in the build arguments. The configurations share one build tree, so each such scan usually rebuilds both from clean instead of reusing the previous build. Xcode projects accept `--configurations` too; see below.
 
@@ -442,7 +442,7 @@ Get the scan working in a terminal first. Then add an Aggregate target, give it 
 
 **Wrong results in some files.** The index store can become stale, for example after a scan was interrupted. Run with `--clean-build`.
 
-**An "incomplete" index store error.** Some compiled files have no index unit, which happens when Xcode's compilation cache served their compilation. Build again with `COMPILATION_CACHE_ENABLE_CACHING=NO`, or scan without `--skip-build`, which builds that way itself. A named file the build leaves out on purpose, such as one behind a platform filter, is excluded with `--index-exclude`.
+**An "incomplete" index store error.** Some compiled files have no index unit, which happens when Xcode's compilation cache served their compilation, or when a build was interrupted. Build again with `COMPILATION_CACHE_ENABLE_CACHING=NO` (or, for a package, `swift build` to completion), or scan without `--skip-build`, which builds that way itself. A named file the build leaves out on purpose, such as one behind a platform filter, is excluded with `--index-exclude`.
 
 **Code used only under `#if` is reported.** Only the compiled branch is indexed. Ignore those declarations with a comment command, filter them from the results, or build and scan every configuration together with `--configurations` (for example `--configurations Debug Release` for an Xcode project).
 
