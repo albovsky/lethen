@@ -165,7 +165,8 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         let loaded = try Self.load(project, shell: shell)
         let directory = try xcodebuild.derivedDataPath(for: loaded, schemes: ["ConfigurationsProject"], buildArguments: buildArguments)
         let units = directory.appending("Index.noindex/DataStore/v5/units")
-        let doomed = try FileManager.default.contentsOfDirectory(atPath: units.string).filter { $0.hasPrefix("Conditional.swift-") }
+        // A unit is named after the compiled file, `Conditional.swift-<hash>` or `Conditional.o-<hash>` depending on the build system.
+        let doomed = try FileManager.default.contentsOfDirectory(atPath: units.string).filter { $0.hasPrefix("Conditional.") }
         XCTAssertFalse(doomed.isEmpty, "No unit of Conditional.swift in \(units)")
         for unit in doomed {
             try FileManager.default.removeItem(atPath: units.appending(unit).string)

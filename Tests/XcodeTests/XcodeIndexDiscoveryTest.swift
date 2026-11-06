@@ -214,7 +214,8 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
     private func removeUnits(ofSourceFilesNamed names: [String]?, from store: FilePath) throws {
         let units = store.appending("v5/units")
         let all = try FileManager.default.contentsOfDirectory(atPath: units.string)
-        let doomed = all.filter { unit in names?.contains { unit.hasPrefix($0 + "-") } ?? true }
+        // A unit is named after the compiled file, `App.swift-<hash>` or `App.o-<hash>` depending on the build system.
+        let doomed = all.filter { unit in names?.contains { unit.hasPrefix(FilePath($0).stem! + ".") } ?? true }
         XCTAssertFalse(doomed.isEmpty, "No unit of \(names ?? ["any file"]) in \(all)")
         for unit in doomed {
             try FileManager.default.removeItem(atPath: units.appending(unit).string)
