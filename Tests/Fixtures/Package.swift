@@ -11,11 +11,18 @@ var targets: [PackageDescription.Target] = [
     .target(
         name: "CrossModuleRetentionFixtures",
         dependencies: [
-            .target(name: "CrossModuleRetentionSupportFixtures")
+            .target(name: "CrossModuleRetentionSupportFixtures"),
+            .target(name: "CrossModuleRetentionAliasFixtures")
         ]
     ),
     .target(
         name: "CrossModuleRetentionSupportFixtures"
+    ),
+    .target(
+        name: "CrossModuleRetentionAliasFixtures",
+        dependencies: [
+            .target(name: "CrossModuleRetentionSupportFixtures")
+        ]
     ),
     .target(
         name: "UnusedImportFixtureA",

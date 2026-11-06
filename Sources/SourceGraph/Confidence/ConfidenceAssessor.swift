@@ -106,13 +106,7 @@ public final class ConfidenceAssessor {
             // whatever its name.
             let isQualifiedByAnotherModule = isOfAnotherModule(spelling, receiver: receiver, modules: modules)
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
-                // An extension in `App` of `Models.Widget` is reached through `Models.Widget(...)` too.
-                if isQualifiedByAnotherModule,
-                   isOfAnotherModule(spelling, receiver: receiver, modules: Self.modules(of: enclosing))
-                {
-                    return false
-                }
-                return !isDistinct(receiver: receiver, from: enclosing)
+                return !isQualifiedByAnotherModule && !isDistinct(receiver: receiver, from: enclosing)
             }
             if let extended = unscannedExtendedType(of: declaration) {
                 if isQualifiedByAnotherModule {
@@ -131,13 +125,16 @@ public final class ConfidenceAssessor {
 
     /// Whether a type is spelled through a qualifier that names neither a type of the scan, `Outer` in `Outer.Inner(...)`,
     /// nor a type the scan extends, `URLSession` in `URLSession.Config(...)` for a `Config` declared in an extension of
-    /// it, nor the declaration's own module, so names a module the scan does not declare the type in: `Foundation` in
-    /// `Foundation.TimeInterval(...)`.
+    /// it, nor the declaration's own module, nor a module that declares a type or type alias of the receiver's name,
+    /// `Models` in `Models.Widget(...)` and `Aliases` in `Aliases.Renamed(...)`, so names a module the scan does not
+    /// declare the type in: `Foundation` in `Foundation.TimeInterval(...)`.
     private func isOfAnotherModule(_ spelling: NameSites.Spelling, receiver: String, modules: Set<String>) -> Bool {
-        guard let qualifier = spelling.qualifier, qualifier != receiver, qualifier != "Self" else { return false }
+        guard let qualifier = spelling.qualifier, qualifier != receiver, qualifier != "Self",
+              typeDeclarationsByName[qualifier, default: []].isEmpty, !extendedTypeNames.contains(qualifier),
+              !modules.contains(qualifier)
+        else { return false }
 
-        return typeDeclarationsByName[qualifier, default: []].isEmpty && !extendedTypeNames.contains(qualifier)
-            && !modules.contains(qualifier)
+        return !typeDeclarationsByName[receiver, default: []].contains { Self.modules(of: $0).contains(qualifier) }
     }
 
     /// Whether a type name spelled inside an extension may be a generic parameter or associated type of the extended
