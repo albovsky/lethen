@@ -62,7 +62,7 @@ public enum LethenError: Error, LocalizedError, CustomStringConvertible {
             return "The index store at \(path) is stale: \(staleFiles.count) source files are newer than every index unit for them (\(examples)). Build the project again, or scan without --skip-build."
         case let .incompleteIndexStore(path, missingFiles):
             let examples = missingFiles.prefix(3).joined(separator: ", ")
-            return "The index store at \(path) is incomplete: \(missingFiles.count) source files of indexed targets have no index unit (\(examples)). A compilation cache hit writes no unit; build again with COMPILATION_CACHE_ENABLE_CACHING=NO, or scan without --skip-build."
+            return "The index store at \(path) is incomplete: \(missingFiles.count) source files of indexed targets have no index unit (\(examples)). A compilation cache hit writes no unit; build again with COMPILATION_CACHE_ENABLE_CACHING=NO, or scan without --skip-build. A file the build leaves out on purpose, such as one behind a platform filter, can be left out with --index-exclude."
         case let .changeCurrentDirectoryFailed(path):
             return "Failed to change current directory to: \(path)"
         case let .unsafeDirectory(path, reason):
