@@ -57,10 +57,12 @@ final class NameUseCollectorTest: XCTestCase {
     func testConstructorCallsSpellInitThroughTheTypeBeside() {
         typealias Spelling = NameSites.Spelling
         let collector = collect("""
+        import Framework
         func f() {
             _ = Widget(size: 1)
             _ = Widget { }
             _ = Framework.Gadget<Int>(name: n)
+            _ = Outer.Gadget(name: n)
             _ = T(size: 1)
             _ = Self()
             _ = Widget.make(size: 1)
@@ -71,6 +73,8 @@ final class NameUseCollectorTest: XCTestCase {
             Spelling(labels: ["size"], receiver: "Widget", isMember: true),
             Spelling(labels: [], hasTrailingClosure: true, receiver: "Widget", isMember: true),
             Spelling(labels: ["name"], receiver: "Gadget", isMember: true, qualifier: "Framework"),
+            // A qualifier the file does not import may be a type.
+            Spelling(labels: ["name"], receiver: "Gadget", isMember: true),
             Spelling(labels: ["size"], isMember: true),
             Spelling(labels: [], isMember: true),
         ])

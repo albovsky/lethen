@@ -2455,6 +2455,8 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.extensionStruct("Substring")) {
                 self.assertReferenced(.struct("FixtureNested10")) {
                     self.assertConfidence(.functionConstructor("init(fixtureNested10:)"), .likely)
+                    // Qualified by a name the file does not import as a module.
+                    self.assertConfidence(.functionConstructor("init(fixtureUnimported10:)"), .likely)
                 }
             }
         }

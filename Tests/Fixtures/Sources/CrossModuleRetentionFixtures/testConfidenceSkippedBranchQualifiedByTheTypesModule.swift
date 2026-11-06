@@ -1,3 +1,4 @@
+import Foundation
 import CrossModuleRetentionAliasFixtures
 import CrossModuleRetentionSupportFixtures
 
@@ -6,7 +7,7 @@ extension FixtureWidget11 {
     init(fixtureTypesModule11 _: Int) { self.init() }
     // A skipped construction through a type alias of a third module names this.
     init(fixtureAliasModule11 _: Int) { self.init() }
-    // Control: a skipped construction qualified by a module that declares no such type.
+    // Control: a skipped construction qualified by an imported module that declares no such type.
     init(fixtureOtherModule11 _: Int) { self.init() }
 }
 
@@ -15,7 +16,7 @@ func fixtureQualifiedByTheTypesModule11() {
     #if os(Windows)
         _ = CrossModuleRetentionSupportFixtures.FixtureWidget11(fixtureTypesModule11: 1)
         _ = CrossModuleRetentionAliasFixtures.FixtureRenamed11(fixtureAliasModule11: 1)
-        _ = Elsewhere.FixtureWidget11(fixtureOtherModule11: 1)
+        _ = Foundation.FixtureWidget11(fixtureOtherModule11: 1)
     #else
         _ = FixtureRenamed11()
     #endif
