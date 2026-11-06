@@ -1,5 +1,6 @@
 import Configuration
 @testable import TestShared
+import XCTest
 
 /// `Extra.storyboard`, which references `ExtraController`, sits in a synchronized folder that only the `Target With
 /// Spaces` target owns, so it reaches the index through that target alone.
@@ -13,6 +14,20 @@ final class SynchronizedResourcesTest: XcodeSourceGraphTestCase {
         setupState.capture {
             try build(projectPath: UIKitProjectPath, configuration: configuration)
             try index(configuration: configuration)
+        }
+    }
+
+    /// The app and Target With Spaces both compile Shared.swift. Its nested member must be
+    /// one declaration with both module-specific USRs, so the app's call reaches both copies.
+    func testSharedMemberCoalescesAcrossCompiledModules() throws {
+        let members = Self.allIndexedDeclarations.filter { $0.name == "used()" && $0.parent?.name == "SharedFromAnotherTargetsFolder" }
+        XCTAssertEqual(members.count, 1)
+        let member = try XCTUnwrap(members.first)
+        XCTAssertEqual(member.indexedModules, ["UIKitProject", "Target_With_Spaces"])
+        XCTAssertEqual(member.usrs.count, 2)
+        assertReferenced(.enum("SharedFromAnotherTargetsFolder")) {
+            self.assertReferenced(.functionMethodStatic("used()"))
+            self.assertNotReferenced(.functionMethodStatic("unused()"))
         }
     }
 
