@@ -149,7 +149,7 @@ struct ScanReport {
 
     /// "Scanned the Xcode project App.xcodeproj (schemes App and Widgets; configurations Debug and Release) on macOS
     /// with Swift 6.4; 2 warnings above." What the results cover, printed before the footer: the project, the schemes
-    /// and configurations it was told to build, the platform lethen ran on and the one the build arguments target, the
+    /// and configurations it was told to build, the platform Lethen ran on and the one the build arguments target, the
     /// toolchain, and how many warnings, such as unindexed files or unscanned targets, the scan wrote.
     static func scope(
         of kind: ProjectKind,
