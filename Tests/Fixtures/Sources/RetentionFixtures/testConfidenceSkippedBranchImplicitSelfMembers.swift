@@ -15,6 +15,8 @@ public class FixtureStorage9 {
     func show9(message _: String) {}
     // A local function of the same name is what the skipped clause reads.
     func localized9() -> Int { 0 }
+    // A closure's capture of the same name is what the skipped clause reads.
+    var captured9 = 0
     // A setter's parameter of the same name is what the skipped clause reads.
     var setterParameter9 = 0
     // The implicit parameters of a setter and an observer are what the skipped clauses read.
@@ -73,6 +75,16 @@ public class FixtureStorage9 {
         #else
             return localized9() + 1
         #endif
+    }
+
+    public func capture() -> () -> Int {
+        { [captured9 = 1] in
+            #if os(Windows)
+                return captured9
+            #else
+                return captured9 + 1
+            #endif
+        }
     }
 
     public func shadow() -> Int {

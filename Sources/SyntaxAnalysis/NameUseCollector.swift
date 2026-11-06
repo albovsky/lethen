@@ -383,8 +383,8 @@ public struct NameUseCollector {
     }
 
     /// The names `node` binds to values: `let` and `var` bindings and other identifier patterns, function and
-    /// closure parameters by their local names, and the parameters of accessors, `set(value)` or the implicit
-    /// `newValue` and `oldValue`.
+    /// closure parameters by their local names, a closure's captures, `[logger = …]`, and the parameters of
+    /// accessors, `set(value)` or the implicit `newValue` and `oldValue`.
     private static func collectBoundValueNames(_ node: Syntax, into names: inout Set<String>) {
         let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
             pattern.identifier
@@ -396,6 +396,8 @@ public struct NameUseCollector {
             parameter.name
         } else if let parameters = node.as(AccessorParametersSyntax.self) {
             parameters.name
+        } else if let capture = node.as(ClosureCaptureSyntax.self) {
+            capture.name
         } else {
             nil
         }
