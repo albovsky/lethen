@@ -14,6 +14,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import drop_gate  # noqa: E402
 
 
+SECTION = "### Finding-drop gate\n\n"
+
+
 def rows(count):
     return [[f"Sources/File{i}.swift", i, 5, "function.free", f"f{i}()", ["unused"], [f"s:{i}"], "certain"] for i in range(count)]
 
@@ -36,6 +39,18 @@ class DropGateTest(unittest.TestCase):
                 status = drop_gate.main(["--current-dir", str(root / "current"), "--base-dir", str(root / "base"), *extra])
             return status, out.getvalue(), err.getvalue()
 
+    def test_example_in_a_code_span_does_not_count(self):
+        note = "### Finding-drop gate\n\n- `demo: 100 -> 97 findings, adjudicated`\n\nFor example `demo: 100 -> 97 findings, adjudicated`."
+        self.assertEqual(self.run_gate(100, 97, note=note)[0], 1)
+
+    def test_list_item_outside_the_section_does_not_count(self):
+        note = "### Finding-drop gate\n\nText.\n\n### Other\n\n- demo: 100 -> 97 findings, adjudicated"
+        self.assertEqual(self.run_gate(100, 97, note=note)[0], 1)
+        self.assertEqual(self.run_gate(100, 97, note="- demo: 100 -> 97 findings, adjudicated")[0], 1)
+
+    def test_plain_line_in_the_section_does_not_count(self):
+        self.assertEqual(self.run_gate(100, 97, note="### Finding-drop gate\n\ndemo: 100 -> 97 findings, adjudicated")[0], 1)
+
     def test_small_drop_passes(self):
         self.assertEqual(self.run_gate(100, 99)[0], 0)
 
@@ -46,10 +61,10 @@ class DropGateTest(unittest.TestCase):
         self.assertIn("`demo: 100 -> 97 findings, adjudicated`", err)
 
     def test_matching_adjudication_line_passes(self):
-        self.assertEqual(self.run_gate(100, 97, note="demo: 100 -> 97 findings, adjudicated")[0], 0)
+        self.assertEqual(self.run_gate(100, 97, note=SECTION + "- demo: 100 -> 97 findings, adjudicated")[0], 0)
 
     def test_adjudication_with_thousands_separator_passes(self):
-        self.assertEqual(self.run_gate(2567, 2480, note="demo: 2,567 -> 2,480 findings, adjudicated")[0], 0)
+        self.assertEqual(self.run_gate(2567, 2480, note=SECTION + "- demo: 2,567 -> 2,480 findings, adjudicated")[0], 0)
 
     def test_adjudication_with_other_counts_or_project_fails(self):
         self.assertEqual(self.run_gate(100, 97, note="demo: 100 -> 98 findings, adjudicated")[0], 1)

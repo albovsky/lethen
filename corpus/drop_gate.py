@@ -12,12 +12,13 @@ The baseline is the merge base with origin/master when the expectation differs t
 newest release tag (`git tag --list '20*' --sort=-v:refname`, falling back to `git describe --tags
 --abbrev=0`). `--base <rev>` names another revision.
 
-An adjudication line is a line of the document that holds, with thousands separators optional,
+An adjudication is a list item (`- ` after optional indentation) under the "### Finding-drop gate"
+heading of that document, up to the next heading of the same or a higher level, holding
 
   <project>: <baseline count> -> <current count> findings, adjudicated
 
-for example `wikipedia-ios: 2,567 -> 2,480 findings, adjudicated`. Both counts must match the ones
-computed, so a later drop needs a new line.
+with thousands separators optional, for example (not recorded) `example-app: 2,567 -> 2,480 findings, adjudicated`.
+Text in backticks is ignored, and both counts must match the ones computed, so a later drop needs a new item.
 
 Usage:
   corpus/drop_gate.py                        compare with the merge base or the newest release tag
@@ -34,6 +35,7 @@ from typing import List, Optional, Tuple
 
 DOC = Path("docs/validation/precision-corpus.md")
 DEFAULT_THRESHOLD = 0.02
+SECTION_HEADING = "### Finding-drop gate"
 
 
 class GateError(Exception):
@@ -103,12 +105,34 @@ def baseline_text(root: Path, project: str, current: str, base: Optional[str]) -
     raise GateError("no baseline: origin/master and release tags are unavailable; pass --base <rev>")
 
 
+def section_lines(document: str) -> List[str]:
+    """The lines under the gate's heading, up to the next heading of the same or a higher level."""
+    lines = document.splitlines()
+    if SECTION_HEADING not in lines:
+        return []
+    level = len(SECTION_HEADING) - len(SECTION_HEADING.lstrip("#"))
+    found = []
+    for line in lines[lines.index(SECTION_HEADING) + 1:]:
+        heading = re.match(r"(#+) ", line)
+        if heading and len(heading.group(1)) <= level:
+            break
+        found.append(line)
+    return found
+
+
 def adjudicated(document: str, project: str, before: int, after: int) -> bool:
-    """True when the document holds the adjudication line for exactly these counts."""
+    """True when the gate's section holds a list item with the adjudication line for exactly these counts.
+    Text in backticks never counts, so examples in prose cannot adjudicate a drop."""
     number = r"\d{1,3}(?:,\d{3})+|\d+"
     pattern = re.compile(rf"{re.escape(project)}: ({number}) (?:->|→) ({number}) findings, adjudicated")
-    return any(int(m.group(1).replace(",", "")) == before and int(m.group(2).replace(",", "")) == after
-               for m in pattern.finditer(document))
+    for line in section_lines(document):
+        item = re.match(r"\s*- (.*)", line)
+        if not item:
+            continue
+        match = pattern.search(re.sub(r"`[^`]*`", "", item.group(1)))
+        if match and int(match.group(1).replace(",", "")) == before and int(match.group(2).replace(",", "")) == after:
+            return True
+    return False
 
 
 def check(root: Path, base: Optional[str], base_dir: Optional[Path], threshold: float) -> List[str]:

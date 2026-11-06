@@ -35,21 +35,18 @@ with the same file at the merge base with `origin/master`, or at the newest rele
 does not differ there, and exits 1 when a project lost more than 2 % of its findings without an
 adjudication. Growth never fails, and a project with no expectation at the baseline is treated as new.
 
-To adjudicate a drop, check every removed row as the corpus diff requires, then add a line to the
-section that records the change, with both counts exactly as the gate prints them:
+To adjudicate a drop, check every removed row as the corpus diff requires, then add a list item to
+the end of this section with both counts exactly as the gate prints them, in the form
+`- <project>: <before> -> <after> findings, adjudicated`; for example (not recorded)
+`- example-app: 2,567 -> 2,480 findings, adjudicated`. Thousands separators are optional. Only list
+items in this section count, and text in backticks never does, so an example cannot adjudicate a
+drop. The counts must match, so a later drop needs its own item. `--base <rev>` compares with another
+revision and `--threshold <share>` changes the 2 % limit; `corpus/test_drop_gate.py` checks the gate
+on fabricated expectations.
 
-    <project>: <before> -> <after> findings, adjudicated
+Adjudicated drops:
 
-For example `wikipedia-ios: 2,567 -> 2,480 findings, adjudicated` (thousands separators are
-optional). The counts must match, so a later drop needs its own line. `--base <rev>` compares with
-another revision and `--threshold <share>` changes the 2 % limit; `corpus/test_drop_gate.py` checks
-the gate on fabricated expectations.
-
-When the hash sample was introduced, 13 of its 81 findings already had a verdict from the first
-measurement below or from the enum-case change; the other 68 were adjudicated on 2026-09-29 (see
-the second measurement below). The 146 earlier verdicts are recorded in `corpus/adjudications/` with their original IDs
-(`Alamofire-1`, or `enum-case-1` for the enum-case table); 18 are on findings no longer reported
-and are marked retired.
+- None.
 
 ### Third measurement (2026-10-05)
 

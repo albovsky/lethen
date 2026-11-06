@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- The nightly precision corpus fails when a project's expectation lost more than 2 % of its findings since the merge base or the newest release tag, unless `docs/validation/precision-corpus.md` holds an adjudication line such as `wikipedia-ios: 2,567 -> 2,480 findings, adjudicated`, so `corpus/accept.sh` cannot record an unadjudicated drop ([#192](https://github.com/albovsky/lethen/issues/192)).
+- The nightly precision corpus fails when a project's expectation lost more than 2 % of its findings since the merge base or the newest release tag, unless `docs/validation/precision-corpus.md` holds an adjudication line in its finding-drop section, so `corpus/accept.sh` cannot record an unadjudicated drop ([#192](https://github.com/albovsky/lethen/issues/192)).
 
 ##### Bug Fixes
 
