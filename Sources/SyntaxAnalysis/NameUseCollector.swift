@@ -41,6 +41,15 @@ public struct NameUseCollector {
     /// The generic parameters and associated types the syntax declares: `T.make()` names whatever `T` is, so no
     /// type narrows the member it uses.
     private var placeholderTypeNames: Set<String> = []
+    /// The type extended by the extension around the node being collected, which can use generic parameters and
+    /// associated types of that type that no syntax declares.
+    private var extendedTypeName: String?
+    /// The capitalized names the file binds to values, `let Handler = …` or a parameter `Handler`, against the Swift
+    /// API guidelines: calling one, `Handler()`, can run a `callAsFunction` rather than construct a type, and
+    /// `Store.shared` through one names no type. Gathered on first use, across the whole file rather than by scope, so
+    /// a part of it sees the parameters and locals around it.
+    private var capitalizedValueNames: Set<String>?
+    private let root: Syntax
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
     /// declaration, such as the elements of an `#if` clause; the generic parameters and associated types of the
@@ -49,6 +58,8 @@ public struct NameUseCollector {
         self.onUse = onUse
         Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
         Self.collectEnclosingPlaceholderTypeNames(of: node, into: &placeholderTypeNames)
+        extendedTypeName = Self.enclosingExtendedTypeName(of: node)
+        root = node.root
         collect(node, inPattern: false)
     }
 
@@ -72,16 +83,16 @@ public struct NameUseCollector {
         isMemberAccess: Bool = false,
         qualifier: String? = nil
     ) {
+        let spelling = NameSites.Spelling(
+            labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess,
+            qualifier: qualifier, isPattern: inPattern, extendedType: receiver == nil ? nil : extendedTypeName
+        )
         if spellingOnly {
-            spellings[name, default: []].insert(
-                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, qualifier: qualifier, isPattern: inPattern)
-            )
+            spellings[name, default: []].insert(spelling)
             return
         }
         if !forFileReaderOnly {
-            spellings[name, default: []].insert(
-                NameSites.Spelling(labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess, qualifier: qualifier, isPattern: inPattern)
-            )
+            spellings[name, default: []].insert(spelling)
             uses[name] = (uses[name] ?? false) || isMember
             if isConstruction { constructionUses.insert(name) }
         }
@@ -140,7 +151,11 @@ public struct NameUseCollector {
             let labels = call.map { Self.labels(of: $0) } ?? reference.argumentNames?.arguments.map(\.name.text)
             let access = reference.parent?.as(MemberAccessExprSyntax.self)
             let qualifier = access.flatMap { $0.declName.id == reference.id ? qualifierName(of: $0) : nil }
-            let receiver = qualifier.flatMap { $0.first?.isUppercase == true ? $0 : nil }
+            // A capitalized value, `func use(Store: B.Type) { Store.shared }`, names no type.
+            var receiver = qualifier.flatMap { $0.first?.isUppercase == true ? $0 : nil }
+            if let name = receiver, isCapitalizedValue(name) {
+                receiver = nil
+            }
             // `store.value` and `Store.value` reach the name through something; `value` and `value()` do not.
             let isMemberAccess = access?.declName.id == reference.id
                 || reference.parent?.is(KeyPathPropertyComponentSyntax.self) == true
@@ -190,7 +205,7 @@ public struct NameUseCollector {
                 name, isMember: true, isConstruction: !inPattern, at: node,
                 receiver: receiver, isMemberAccess: true, qualifier: qualifier
             )
-        } else if let call = node.as(FunctionCallExprSyntax.self), Self.isCallableValueCall(call) {
+        } else if onUse != nil, let call = node.as(FunctionCallExprSyntax.self), isCallableValueCall(call) {
             // `Handler()()` or `handler(1)` can run a `callAsFunction`, which the call never spells; like `init`
             // and `subscript`, only a file that names the type can match it.
             record("callAsFunction", isMember: true, isConstruction: !inPattern, at: node, forFileReaderOnly: true)
@@ -203,9 +218,39 @@ public struct NameUseCollector {
         } else if let macro = node.as(MacroExpansionDeclSyntax.self) {
             record(macro.macroName.text, isMember: false, isConstruction: false, at: node, forFileReaderOnly: true)
         }
+        let outerExtendedTypeName = extendedTypeName
+        let extensionDecl = node.as(ExtensionDeclSyntax.self)
         for child in node.children(viewMode: .sourceAccurate) {
+            // The extended type itself is spelled outside the extension's scope.
+            if let extensionDecl, child.id != extensionDecl.extendedType.id {
+                extendedTypeName = Self.baseName(of: extensionDecl.extendedType)
+            }
             collect(child, inPattern: inPattern)
+            extendedTypeName = outerExtendedTypeName
         }
+    }
+
+    /// The type extended by the innermost extension around `node`.
+    private static func enclosingExtendedTypeName(of node: Syntax) -> String? {
+        var current = node.parent
+        while let ancestor = current {
+            if let extensionDecl = ancestor.as(ExtensionDeclSyntax.self) {
+                return baseName(of: extensionDecl.extendedType)
+            }
+            current = ancestor.parent
+        }
+        return nil
+    }
+
+    /// The last component of a type's name, without generic arguments: `Array` for `Swift.Array<Int>`.
+    private static func baseName(of type: TypeSyntax) -> String {
+        if let member = type.as(MemberTypeSyntax.self) {
+            return member.name.text
+        }
+        if let identifier = type.as(IdentifierTypeSyntax.self) {
+            return identifier.name.text
+        }
+        return type.trimmedDescription
     }
 
     /// The call whose callee is `reference`, spelled `foo(...)`, `base.foo(...)` or either with generic arguments.
@@ -259,6 +304,35 @@ public struct NameUseCollector {
         }
     }
 
+    private mutating func isCapitalizedValue(_ name: String) -> Bool {
+        if capitalizedValueNames == nil {
+            var names: Set<String> = []
+            Self.collectCapitalizedValueNames(root, into: &names)
+            capitalizedValueNames = names
+        }
+        return capitalizedValueNames?.contains(name) == true
+    }
+
+    private static func collectCapitalizedValueNames(_ node: Syntax, into names: inout Set<String>) {
+        let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
+            pattern.identifier
+        } else if let parameter = node.as(FunctionParameterSyntax.self) {
+            parameter.secondName ?? parameter.firstName
+        } else if let parameter = node.as(ClosureParameterSyntax.self) {
+            parameter.secondName ?? parameter.firstName
+        } else if let parameter = node.as(ClosureShorthandParameterSyntax.self) {
+            parameter.name
+        } else {
+            nil
+        }
+        if let name = bound?.identifier?.name, name.first?.isUppercase == true {
+            names.insert(name)
+        }
+        for child in node.children(viewMode: .sourceAccurate) {
+            collectCapitalizedValueNames(child, into: &names)
+        }
+    }
+
     private static func collectPlaceholderTypeNames(_ node: Syntax, into names: inout Set<String>) {
         if let parameter = node.as(GenericParameterSyntax.self) {
             names.insert(parameter.name.text)
@@ -298,19 +372,16 @@ public struct NameUseCollector {
     /// Whether the call's callee is a value rather than a function or type name that the index resolves: a call,
     /// a subscript, a parenthesized, unwrapped or chained expression, or a lowercase name, since a type name
     /// starts with a capital letter; leading underscores are skipped, so `_handler` is a value, and so is a shorthand argument such as `$0`. A call of a local function matches too, which only costs a name that no
-    /// type named by the file can narrow to a `callAsFunction`.
-    private static func isCallableValueCall(_ call: FunctionCallExprSyntax) -> Bool {
+    /// type named by the file can narrow to a `callAsFunction`. A capitalized name in `capitalizedValueNames` is a
+    /// value too: `Handler()` may then also be a construction, which is still recorded as one.
+    private mutating func isCallableValueCall(_ call: FunctionCallExprSyntax) -> Bool {
         var callee = call.calledExpression
         if let specialized = callee.as(GenericSpecializationExprSyntax.self) { callee = specialized.expression }
-        func isValueName(_ name: String) -> Bool {
-            // `$0` is a closure's shorthand argument, a value whatever it holds.
-            name.hasPrefix("$") || name.first(where: { $0 != "_" })?.isLowercase == true
-        }
-        if let reference = callee.as(DeclReferenceExprSyntax.self) {
-            return isValueName(reference.baseName.text)
-        }
-        if let access = callee.as(MemberAccessExprSyntax.self) {
-            return isValueName(access.declName.baseName.text)
+        let calledName = callee.as(DeclReferenceExprSyntax.self)?.baseName.text ?? callee.as(MemberAccessExprSyntax.self)?.declName.baseName.text
+        if let name = calledName {
+            // `$0` is a closure's shorthand argument, a value whatever it holds. A capitalized name is a type unless
+            // the file binds it to a value, when the call may be either.
+            return name.hasPrefix("$") || name.first(where: { $0 != "_" })?.isLowercase == true || isCapitalizedValue(name)
         }
         return callee.is(FunctionCallExprSyntax.self) || callee.is(SubscriptCallExprSyntax.self)
             || callee.is(TupleExprSyntax.self) || callee.is(ForceUnwrapExprSyntax.self) || callee.is(OptionalChainingExprSyntax.self)

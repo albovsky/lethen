@@ -88,6 +88,13 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
             #endif
 
             #if DEBUG
+                public func collidingTypoEntry(x a: Int, y b: Int) { print(a) }
+            #else
+                // periphery:ignore:parameters b
+                public func collidingTypoEntry(x c: Int, y d: Int) { print(c) }
+            #endif
+
+            #if DEBUG
                 struct IgnoredContainerEntry { func nestedUnused() {} }
             #else
                 // periphery:ignore
@@ -96,7 +103,8 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
 
             struct UnignoredContainerEntry { func nestedUnusedControl() {} }
 
-            // A public type named only by the later copy of a public property's annotation is exposed by it.
+            // A public type named only by the later copy of a public property's annotation is exposed by it. The
+            // copies have different types, so different USRs, and both are kept.
             public struct ExposedByReleaseCopy: Sendable {}
 
             public struct ExposingHolder {
@@ -105,6 +113,20 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
                     public var exposingProperty: Int? = nil
                 #else
                     public var exposingProperty: ExposedByReleaseCopy? = nil
+                #endif
+            }
+
+            // A public type constructed only by the later copy of a public property's initial value is exposed by it.
+            // The copies share a type, so a USR: the graph keeps the first, which holds the later copy's reference,
+            // and only the later copy's syntax gives that reference its role.
+            public struct ExposedByReleaseInitializer: Sendable { public init() {} }
+
+            public struct InitializingHolder {
+                public init() {}
+                #if DEBUG
+                    public var initializedProperty: Any = 0
+                #else
+                    public var initializedProperty: Any = ExposedByReleaseInitializer()
                 #endif
             }
 
@@ -135,7 +157,7 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
 
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\nuseUnexposedPublicControl()\n_ = ExposingHolder().exposingProperty\n_ = BranchedIterator().next()\n_ = PlainIterator().next()\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\ncollidingTypoEntry(x: 1, y: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\nuseUnexposedPublicControl()\n_ = ExposingHolder().exposingProperty\n_ = InitializingHolder().initializedProperty\n_ = BranchedIterator().next()\n_ = PlainIterator().next()\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -193,6 +215,12 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         let mistyped = Self.results.flatMap(\.usrs).filter { $0.contains("mistypedIgnoreEntry") }
         XCTAssertEqual(mistyped.count, 1)
         XCTAssertTrue(mistyped.first?.hasPrefix("superfluous-ignore-param-typo") ?? false, "\(mistyped)")
+        // The mistyped name happens to be what the kept copy calls its unused second parameter. It ignores nothing on
+        // its own copy, whose parameters are `c` and `d`, so it is still superfluous, and `b` is still reported.
+        let colliding = Self.results.flatMap(\.usrs).filter { $0.contains("collidingTypoEntry") }.sorted()
+        XCTAssertEqual(colliding.count, 2, "\(colliding)")
+        XCTAssertTrue(colliding.contains { $0.hasPrefix("param-b-collidingTypoEntry") }, "\(colliding)")
+        XCTAssertTrue(colliding.contains { $0.hasPrefix("superfluous-ignore-param-b-collidingTypoEntry") }, "\(colliding)")
         let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
         XCTAssertEqual(renamed.count, 1)
         XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")
@@ -232,6 +260,7 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         try Self.index(configuration: configuration)
         let usrs = Self.results.flatMap(\.usrs)
         XCTAssertEqual(usrs.filter { $0.contains("ExposedByReleaseCopy") }, [String](), "\(usrs)")
+        XCTAssertEqual(usrs.filter { $0.contains("ExposedByReleaseInitializer") }, [String](), "\(usrs)")
         XCTAssertFalse(usrs.filter { $0.contains("UnexposedPublicControl") }.isEmpty, "\(usrs)")
     }
 
