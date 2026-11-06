@@ -79,6 +79,21 @@ final class Project {
             throw LethenError.usageError("--skip-build and --index-store-path are not supported for Bazel projects: a Bazel scan must build the generated scan target, which indexes the project and runs the scan. To scan an existing index store without building, describe the project with '--generic-project-config' and pass '--index-store-path'.")
         }
 
+        if configuration.derivedDataPath != nil {
+            guard configuration.skipBuild else {
+                throw LethenError.usageError("--derived-data-path requires --skip-build: it names the DerivedData a pipeline already built into. Without --skip-build Lethen builds into its own cache.")
+            }
+            guard configuration.indexStorePath.isEmpty else {
+                throw LethenError.usageError("Pass --derived-data-path or --index-store-path, not both: the first is verified, the second is read as given.")
+            }
+            guard configuration.configurations.isEmpty else {
+                throw LethenError.usageError("--derived-data-path is not supported with --configurations: one DerivedData holds whichever configuration was built last. Pass each configuration's store with --index-store-path.")
+            }
+            guard case .xcode = kind else {
+                throw LethenError.usageError("--derived-data-path is supported for Xcode projects only.")
+            }
+        }
+
         switch kind {
         case let .xcode(projectPath):
             #if canImport(XcodeSupport)
