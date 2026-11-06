@@ -56,8 +56,15 @@ public final class XcodeProject: XcodeProjectlike {
         name = self.path.lastComponent?.stem ?? ""
         sourceRoot = self.path.removingLastComponent()
 
+        let bundle = self.path.lexicallyNormalized()
+        if !bundle.appending("project.pbxproj").exists, bundle.appending("project.xcproj").exists {
+            throw LethenError.usageError(
+                "\(bundle) stores the project in Xcode's JSON project format (project.xcproj), which Lethen cannot read yet: it reads project.pbxproj."
+            )
+        }
+
         do {
-            xcodeProject = try XcodeProj(pathString: self.path.lexicallyNormalized().string)
+            xcodeProject = try XcodeProj(pathString: bundle.string)
         } catch {
             throw LethenError.underlyingError(error)
         }
