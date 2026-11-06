@@ -15,6 +15,8 @@ public class FixtureStorage9 {
     func show9(message _: String) {}
     // A local function of the same name is what the skipped clause reads.
     func localized9() -> Int { 0 }
+    // A local type of the same name is what the skipped clause reads.
+    var localType9 = 0
     // A closure's capture of the same name is what the skipped clause reads.
     var captured9 = 0
     // A bare `catch`'s implicit `error` is what the skipped clause reads.
@@ -66,6 +68,17 @@ public class FixtureStorage9 {
             return logger9 + formatter9()
         #else
             return readNormally9
+        #endif
+    }
+
+    public func useLocalType() -> Any {
+        struct localType9 {}
+        #if os(Windows)
+            return localType9.self
+        #else
+            // An indexed reference, so the index shows this clause compiled; a local type is not indexed.
+            _ = readNormally9
+            return localType9()
         #endif
     }
 

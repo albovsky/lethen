@@ -265,7 +265,7 @@ public struct NameUseCollector {
             if boundNamesByMember[member.id] == nil {
                 var bound: Set<String> = []
                 Self.collectBoundValueNames(member, into: &bound)
-                Self.collectLocalFunctionNames(in: member, into: &bound)
+                Self.collectLocalDeclarationNames(in: member, into: &bound)
                 boundNamesByMember[member.id] = bound
             }
             if boundNamesByMember[member.id]?.contains(name) == true { return nil }
@@ -273,14 +273,16 @@ public struct NameUseCollector {
         return types
     }
 
-    /// The names of the functions declared inside `member`, not `member` itself: a bare name in it calls one of them
-    /// rather than a method of the type.
-    private static func collectLocalFunctionNames(in member: Syntax, into names: inout Set<String>) {
+    /// The names of the functions, types and type aliases declared inside `member`, not `member` itself: a bare name
+    /// in it names one of them rather than a member of the type.
+    private static func collectLocalDeclarationNames(in member: Syntax, into names: inout Set<String>) {
         for child in member.children(viewMode: .sourceAccurate) {
-            if let function = child.as(FunctionDeclSyntax.self), let name = function.name.identifier?.name {
+            if let name = (child.as(FunctionDeclSyntax.self)?.name ?? child.as(TypeAliasDeclSyntax.self)?.name)?.identifier?.name
+                ?? typeName(of: child)
+            {
                 names.insert(name)
             }
-            collectLocalFunctionNames(in: child, into: &names)
+            collectLocalDeclarationNames(in: child, into: &names)
         }
     }
 

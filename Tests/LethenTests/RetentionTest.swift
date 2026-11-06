@@ -2449,6 +2449,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 // A local function of that name in the method is what the clause reads.
                 self.assertNotReferenced(.functionMethodInstance("localized9()"))
                 self.assertConfidence(.functionMethodInstance("localized9()"), .certain)
+                // A local type of that name in the method is what the clause reads.
+                self.assertNotReferenced(.varInstance("localType9"))
+                self.assertConfidence(.varInstance("localType9"), .certain)
                 // A bare `catch`'s implicit `error` is what the clause reads.
                 self.assertNotReferenced(.varInstance("error"))
                 self.assertConfidence(.varInstance("error"), .certain)
