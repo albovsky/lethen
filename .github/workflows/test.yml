@@ -168,6 +168,7 @@ jobs:
         with:
           cache: false
       - run: mise run lint-ci
+      - run: python3 corpus/test_drop_gate.py
   bazel:
     # Job names stay static: GitHub appends the matrix values itself, and a skipped matrix
     # job would otherwise show its name with the expressions unexpanded.
@@ -436,6 +437,11 @@ jobs:
       - name: Require a verdict for every sampled finding
         if: always()
         run: python3 corpus/precision.py --check
+      # A project that lost more than 2 % of its findings needs an adjudication line in the
+      # precision-corpus document, so accept.sh cannot record a drop nobody adjudicated.
+      - name: Require an adjudication for every finding drop
+        if: always()
+        run: python3 corpus/drop_gate.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

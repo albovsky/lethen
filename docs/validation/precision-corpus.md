@@ -26,6 +26,25 @@ analysis change keeps its membership and its verdict, a removed one drops out, a
 enter and need a verdict, so each corpus diff asks for a few verdicts rather than a new sample.
 `corpus/sample.py <project>` lists the sample; `corpus/precision.py` lists what needs a verdict.
 
+### Finding-drop gate
+
+`corpus/diff.sh` fails the nightly job on any row that differs from its expectation, but
+`corpus/accept.sh` can then record an expectation that lost many findings. `corpus/drop_gate.py`
+(run after `corpus/precision.py --check` in the `corpus` job) compares each `corpus/expected/<project>.json`
+with the same file at the merge base with `origin/master`, or at the newest release tag when the file
+does not differ there, and exits 1 when a project lost more than 2 % of its findings without an
+adjudication. Growth never fails, and a project with no expectation at the baseline is treated as new.
+
+To adjudicate a drop, check every removed row as the corpus diff requires, then add a line to the
+section that records the change, with both counts exactly as the gate prints them:
+
+    <project>: <before> -> <after> findings, adjudicated
+
+For example `wikipedia-ios: 2,567 -> 2,480 findings, adjudicated` (thousands separators are
+optional). The counts must match, so a later drop needs its own line. `--base <rev>` compares with
+another revision and `--threshold <share>` changes the 2 % limit; `corpus/test_drop_gate.py` checks
+the gate on fabricated expectations.
+
 When the hash sample was introduced, 13 of its 81 findings already had a verdict from the first
 measurement below or from the enum-case change; the other 68 were adjudicated on 2026-09-29 (see
 the second measurement below). The 146 earlier verdicts are recorded in `corpus/adjudications/` with their original IDs
