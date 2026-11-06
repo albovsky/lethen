@@ -10,7 +10,7 @@
 
 ##### Bug Fixes
 
-- None.
+- In a `#if` branch the build skipped, a bare name inside a type's body, `return logger` in a method of `Storage`, now marks `likely` a property or method of that name of `Storage`, of a type it inherits from, or of the unscanned type an extension extends, as `self.logger` already did. It still does not count when the method around it binds a value of that name, and never counts for another type's members ([#200](https://github.com/albovsky/lethen/issues/200)).
 
 ## 2026.11.1 (2026-11-06)
 
@@ -49,7 +49,6 @@ The GitHub Action now fails a strict scan only on `certain` results by default. 
 - In a `#if` branch the build skipped, inside an extension of a type the scan does not declare, a type name the scan does not declare either, such as `Element` in `extension Array where Element: Buildable`, no longer narrows a construction or member access to a type of that name. It can be a generic parameter or associated type of the extended type, which stands for any type, so `Element(size: 1)` now marks every `init(size:)` of the module `likely`, as `T(size: 1)` already did. A type the scan declares still narrows the use ([#154](https://github.com/albovsky/lethen/issues/154)).
 - A file of an unscanned target that calls a value with a capitalized name, `Handler()` where the file declares `let Handler: Callable` or a parameter `Handler`, now marks `likely` the `callAsFunction` of the types it names, as `handler()` already did. A capitalized call with no value of that name in the file is still only a construction ([#134](https://github.com/albovsky/lethen/issues/134)).
 - In a `#if` branch the build skipped, a member reached through a capitalized value, `Store.shared` in `func use(Store: Cache.Type)`, no longer narrows to a type named `Store`. Such a name the file binds to a value, a parameter, a local or a property, names no type, so the use can be of any member of that name, which is now `likely` rather than `certain` when the scan has no type called `Store` ([#145](https://github.com/albovsky/lethen/issues/145)).
-- In a `#if` branch the build skipped, a bare name inside a type's body, `return logger` in a method of `Storage`, now marks `likely` a property or method of that name of `Storage`, of a type it inherits from, or of the unscanned type an extension extends, as `self.logger` already did. It still does not count when the method around it binds a value of that name, and never counts for another type's members ([#200](https://github.com/albovsky/lethen/issues/200)).
 - A reference the index records without a containing declaration, such as the right-hand side of a type alias, a type in a subscript's signature or in a multi-line tuple pattern, or a macro attribute, is now held by the innermost declaration whose source range contains it. It was held by a declaration on the same line, or else by the nearest one on an earlier line, so with `struct Live {}; typealias Dead = Target` the unused alias's use of `Target` kept `Target` alive through `Live`, and with `struct Dead {}; typealias Live = Target` a used target was reported through `Dead`. A reference no declaration's range contains still falls back to the previous rule ([#194](https://github.com/albovsky/lethen/issues/194)).
 
 ## 2026.10.1 (2026-10-14)
