@@ -173,9 +173,7 @@ public final class Xcodebuild {
         buildArguments: [String] = []
     ) throws -> FilePath {
         let derivedDataPath = try derivedDataPath(for: project, schemes: schemes, configuration: configuration, buildArguments: buildArguments)
-        let pathsToTry = ["Index.noindex/DataStore", "Index/DataStore"]
-            .map { derivedDataPath.appending($0) }
-        guard let path = pathsToTry.first(where: { $0.exists }) else {
+        guard let path = XcodeDerivedDataLocator.indexStore(in: derivedDataPath) else {
             throw LethenError.indexStoreNotFound(derivedDataPath: derivedDataPath.string)
         }
 

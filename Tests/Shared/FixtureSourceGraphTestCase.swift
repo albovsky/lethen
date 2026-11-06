@@ -29,6 +29,7 @@ class FixtureSourceGraphTestCase: SPMSourceGraphTestCase {
         retainAssignOnlyProperties: Bool = false,
         retainAssignOnlyPropertyTypes: [String] = [],
         externalCodableProtocols: [String] = [],
+        externalEncodableProtocols: [String] = [],
         additionalFilesToIndex: [FilePath] = [],
         externalTestCaseClasses: [String] = [],
         retainFiles: [String] = [],
@@ -43,6 +44,7 @@ class FixtureSourceGraphTestCase: SPMSourceGraphTestCase {
         configuration.disableRedundantPublicAnalysis = disableRedundantPublicAnalysis
         configuration.superfluousIgnoreComments = superfluousIgnoreComments
         configuration.externalCodableProtocols = externalCodableProtocols
+        configuration.externalEncodableProtocols = externalEncodableProtocols
         configuration.retainCodableProperties = retainCodableProperties
         configuration.retainEncodableProperties = retainEncodableProperties
         configuration.retainEquatableProperties = retainEquatableProperties

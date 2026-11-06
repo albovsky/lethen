@@ -106,6 +106,87 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
         }
     }
 
+    func testDerivedDataPathVerifiesAPipelineBuildThatIndexStorePathDoesNot() throws {
+        let fixture = SwiftUIProjectPath.removingLastComponent()
+        let copy = root.appending("SwiftUIProject")
+        try FileManager.default.copyItem(at: fixture.url, to: copy.url)
+        let project = copy.appending("SwiftUIProject.xcodeproj")
+        let pipeline = root.appending("Pipeline")
+        let shell = ShellImpl(logger: logger)
+        try shell.exec([
+            "xcodebuild", "-project", project.string, "-scheme", "SwiftUIProject",
+            "-derivedDataPath", pipeline.string,
+            "-quiet", "build-for-testing", "CODE_SIGNING_ALLOWED=NO",
+        ])
+
+        // The locator's root is empty, so only the given path can lead to the store.
+        let emptyRoot = root.appending("EmptyDerivedData")
+        try FileManager.default.createDirectory(at: emptyRoot.url, withIntermediateDirectories: true)
+
+        let configuration = Configuration()
+        configuration.schemes = ["SwiftUIProject"]
+        configuration.skipBuild = true
+        configuration.derivedDataPath = pipeline
+        let driver = try makeDriver(project: project, configuration: configuration, shell: shell, derivedData: emptyRoot)
+
+        var plan: IndexPlan?
+        try project.removingLastComponent().chdir {
+            plan = try driver.plan(logger: logger.contextualized(with: "test"))
+        }
+
+        let app = copy.appending("SwiftUIProject/App.swift")
+        let planned = try XCTUnwrap(plan).sourceFiles.keys.map { resolved($0.path) }
+        XCTAssertTrue(planned.contains(resolved(app)), "The plan must come from the pipeline's index, got \(planned)")
+
+        let text = try String(contentsOf: app.url, encoding: .utf8)
+        try (text + "\n// edited after indexing\n").write(to: app.url, atomically: true, encoding: .utf8)
+
+        XCTAssertThrowsError(try project.removingLastComponent().chdir { _ = try driver.plan(logger: logger.contextualized(with: "test")) }) { error in
+            guard case let LethenError.staleIndexStore(_, staleFiles) = error else {
+                return XCTFail("Expected a stale index error, got \(error)")
+            }
+
+            XCTAssertEqual(staleFiles.map { FilePath($0).lastComponent?.string }, ["App.swift"])
+        }
+
+        // Control: the same store passed with `--index-store-path` stays authoritative and unchecked.
+        let explicit = Configuration()
+        explicit.schemes = ["SwiftUIProject"]
+        explicit.skipBuild = true
+        explicit.indexStorePath = [pipeline.appending("Index.noindex/DataStore")]
+        let explicitDriver = try makeDriver(project: project, configuration: explicit, shell: shell, derivedData: emptyRoot)
+        var explicitPlan: IndexPlan?
+        try project.removingLastComponent().chdir {
+            explicitPlan = try explicitDriver.plan(logger: logger.contextualized(with: "test"))
+        }
+
+        let explicitPlanned = try XCTUnwrap(explicitPlan).sourceFiles.keys.map { resolved($0.path) }
+        XCTAssertTrue(explicitPlanned.contains(resolved(app)), "An explicit store is read as given, got \(explicitPlanned)")
+    }
+
+    func testDerivedDataPathWithoutAnIndexIsAnError() throws {
+        let fixture = SwiftUIProjectPath.removingLastComponent()
+        let copy = root.appending("SwiftUIProject")
+        try FileManager.default.copyItem(at: fixture.url, to: copy.url)
+        let project = copy.appending("SwiftUIProject.xcodeproj")
+        let empty = root.appending("Empty")
+        try FileManager.default.createDirectory(at: empty.url, withIntermediateDirectories: true)
+
+        let configuration = Configuration()
+        configuration.schemes = ["SwiftUIProject"]
+        configuration.skipBuild = true
+        configuration.derivedDataPath = empty
+        let driver = try makeDriver(project: project, configuration: configuration, shell: ShellImpl(logger: logger), derivedData: root.appending("DerivedData"))
+
+        XCTAssertThrowsError(try project.removingLastComponent().chdir { _ = try driver.plan(logger: logger.contextualized(with: "test")) }) { error in
+            guard case let LethenError.indexStoreNotFound(derivedDataPath) = error else {
+                return XCTFail("Expected indexStoreNotFound, got \(error)")
+            }
+
+            XCTAssertEqual(derivedDataPath, empty.string)
+        }
+    }
+
     /// A compilation-cache hit writes no index unit. A store in which a file of an indexed target has no unit is refused
     /// rather than scanned with that file's references missing.
     func testSkipBuildRejectsAStoreMissingAUnitOfAnIndexedTarget() throws {

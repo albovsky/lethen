@@ -57,6 +57,9 @@ struct ScanCommand: ParsableCommand {
     @Option(parsing: .upToNextOption, help: "Index store paths. Implies '--skip-build', so not supported for Bazel projects")
     var indexStorePath: [FilePath] = defaultConfiguration.$indexStorePath.defaultValue
 
+    @Option(help: "DerivedData directory a pipeline built into, whose index '--skip-build' reads and verifies. Xcode projects only")
+    var derivedDataPath: FilePath?
+
     @Flag(help: "Retain all public declarations, recommended for framework/library projects")
     var retainPublic: Bool = defaultConfiguration.$retainPublic.defaultValue
 
@@ -233,15 +236,26 @@ struct ScanCommand: ParsableCommand {
         let interval = logger.beginInterval("result:output")
         let report = try ScanReport(results: scanOutput.results, configuration: configuration, logger: logger)
 
-        if let output = report.output {
+        if !report.sections.isEmpty {
             if configuration.outputFormat.supportsAuxiliaryOutput {
                 logger.info("", canQuiet: true)
             }
 
-            logger.info(output, canQuiet: false)
+            for section in report.sections {
+                if let header = section.header {
+                    logger.note(header)
+                }
+                logger.info(section.output, canQuiet: false)
+            }
         }
 
         if let footer = report.footer {
+            logger.note(ScanReport.scope(
+                of: ScanReport.scannedKind(project.kind),
+                configuration: configuration,
+                swiftVersion: swiftVersion.version,
+                warningCount: logger.warningCount
+            ))
             logger.note(footer)
         }
 
@@ -307,6 +321,7 @@ struct ScanCommand: ParsableCommand {
         configuration.apply(\.$minConfidence, minConfidence)
         configuration.apply(\.$stats, stats)
         configuration.apply(\.$indexStorePath, indexStorePath)
+        configuration.apply(\.$derivedDataPath, derivedDataPath)
         configuration.apply(\.$skipBuild, skipBuild)
         configuration.apply(\.$excludeTests, excludeTests)
         configuration.apply(\.$excludeTargets, excludeTargets)

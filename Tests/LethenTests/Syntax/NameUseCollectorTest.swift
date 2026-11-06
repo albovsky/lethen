@@ -91,6 +91,26 @@ final class NameUseCollectorTest: XCTestCase {
         ])
     }
 
+    /// A use with a receiver inside an extension carries the extended type, whose generic parameters the extension
+    /// uses without declaring them, whether the extension is around the clause or inside it.
+    func testReceiversInsideAnExtensionCarryTheExtendedType() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: "extension Swift.Array where Element: P {\n #if os(Windows)\n _ = Element(size: 1)\n #endif\n}")
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["init"], [
+            Spelling(labels: ["size"], receiver: "Element", isMember: true, extendedType: "Array"),
+        ])
+
+        let collector = collect("extension Outer.Inner<Int> {\n func f() { _ = Element(size: 1) }\n}\nfunc g() { _ = Widget(size: 1) }")
+        XCTAssertEqual(collector.spellings["init"], [
+            Spelling(labels: ["size"], receiver: "Element", isMember: true, extendedType: "Inner"),
+            Spelling(labels: ["size"], receiver: "Widget", isMember: true),
+        ])
+        // The extended type's own spelling is outside the extension.
+        XCTAssertEqual(collector.spellings["Inner"], [Spelling(receiver: "Outer", isMember: true, isMemberAccess: true, qualifier: "Outer")])
+    }
+
     private func findIfConfig(_ node: Syntax) -> IfConfigDeclSyntax? {
         if let found = node.as(IfConfigDeclSyntax.self) { return found }
         for child in node.children(viewMode: .sourceAccurate) {
@@ -157,6 +177,27 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertFalse(names("let a = Framework.Handler(size: 1)").contains("callAsFunction"))
 
         XCTAssertNil(collect("let a = Handler()()").uses["callAsFunction"], "It reaches the file reader only")
+    }
+
+    /// A capitalized name the file binds to a value is called like a type, `Handler()`, which can run its
+    /// `callAsFunction`.
+    func testCapitalizedValueCallsReachTheFileReaderAsCallAsFunction() {
+        func names(_ source: String) -> [String] {
+            var seen: [String] = []
+            _ = NameUseCollector(Syntax(Parser.parse(source: source))) { seen.append($0.name) }
+            return seen
+        }
+        XCTAssertTrue(names("let Handler = Callable(size: 1)\nHandler()").contains("callAsFunction"), "A local")
+        XCTAssertTrue(names("func run(Handler: Callable) { Handler() }").contains("callAsFunction"), "A parameter")
+        XCTAssertTrue(names("func run(with Handler: Callable) { Handler(1) }").contains("callAsFunction"), "A parameter's local name")
+        XCTAssertTrue(names("let run: (Callable) -> Void = { Handler in Handler() }").contains("callAsFunction"), "A closure parameter")
+        XCTAssertTrue(names("let run = { (Handler: Callable) in Handler() }").contains("callAsFunction"))
+        XCTAssertTrue(names("if let Handler = Store.shared { Handler() }").contains("callAsFunction"), "A bound optional")
+        XCTAssertTrue(names("struct S { let Handler: Callable\n func run() { self.Handler() } }").contains("callAsFunction"), "A property")
+        // Controls: a construction, with no value of the name, and an argument label that binds nothing.
+        XCTAssertFalse(names("let handler = 1\nlet a = Handler(size: 1)").contains("callAsFunction"))
+        XCTAssertFalse(names("let Other = Callable(size: 1)\nlet a = Handler()").contains("callAsFunction"))
+        XCTAssertFalse(names("func run(Handler _: Callable) { _ = Handler() }").contains("callAsFunction"), "`Handler` is only a label")
     }
 
     /// A member spelled through its type is also reported as `Type.member`, so a match can be placed at a use
@@ -244,6 +285,18 @@ final class NameUseCollectorTest: XCTestCase {
             ],
             "`self.shared` and `Self.shared` name no type"
         )
+    }
+
+    /// A capitalized value is not a type, so a member reached through it has no receiver, inside a clause too.
+    func testACapitalizedValueIsNotAReceiver() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: "func use(Store: B.Type) {\n #if os(Windows)\n _ = Store.shared\n _ = Other.shared\n #endif\n}")
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["shared"], [
+            Spelling(isMember: true, isMemberAccess: true, qualifier: "Store"),
+            Spelling(receiver: "Other", isMember: true, isMemberAccess: true, qualifier: "Other"),
+        ])
     }
 
     func testAGenericParameterIsNotAReceiver() {

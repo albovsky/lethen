@@ -17,6 +17,7 @@ final class UsedDeclarationMarker: SourceGraphMutator {
 
         ignoreUnusedDescendents(in: graph.rootDeclarations,
                                 unusedDeclarations: graph.unusedDeclarations)
+        graph.removeUnreachableLikelyReads()
     }
 
     // MARK: - Private
