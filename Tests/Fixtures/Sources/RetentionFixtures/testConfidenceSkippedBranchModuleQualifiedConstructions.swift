@@ -24,6 +24,17 @@ extension Substring {
     }
 }
 
+protocol FixtureConstructible10 {
+    init()
+}
+
+extension Bool: FixtureConstructible10 {}
+
+extension FixtureConstructible10 {
+    // A skipped `Swift.Bool(fixtureProtocol10:)` reaches this through `Bool`'s conformance.
+    init(fixtureProtocol10 _: Int) { self.init() }
+}
+
 public func fixtureQualifiedConstructions10() {
     _ = CDouble.self
     _ = Substring.FixtureNested10.self
@@ -33,6 +44,7 @@ public func fixtureQualifiedConstructions10() {
         _ = RetentionFixtures.FixtureLocal10(fixtureOwnModule10: 1)
         _ = Elsewhere.FixtureLocal10(fixtureOtherModule10: 1)
         _ = Substring.FixtureNested10(fixtureNested10: 1)
+        _ = Swift.Bool(fixtureProtocol10: 1)
     #else
         _ = FixtureLocal10(fixtureCompiled10: 1)
     #endif

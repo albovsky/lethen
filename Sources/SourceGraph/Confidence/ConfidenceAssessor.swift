@@ -106,7 +106,10 @@ public final class ConfidenceAssessor {
             // whatever its name.
             let isQualifiedByAnotherModule = isOfAnotherModule(spelling, receiver: receiver, modules: modules)
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
-                return !isQualifiedByAnotherModule && !isDistinct(receiver: receiver, from: enclosing)
+                // A protocol's member is reached through any conforming type, `Foundation.Date(...)` included.
+                if isQualifiedByAnotherModule, Self.concreteTypeKinds.contains(enclosing.kind) { return false }
+
+                return !isDistinct(receiver: receiver, from: enclosing)
             }
             if let extended = unscannedExtendedType(of: declaration) {
                 if isQualifiedByAnotherModule {
