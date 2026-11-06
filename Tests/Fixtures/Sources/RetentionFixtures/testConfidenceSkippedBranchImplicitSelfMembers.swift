@@ -13,6 +13,8 @@ public class FixtureStorage9 {
     func show9(title _: String) {}
     // Control: the skipped clause's labels name the other overload.
     func show9(message _: String) {}
+    // A local function of the same name is what the skipped clause reads.
+    func localized9() -> Int { 0 }
 
     public init() {}
 
@@ -22,6 +24,16 @@ public class FixtureStorage9 {
             return logger9 + formatter9()
         #else
             return readNormally9
+        #endif
+    }
+
+    public func callLocal() -> Int {
+        func localized9() -> Int { 1 }
+        #if os(Windows)
+            let function = localized9
+            return function()
+        #else
+            return localized9() + 1
         #endif
     }
 

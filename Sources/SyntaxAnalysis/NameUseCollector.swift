@@ -49,6 +49,9 @@ public struct NameUseCollector {
     /// `Store.shared` through one names no type. Gathered on first use, across the whole file rather than by scope, so
     /// a part of it sees the parameters and locals around it.
     private var capitalizedValueNames: Set<String>?
+    /// The names each member of a type binds, gathered on the first bare name in it, so a member is scanned once
+    /// rather than once for each of its bare names.
+    private var boundNamesByMember: [SyntaxIdentifier: Set<String>] = [:]
     private let root: Syntax
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
@@ -168,7 +171,7 @@ public struct NameUseCollector {
             )
             // Inside a type's body a bare name, `logger` or the `logger` of `logger.info()`, can read a member of that
             // type without `self.`, unless the member around it binds a value of that name.
-            if !isMember, !isMemberAccess, reference.baseName.identifier != nil, let types = Self.implicitSelfTypes(of: name, at: node) {
+            if !isMember, !isMemberAccess, reference.baseName.identifier != nil, let types = implicitSelfTypes(of: name, at: node) {
                 record(
                     name, isMember: true, isConstruction: !inPattern, at: node, spellingOnly: true, inPattern: inPattern,
                     labels: labels, implicitSelfTypes: types
@@ -242,13 +245,13 @@ public struct NameUseCollector {
 
     /// The base names of the types and extensions around `node`, innermost first, for a bare `name` that can read one of
     /// their members; `nil` outside any type, or when the declaration directly inside the innermost type, such as the
-    /// method holding the use, binds a value of that name anywhere: a local, a parameter or a pattern.
-    private static func implicitSelfTypes(of name: String, at node: Syntax) -> [String]? {
+    /// method holding the use, binds a value of that name anywhere: a local, a parameter, a pattern or a local function.
+    private mutating func implicitSelfTypes(of name: String, at node: Syntax) -> [String]? {
         var types: [String] = []
         var member: Syntax?
         var current: Syntax? = node
         while let syntax = current {
-            if let name = typeName(of: syntax) {
+            if let name = Self.typeName(of: syntax) {
                 types.append(name)
             } else if types.isEmpty, syntax.parent?.is(MemberBlockItemSyntax.self) == true {
                 member = syntax
@@ -258,11 +261,26 @@ public struct NameUseCollector {
         guard !types.isEmpty else { return nil }
 
         if let member {
-            var bound: Set<String> = []
-            collectBoundValueNames(member, into: &bound)
-            if bound.contains(name) { return nil }
+            if boundNamesByMember[member.id] == nil {
+                var bound: Set<String> = []
+                Self.collectBoundValueNames(member, into: &bound)
+                Self.collectLocalFunctionNames(in: member, into: &bound)
+                boundNamesByMember[member.id] = bound
+            }
+            if boundNamesByMember[member.id]?.contains(name) == true { return nil }
         }
         return types
+    }
+
+    /// The names of the functions declared inside `member`, not `member` itself: a bare name in it calls one of them
+    /// rather than a method of the type.
+    private static func collectLocalFunctionNames(in member: Syntax, into names: inout Set<String>) {
+        for child in member.children(viewMode: .sourceAccurate) {
+            if let function = child.as(FunctionDeclSyntax.self), let name = function.name.identifier?.name {
+                names.insert(name)
+            }
+            collectLocalFunctionNames(in: child, into: &names)
+        }
     }
 
     private static func typeName(of node: Syntax) -> String? {

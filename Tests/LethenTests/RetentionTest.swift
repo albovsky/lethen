@@ -2446,6 +2446,9 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 // A local of that name in the method is what the clause reads.
                 self.assertNotReferenced(.varInstance("shadowed9"))
                 self.assertConfidence(.varInstance("shadowed9"), .certain)
+                // A local function of that name in the method is what the clause reads.
+                self.assertNotReferenced(.functionMethodInstance("localized9()"))
+                self.assertConfidence(.functionMethodInstance("localized9()"), .certain)
                 // Used-but-not-compared control.
                 self.assertReferenced(.varInstance("readNormally9"))
             }
