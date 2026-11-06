@@ -204,6 +204,143 @@ final class ScanReportTest: XCTestCase {
         XCTAssertNoThrow(try report.validateStrictMode())
     }
 
+    // MARK: - Groups and footer
+
+    func testXcodeGroupsAreCertainThenLikelyThenAccessLevelAndIgnoreComments() throws {
+        let results = [
+            result("Public", annotation: .redundantPublicAccessibility(modules: ["App"])),
+            result("Likely", confidence: .likely),
+            result("Certain"),
+            result("Ignore", annotation: .superfluousIgnoreCommand),
+            result("AssignOnly", annotation: .assignOnlyProperty),
+        ]
+        let groups = ScanReport.groups(of: results)
+
+        XCTAssertEqual(groups.map(\.header), [nil, ScanReport.likelyHeader, ScanReport.housekeepingHeader])
+        XCTAssertEqual(groups.map { $0.results.map(\.declaration.name) }, [["Certain", "AssignOnly"], ["Likely"], ["Public", "Ignore"]])
+    }
+
+    func testAllCertainResultsAreOneGroupWithoutHeader() {
+        let groups = ScanReport.groups(of: [result("A"), result("B")])
+        XCTAssertEqual(groups.map(\.header), [nil])
+        XCTAssertEqual(groups.map { $0.results.map(\.declaration.name) }, [["A", "B"]])
+    }
+
+    func testAllLikelyResultsHaveTheLikelyHeader() {
+        let groups = ScanReport.groups(of: [result("A", confidence: .likely)])
+        XCTAssertEqual(groups.map(\.header), [ScanReport.likelyHeader])
+    }
+
+    func testNoResultsAreOneEmptyGroupWithoutHeader() {
+        let groups = ScanReport.groups(of: [])
+        XCTAssertEqual(groups.map(\.header), [nil])
+        XCTAssertEqual(groups.map(\.results.count), [0])
+    }
+
+    func testXcodeSectionsAndResultsFileFollowTheGroups() throws {
+        let configuration = Configuration()
+        configuration.relativeResults = true
+        configuration.writeResults = directory.appending("results.txt")
+        let report = try ScanReport(results: [result("Likely", confidence: .likely), result("Public", annotation: .redundantPublicAccessibility(modules: ["App"])), result("Certain")], configuration: configuration, logger: logger)
+
+        XCTAssertEqual(report.results.map(\.declaration.name), ["Certain", "Likely", "Public"])
+        XCTAssertEqual(report.sections.map(\.header), [nil, ScanReport.likelyHeader, ScanReport.housekeepingHeader])
+        XCTAssertEqual(report.sections.map(\.output).joined(separator: "\n"), report.output)
+        try report.writeResults()
+        XCTAssertEqual(try String(contentsOfFile: directory.appending("results.txt").string, encoding: .utf8), report.output)
+        XCTAssertFalse(try XCTUnwrap(report.output).contains(ScanReport.likelyHeader))
+    }
+
+    func testOtherFormatsKeepTheFilterOrderInOneSection() throws {
+        let configuration = Configuration()
+        configuration.outputFormat = .json
+        let report = try ScanReport(results: [result("Public", annotation: .redundantPublicAccessibility(modules: ["App"])), result("Likely", confidence: .likely), result("Certain")], configuration: configuration, logger: logger)
+
+        XCTAssertEqual(report.sections.map(\.header), [nil])
+        XCTAssertEqual(report.sections.map(\.output), try [XCTUnwrap(report.output)])
+    }
+
+    func testFooterCountsEachKindWhenThereIsMoreThanOne() {
+        let configuration = Configuration()
+        configuration.writeBaseline = directory.appending("baseline.json")
+        let mixed = [
+            result("A"), result("B", confidence: .likely),
+            result("C", annotation: .redundantPublicAccessibility(modules: ["App"])),
+            result("D", annotation: .redundantPublicAccessibility(modules: ["App"])),
+            result("E", annotation: .superfluousIgnoreCommand),
+        ]
+
+        XCTAssertEqual(
+            ScanReport.footer(for: mixed, hiddenByConfidence: 0, configuration: configuration),
+            "5 results (2 unused, 2 redundant public, 1 superfluous ignore), 1 likely. `lethen explain <name>` shows why."
+        )
+        XCTAssertEqual(ScanReport.footer(for: [result("A"), result("B")], hiddenByConfidence: 0, configuration: configuration), "2 results. `lethen explain <name>` shows why.")
+    }
+
+    // MARK: - Scope line
+
+    func testScopeNamesTheProjectSchemesConfigurationsPlatformAndToolchain() {
+        let configuration = Configuration()
+        configuration.schemes = ["App", "Widgets"]
+        configuration.configurations = ["Debug", "Release", "Beta"]
+        XCTAssertEqual(
+            ScanReport.scope(of: .xcode(projectPath: "/work/App.xcodeproj"), configuration: configuration, swiftVersion: "6.4", warningCount: 2, platform: "macOS"),
+            "Scanned the Xcode project App.xcodeproj (schemes App and Widgets; configurations Debug, Release and Beta) on macOS with Swift 6.4; 2 warnings above."
+        )
+
+        configuration.schemes = ["App"]
+        configuration.configurations = []
+        configuration.buildArguments = ["-destination", "generic/platform=iOS"]
+        XCTAssertEqual(
+            ScanReport.scope(of: .xcode(projectPath: "App.xcworkspace"), configuration: configuration, swiftVersion: "6.4", warningCount: 1, platform: "macOS"),
+            "Scanned the Xcode workspace App.xcworkspace (scheme App) on macOS for generic/platform=iOS with Swift 6.4; 1 warning above."
+        )
+    }
+
+    func testScopeOfOtherProjectKindsWithoutWarnings() {
+        let configuration = Configuration()
+        XCTAssertEqual(
+            ScanReport.scope(of: .spm, configuration: configuration, swiftVersion: "6.3.1", warningCount: 0, platform: "Linux"),
+            "Scanned the Swift package on Linux with Swift 6.3.1."
+        )
+        configuration.configurations = ["release"]
+        configuration.buildArguments = ["--swift-sdk", "x86_64-swift-linux-musl"]
+        XCTAssertEqual(
+            ScanReport.scope(of: .spm, configuration: configuration, swiftVersion: "6.4", warningCount: 0, platform: "Linux"),
+            "Scanned the Swift package (configuration release) on Linux for x86_64-swift-linux-musl with Swift 6.4."
+        )
+        XCTAssertEqual(
+            ScanReport.scope(of: .bazel, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Bazel workspace on macOS with Swift 6.4."
+        )
+        XCTAssertEqual(
+            ScanReport.scope(of: .generic(genericProjectConfig: "generic.json"), configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the project described by generic.json on macOS with Swift 6.4."
+        )
+    }
+
+    /// The nested scan of `--bazel` is a generic project run by `bazel run`, and reports the Bazel workspace.
+    func testScopeOfTheNestedBazelScanIsTheBazelWorkspace() {
+        let generic = ProjectKind.generic(genericProjectConfig: "bazel-out/k8-fastbuild/bin/project_config.json")
+        let nested = ScanReport.scannedKind(generic, environment: ["BUILD_WORKSPACE_DIRECTORY": "/work"])
+        XCTAssertEqual(
+            ScanReport.scope(of: nested, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Bazel workspace on macOS with Swift 6.4."
+        )
+        // Control: a generic project run directly keeps its configuration file.
+        let direct = ScanReport.scannedKind(generic, environment: [:])
+        XCTAssertEqual(
+            ScanReport.scope(of: direct, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the project described by bazel-out/k8-fastbuild/bin/project_config.json on macOS with Swift 6.4."
+        )
+        // A project of another kind run by `bazel run` is not a Bazel scan.
+        let package = ScanReport.scannedKind(.spm, environment: ["BUILD_WORKSPACE_DIRECTORY": "/work"])
+        XCTAssertEqual(
+            ScanReport.scope(of: package, configuration: Configuration(), swiftVersion: "6.4", warningCount: 0, platform: "macOS"),
+            "Scanned the Swift package on macOS with Swift 6.4."
+        )
+    }
+
     // MARK: - Private
 
     private func writeBaseline(_ usrs: [String]) throws -> FilePath {
@@ -212,9 +349,9 @@ final class ScanReportTest: XCTestCase {
         return path
     }
 
-    private func result(_ name: String, confidence: Confidence = .certain) -> ScanResult {
+    private func result(_ name: String, confidence: Confidence = .certain, annotation: ScanResult.Annotation = .unused) -> ScanResult {
         let location = Location(file: SourceFile(path: root.appending("Sources/A.swift"), modules: ["App"]), line: 1, column: 1)
         let declaration = Declaration(name: name, kind: .class, usrs: ["s:\(name)"], location: location)
-        return ScanResult(declaration: declaration, annotation: .unused, confidence: confidence)
+        return ScanResult(declaration: declaration, annotation: annotation, confidence: confidence)
     }
 }

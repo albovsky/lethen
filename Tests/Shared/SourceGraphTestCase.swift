@@ -139,6 +139,15 @@ open class SourceGraphTestCase: XCTestCase {
         XCTAssertEqual(result.confidenceReason, reason, "Confidence reason of \(description)", file: file, line: line)
     }
 
+    func assertReason(_ description: DeclarationDescription, _ reason: String, file: StaticString = #file, line: UInt = #line) {
+        guard let declaration = materialize(description, file: file, line: line) else { return }
+        guard let result = Self.results.first(where: { $0.declaration == declaration }) else {
+            return XCTFail("Expected a result for \(description)", file: file, line: line)
+        }
+
+        XCTAssertEqual(result.reason, reason, "Reason of \(description)", file: file, line: line)
+    }
+
     func assertNotReferenced(_ description: DeclarationDescription, file: StaticString = #file, line: UInt = #line) {
         if case .module = description.kind {
             if unusedModuleImport(description) == nil {
