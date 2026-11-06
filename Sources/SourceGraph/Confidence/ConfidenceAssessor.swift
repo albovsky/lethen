@@ -137,7 +137,10 @@ public final class ConfidenceAssessor {
               !modules.contains(qualifier)
         else { return false }
 
-        return !typeDeclarationsByName[receiver, default: []].contains { Self.modules(of: $0).contains(qualifier) }
+        // `Facade.Widget(...)` reaches `Models.Widget` too when `Facade` re-exports `Models`.
+        return !typeDeclarationsByName[receiver, default: []].contains { declaration in
+            Self.modules(of: declaration).contains { $0 == qualifier || graph.isModule($0, exportedBy: qualifier) }
+        }
     }
 
     /// Whether a type name spelled inside an extension may be a generic parameter or associated type of the extended

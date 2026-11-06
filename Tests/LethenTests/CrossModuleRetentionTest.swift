@@ -32,6 +32,9 @@ final class CrossModuleRetentionTest: SPMSourceGraphTestCase {
                 // Through a type alias another module declares.
                 self.assertNotReferenced(.functionConstructor("init(fixtureAliasModule11:)"))
                 self.assertConfidence(.functionConstructor("init(fixtureAliasModule11:)"), .likely)
+                // Through a module that re-exports the type's module.
+                self.assertNotReferenced(.functionConstructor("init(fixtureReexported11:)"))
+                self.assertConfidence(.functionConstructor("init(fixtureReexported11:)"), .likely)
                 // Control: a module that declares no such type.
                 self.assertNotReferenced(.functionConstructor("init(fixtureOtherModule11:)"))
                 self.assertConfidence(.functionConstructor("init(fixtureOtherModule11:)"), .certain)
