@@ -162,6 +162,18 @@
             let indexStorePaths: Set<FilePath>
             if !configuration.indexStorePath.isEmpty {
                 indexStorePaths = Set(configuration.indexStorePath)
+            } else if let derivedDataPath = configuration.derivedDataPath {
+                // A pipeline's DerivedData is neither Lethen's cache nor Xcode's, so no lock guards it; the units are
+                // verified against the sources like Xcode's own.
+                guard let store = XcodeDerivedDataLocator.indexStore(in: derivedDataPath) else {
+                    throw LethenError.indexStoreNotFound(derivedDataPath: derivedDataPath.string)
+                }
+
+                if configuration.outputFormat.supportsAuxiliaryOutput {
+                    self.logger.info("Using the index from the DerivedData at \(derivedDataPath), last written \(XcodeDerivedDataLocator.lastWritten(store).formatted(.iso8601)).")
+                }
+
+                indexStorePaths = [store]
             } else if configuration.skipBuild {
                 // A scan building into Lethen's own stores meanwhile waits rather than changing them underneath this one.
                 derivedDataLock?.release()

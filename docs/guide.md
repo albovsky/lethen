@@ -138,7 +138,7 @@ A target the scanned schemes do not build has no index unit, so what it uses is 
 
 Interface Builder files, Info.plist files, and Core Data models found in the project are read for class and member references.
 
-`--skip-build` without `--index-store-path` scans without running `xcodebuild` builds. Lethen uses the most recently written of two indexes: its own from an earlier scan, or the one Xcode keeps for this project in its DerivedData (`~/Library/Developer/Xcode/DerivedData`, or the custom location set in Xcode's preferences, matched by the project path Xcode records there). It names the index it chose. Because this index may predate your edits, lethen checks it first: index units older than their source file are ignored, and if a source file has no unit as new as the file, the scan stops with a "stale" error that lists the files. Build in Xcode, or scan without `--skip-build`, to refresh it. Source files that Xcode never indexed are not detected, so build the schemes you scan at least once.
+`--skip-build` without `--index-store-path` scans without running `xcodebuild` builds. Lethen uses the most recently written of two indexes: its own from an earlier scan, or the one Xcode keeps for this project in its DerivedData (`~/Library/Developer/Xcode/DerivedData`, or the custom location set in Xcode's preferences, matched by the project path Xcode records there). It names the index it chose. Because this index may predate your edits, lethen checks it first: index units older than their source file are ignored, and if a source file has no unit as new as the file, the scan stops with a "stale" error that lists the files. Build in Xcode, or scan without `--skip-build`, to refresh it. Source files that Xcode never indexed are not detected, so build the schemes you scan at least once. `--derived-data-path` names a DerivedData directory to read instead, such as one a pipeline built into with `-derivedDataPath`, and lethen verifies its index in the same way.
 
 #### Code compiled out by your test configuration
 
@@ -146,7 +146,7 @@ Interface Builder files, Info.plist files, and Core Data models found in the pro
 
 Wikipedia iOS is the project this hides most from: its Test configuration defines `TEST`, which compiles out the app launch path that starts at `SceneDelegate.swift:64`, so scanning only Test reported 310 findings as `likely` (11.2 %), 231 of them used only by that path; `--configurations Test Debug` compiles the path, so 42 are `likely` (1.6 %) and the findings of the Debug-only widget extension and launch code appear.
 
-`--skip-build --configurations Debug Release` scans without building. It reads the index of Lethen's last completed build of each listed configuration in an earlier `--configurations` scan of the same schemes with the same build arguments, and checks every one of them as described above: a source file edited after any one configuration's index was written stops the scan with a stale-index error, even when another configuration's index is current. A configuration whose last Lethen build did not complete, or that Lethen never built, fails the scan and is named, so scan once without `--skip-build` first. Xcode's own DerivedData index holds whichever configuration Xcode built last, so it is never used for `--configurations`. With `--index-store-path`, pass each configuration's store; explicit stores are read as given.
+`--skip-build --configurations Debug Release` scans without building. It reads the index of Lethen's last completed build of each listed configuration in an earlier `--configurations` scan of the same schemes with the same build arguments, and checks every one of them as described above: a source file edited after any one configuration's index was written stops the scan with a stale-index error, even when another configuration's index is current. A configuration whose last Lethen build did not complete, or that Lethen never built, fails the scan and is named, so scan once without `--skip-build` first. Xcode's own DerivedData index holds whichever configuration Xcode built last, so it is never used for `--configurations`, and `--derived-data-path` is not accepted there either. With `--index-store-path`, pass each configuration's store; explicit stores are read as given.
 
 ### Swift package plugin and Xcode command
 
@@ -379,7 +379,25 @@ In the CI formats a `likely` result is reported one severity lower than a `certa
 
 ### Reusing a build in CI
 
-If the pipeline has already built the project, skip lethen's build and scan the existing index store:
+If the pipeline has already built the project, skip lethen's build. Prefer a route that verifies the store: `--skip-build` without `--index-store-path` checks every index unit against its source and fails with a stale-index error when a source is newer than its unit, so a scan never reads code the build did not see.
+
+For a Swift package, build with the index store and the same build arguments the scan gets after `--`, then scan with `--skip-build`. lethen finds the store with `swift build --show-bin-path` and those arguments, so a build with other arguments, such as `-c release` for the build and none for the scan, is another build and is not found:
+
+```sh
+swift build --build-tests --enable-index-store
+lethen scan --skip-build --format github-actions --relative-results --baseline baseline.json --strict
+```
+
+For an Xcode project, build into a DerivedData directory of your own with `-derivedDataPath`, then pass the same directory with `--derived-data-path`:
+
+```sh
+xcodebuild -project App.xcodeproj -scheme App -derivedDataPath "$DERIVED_DATA" build-for-testing
+lethen scan --skip-build --derived-data-path "$DERIVED_DATA" --format github-actions --relative-results --baseline baseline.json --strict
+```
+
+Lethen verifies that index in the same way, so a source file edited after the build stops the scan with a stale-index error. `--skip-build` alone reads Xcode's default DerivedData instead, verified the same way.
+
+`--index-store-path` names a store explicitly, and an explicit path is authoritative: lethen never checks it for staleness, so use it only for a store you know matches the sources, or one lethen cannot locate:
 
 - Xcode: `~/Library/Developer/Xcode/DerivedData/<Project>-<hash>/Index.noindex/DataStore`, or wherever `-derivedDataPath` pointed.
 - Swift packages: `$(swift build --show-bin-path)/index/store` after a build with `--enable-index-store`.
@@ -450,7 +468,7 @@ Get the scan working in a terminal first. Then add an Aggregate target, give it 
 
 **Mixed Objective-C.** Direct uses from Objective-C into Swift are visible; see the Objective-C options above for selectors built from strings and key-value coding.
 
-**Index store not found.** For managed SwiftPM scans lethen resolves the active build directory itself. For `--skip-build`, lethen looks in the package's build directory or, for Xcode projects, in its own and Xcode's DerivedData; otherwise pass `--index-store-path` and make sure the build enabled indexing.
+**Index store not found.** For managed SwiftPM scans lethen resolves the active build directory itself. For `--skip-build`, lethen looks in the package's build directory or, for Xcode projects, in its own and Xcode's DerivedData; for a DerivedData directory a pipeline built into, pass it with `--derived-data-path` (Xcode projects), and otherwise pass `--index-store-path` and make sure the build enabled indexing.
 
 Known Swift index-store bugs that can produce wrong results are listed in the [historical upstream guide](UPSTREAM-README.md#known-bugs).
 
