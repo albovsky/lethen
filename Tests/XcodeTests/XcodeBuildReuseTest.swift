@@ -130,6 +130,32 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         assertReferenced(.functionFree("addedBehindTheWalk()"))
     }
 
+    /// With the cache enabled in the project and its storage outside DerivedData, a cache hit writes no index unit.
+    /// Lethen builds with caching off, so every scan, including a clean one after the cache is warm and one after an
+    /// edit, indexes every file. Without that, the second and third scans lose the units of the files that hit.
+    func testManagedBuildIndexesEveryFileWithCachingEnabledInTheProject() throws {
+        let cache = root.appending("CompilationCache")
+        buildArguments += ["COMPILATION_CACHE_ENABLE_CACHING=YES", "COMPILATION_CACHE_CAS_PATH=\(cache.string)"]
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        let sources = try swiftFilesOfTheFixture()
+        XCTAssertFalse(sources.isEmpty)
+
+        _ = try scan(shell: shell)
+        try assertEveryFileIsPlanned(sources)
+
+        // The cache is warm: a build that used it would hit on every compile and write no unit.
+        let second = try scan(shell: shell) { $0.cleanBuild = true }
+        XCTAssertEqual(second.builds, 1, "\(shell.streamed)")
+        try assertEveryFileIsPlanned(sources)
+
+        Thread.sleep(forTimeInterval: 1.1)
+        try addCalledFunction("addedWhileTheCacheIsWarm")
+        let third = try scan(shell: shell) { $0.cleanBuild = true }
+        XCTAssertEqual(third.builds, 1, "\(shell.streamed)")
+        try assertEveryFileIsPlanned(sources)
+        assertReferenced(.functionFree("addedWhileTheCacheIsWarm()"))
+    }
+
     // MARK: - Never reused
 
     func testCleanBuildNeverReuses() throws {
@@ -700,6 +726,19 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         }
         try Self.index(configuration: configuration)
         return try XCTUnwrap(result)
+    }
+
+    private func swiftFilesOfTheFixture() throws -> Set<String> {
+        let directory = project.removingLastComponent()
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(atPath: directory.string))
+        return Set(enumerator.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }.map { directory.appending($0).url.resolvingSymlinksInPath().path })
+    }
+
+    private func assertEveryFileIsPlanned(_ sources: Set<String>, file: StaticString = #filePath, line: UInt = #line) throws {
+        let planned = try Set(XCTUnwrap(Self.plan, file: file, line: line).sourceFiles.keys.map { $0.path.url.resolvingSymlinksInPath().path })
+        XCTAssertTrue(sources.isSubset(of: planned), "No index unit for \(sources.subtracting(planned).sorted())", file: file, line: line)
+        assertReferenced(.functionFree("calledOnlyInDebug()"), file: file, line: line)
+        assertNotReferenced(.functionFree("calledOnlyInRelease()"), file: file, line: line)
     }
 
     /// Declares `name` and calls it from `conditionalEntry()`, which the project's entry point calls.

@@ -106,7 +106,90 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
         }
     }
 
+    /// A compilation-cache hit writes no index unit. A store in which a file of an indexed target has no unit is refused
+    /// rather than scanned with that file's references missing.
+    func testSkipBuildRejectsAStoreMissingAUnitOfAnIndexedTarget() throws {
+        let built = try buildSwiftUIProject()
+        try removeUnits(ofSourceFilesNamed: ["App.swift"], from: built.store)
+
+        let configuration = Configuration()
+        configuration.schemes = ["SwiftUIProject"]
+        configuration.skipBuild = true
+        let driver = try makeDriver(project: built.project, configuration: configuration, shell: built.shell, derivedData: built.derivedData)
+
+        XCTAssertThrowsError(try built.project.removingLastComponent().chdir { _ = try driver.plan(logger: logger.contextualized(with: "test")) }) { error in
+            guard case let LethenError.incompleteIndexStore(path, missingFiles) = error else {
+                return XCTFail("Expected an incomplete index error, got \(error)")
+            }
+
+            XCTAssertEqual(missingFiles.map { FilePath($0).lastComponent?.string }, ["App.swift"])
+            XCTAssertEqual(resolved(FilePath(path)), resolved(built.store))
+        }
+
+        // Control: an explicit store stays authoritative, so the same store plans, without the file that has no unit.
+        let explicit = Configuration()
+        explicit.schemes = ["SwiftUIProject"]
+        explicit.indexStorePath = [built.store]
+        let explicitDriver = try makeDriver(project: built.project, configuration: explicit, shell: built.shell, derivedData: built.derivedData)
+        var plan: IndexPlan?
+        try built.project.removingLastComponent().chdir {
+            plan = try explicitDriver.plan(logger: logger.contextualized(with: "test"))
+        }
+
+        let planned = try XCTUnwrap(plan).sourceFiles.keys.map { resolved($0.path).lastComponent?.string }
+        XCTAssertFalse(planned.contains("App.swift"), "\(planned)")
+        XCTAssertTrue(planned.contains("ContentView.swift"), "The other units must still be read, got \(planned)")
+    }
+
+    /// Lethen cannot tell a target the schemes do not build from one the compilation cache skipped, so a target without
+    /// a single unit is left to the partial-store handling it always had.
+    func testSkipBuildStillAcceptsAStoreWithoutAnyUnitOfATarget() throws {
+        // SwiftUIProject has one target, so removing every unit leaves that target with none.
+        let built = try buildSwiftUIProject()
+        try removeUnits(ofSourceFilesNamed: nil, from: built.store)
+
+        let configuration = Configuration()
+        configuration.schemes = ["SwiftUIProject"]
+        configuration.skipBuild = true
+        let driver = try makeDriver(project: built.project, configuration: configuration, shell: built.shell, derivedData: built.derivedData)
+
+        var plan: IndexPlan?
+        XCTAssertNoThrow(try built.project.removingLastComponent().chdir {
+            plan = try driver.plan(logger: logger.contextualized(with: "test"))
+        })
+
+        XCTAssertTrue(try XCTUnwrap(plan).sourceFiles.isEmpty)
+    }
+
     // MARK: - Private
+
+    /// Copies SwiftUIProject and builds it into a DerivedData of its own, as Xcode does.
+    private func buildSwiftUIProject() throws -> (project: FilePath, derivedData: FilePath, store: FilePath, shell: Shell) {
+        let copy = root.appending("SwiftUIProject")
+        try FileManager.default.copyItem(at: SwiftUIProjectPath.removingLastComponent().url, to: copy.url)
+        let project = copy.appending("SwiftUIProject.xcodeproj")
+        let derivedData = root.appending("DerivedData")
+        let shell = ShellImpl(logger: logger)
+        let directory = derivedData.appending("SwiftUIProject-discovery")
+        try shell.exec([
+            "xcodebuild", "-project", project.string, "-scheme", "SwiftUIProject",
+            "-derivedDataPath", directory.string,
+            "-quiet", "build-for-testing", "CODE_SIGNING_ALLOWED=NO",
+        ])
+        return (project, derivedData, directory.appending("Index.noindex/DataStore"), shell)
+    }
+
+    /// Deletes the unit files of the named source files, or of every file when `names` is nil. A unit file's name starts
+    /// with its source file's name, such as `App.swift-<hash>`.
+    private func removeUnits(ofSourceFilesNamed names: [String]?, from store: FilePath) throws {
+        let units = store.appending("v5/units")
+        let all = try FileManager.default.contentsOfDirectory(atPath: units.string)
+        let doomed = all.filter { unit in names?.contains { unit.hasPrefix($0 + "-") } ?? true }
+        XCTAssertFalse(doomed.isEmpty, "No unit of \(names ?? ["any file"]) in \(all)")
+        for unit in doomed {
+            try FileManager.default.removeItem(atPath: units.appending(unit).string)
+        }
+    }
 
     private func resolved(_ path: FilePath) -> FilePath {
         FilePath(path.url.resolvingSymlinksInPath().path)

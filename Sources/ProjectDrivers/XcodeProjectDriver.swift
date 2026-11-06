@@ -207,12 +207,18 @@
             // A store lethen did not just build may predate edits; an explicit path stays authoritative. A reused
             // build is checked the same way, and gives way to a build when a unit predates its file.
             let sourceFiles: CollectedSourceFiles
+            let requireFreshUnits = (configuration.skipBuild && configuration.indexStorePath.isEmpty) || reusedBuild
             do {
-                sourceFiles = try collector(requireFreshUnits: (configuration.skipBuild && configuration.indexStorePath.isEmpty) || reusedBuild).collect()
+                sourceFiles = try collector(requireFreshUnits: requireFreshUnits).collect()
+                if requireFreshUnits {
+                    try rejectIncompleteIndex(sourceFiles, indexStorePaths: indexStorePaths, targets: targets.subtracting(excludedTargets))
+                }
             } catch let error as LethenError where reusedBuild {
                 switch error {
                 case let .staleIndexStore(_, staleFiles):
                     self.logger.info("The index from the last build is stale (\(staleFiles.count) \(staleFiles.count == 1 ? "file" : "files")); building.")
+                case let .incompleteIndexStore(_, missingFiles):
+                    self.logger.info("The index from the last build is incomplete (\(missingFiles.count) \(missingFiles.count == 1 ? "file" : "files")); building.")
                 case .indexStoreNotFound:
                     self.logger.info("The index from the last build is missing; building.")
                 default:
@@ -297,6 +303,27 @@
                     }
                 }
             }
+        }
+
+        /// A compilation-cache hit writes no index unit, so a store lethen did not just build can lack the unit of a file
+        /// its target compiled. A target with no unit at all is left alone: lethen cannot tell one the schemes do not
+        /// build from one the cache skipped.
+        private func rejectIncompleteIndex(_ sourceFiles: CollectedSourceFiles, indexStorePaths: Set<FilePath>, targets: Set<XcodeTarget>) throws {
+            func resolved(_ path: FilePath) -> FilePath {
+                FilePath(path.url.resolvingSymlinksInPath().path)
+            }
+
+            let indexedFiles = Set(sourceFiles.sourceFiles.keys.map(\.path)).union(sourceFiles.clangSourceFiles.keys.map(\.path)).mapSet(resolved)
+            var missing: Set<String> = []
+            for target in targets {
+                let files = target.files(kind: .swiftSource).union(target.files(kind: .clangSource)).filter(isCollectable)
+                guard files.contains(where: { indexedFiles.contains(resolved($0)) }) else { continue }
+
+                missing.formUnion(files.filter { !indexedFiles.contains(resolved($0)) }.map(\.string))
+            }
+            guard !missing.isEmpty, let store = indexStorePaths.map(\.string).sorted().first else { return }
+
+            throw LethenError.incompleteIndexStore(path: store, missingFiles: missing.sorted())
         }
 
         /// Builds every scheme into each of `configurations`, which are marked complete once all their builds succeed.

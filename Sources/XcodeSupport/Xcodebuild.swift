@@ -80,7 +80,9 @@ public final class Xcodebuild {
             "INDEX_ENABLE_DATA_STORE=YES",
         ]
 
-        let xcodebuild = ["xcodebuild"] + args + envs + additionalArguments
+        // Last, so it wins over a build argument, a project setting, or an xcconfig: a compilation-cache hit compiles
+        // nothing and so writes no index unit, which would leave the scan without that file's references.
+        let xcodebuild = ["xcodebuild"] + args + envs + additionalArguments + ["COMPILATION_CACHE_ENABLE_CACHING=NO"]
         return try shell.exec(xcodebuild, onOutputLine: onOutputLine)
     }
 
