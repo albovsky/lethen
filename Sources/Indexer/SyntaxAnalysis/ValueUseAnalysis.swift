@@ -4,7 +4,8 @@ import SyntaxAnalysis
 
 /// Records what a call does with its values: the references its arguments are (and whether a generic type is
 /// among them), the arguments by label, and the generic arguments a specialization names; and, on declarations,
-/// the facts about parameter types, accessor bodies and initialized constants that value-flow retainers read.
+/// the facts about parameter types, accessor bodies, initialized constants and `async` functions that value-flow
+/// retainers read.
 struct ValueUseAnalysis: SyntaxAnalysis {
     init(configuration _: Configuration) {}
 
@@ -64,6 +65,12 @@ struct ValueUseAnalysis: SyntaxAnalysis {
                 }
                 if valueUses.initializedConstantLocations.contains(declaration.location) {
                     declaration.isInitializedConstant = true
+                }
+                if valueUses.readOnlyPropertyLocations.contains(declaration.location) {
+                    declaration.isReadOnly = true
+                }
+                if valueUses.asyncFunctionLocations.contains(declaration.location) {
+                    declaration.isAsync = true
                 }
             }
         }

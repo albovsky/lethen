@@ -7,6 +7,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     func testNonReferencedClass() throws {
         try analyze {
             assertNotReferenced(.class("FixtureClass1"))
+            assertReason(.class("FixtureClass1"), "no references in the scanned modules")
         }
     }
 
@@ -155,6 +156,44 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                                     .class("FixtureClass114"),
                                     .class("FixtureClass115"),
                                     .struct("FixtureStruct116"))
+        }
+    }
+
+    func testReasonsForUnusedProtocolRequirementsAndWitnesses() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.protocol("FixtureReasonRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonLoad()"))
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), "never called through FixtureReasonRepository; 1 of 3 witnesses is called directly")
+            }
+            assertReferenced(.struct("FixtureReasonDirectRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+            }
+            let witness = "witness of FixtureReasonRepository.fixtureReasonUpdate(_:), which nothing calls through the protocol; remove it with the requirement"
+            assertReferenced(.struct("FixtureReasonUncalledRepository")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonLoad()"))
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), witness)
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonHelper(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonHelper(_:)"), "referenced only from 1 unused declaration")
+            }
+            assertReferenced(.struct("FixtureReasonOtherRepository")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonUpdate(_:)"))
+                self.assertReason(.functionMethodInstance("fixtureReasonUpdate(_:)"), witness)
+            }
+            // A witness used only through a second protocol it conforms to is not called directly.
+            assertReferenced(.protocol("FixtureReasonFirstProtocol")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonShared()"))
+                self.assertReason(.functionMethodInstance("fixtureReasonShared()"), "never called through FixtureReasonFirstProtocol; 0 of 1 witness is called directly")
+            }
+            assertReferenced(.struct("FixtureReasonBothProtocols")) {
+                self.assertReferenced(.functionMethodInstance("fixtureReasonShared()"))
+            }
+            // A witness kept only by --retain-public is used, but nothing calls it directly.
+            assertReferenced(.protocol("FixtureReasonRetainedProtocol")) {
+                self.assertNotReferenced(.functionMethodInstance("fixtureReasonRetained()"))
+                self.assertReason(.functionMethodInstance("fixtureReasonRetained()"), "never called through FixtureReasonRetainedProtocol; 0 of 1 witness is called directly")
+            }
         }
     }
 
@@ -1425,6 +1464,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct13_NotCodable")) {
                 self.assertAssignOnlyProperty(.varInstance("assignOnly"))
+                self.assertReason(.varInstance("assignOnly"), "assigned but never read; if it exists to keep its value alive, mark it // periphery:ignore - reason")
                 self.assertNotAssignOnlyProperty(.varInstance("used"))
             }
         }
@@ -2552,6 +2592,26 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.class("FixtureClass227Read")) {
                 self.assertNotAssignOnlyProperty(.varInstance("readNormally"))
+            }
+        }
+    }
+
+    func testCodableSynthesizedEncodeIgnoresAsyncAndMutatingOverloads() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass152AsyncSub")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaAsyncOverload"))
+            }
+            assertReferenced(.class("FixtureClass152SyncSub")) {
+                self.assertAssignOnlyProperty(.varInstance("viaSyncWitness"))
+            }
+            assertReferenced(.struct("FixtureStruct152Mutating")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaMutatingOverload"))
+            }
+            assertReferenced(.struct("FixtureStruct152Async")) {
+                self.assertNotAssignOnlyProperty(.varInstance("viaAsyncExtension"))
+            }
+            assertReferenced(.struct("FixtureStruct152NotEncoded")) {
+                self.assertAssignOnlyProperty(.varInstance("neverEncoded"))
             }
         }
     }
