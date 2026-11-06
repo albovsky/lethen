@@ -39,11 +39,31 @@ analysis change keeps its membership and its verdict, a removed one drops out, a
 enter and need a verdict, so each corpus diff asks for a few verdicts rather than a new sample.
 `corpus/sample.py <project>` lists the sample; `corpus/precision.py` lists what needs a verdict.
 
-When the hash sample was introduced, 13 of its 81 findings already had a verdict from the first
-measurement below or from the enum-case change; the other 68 were adjudicated on 2026-09-29 (see
-the second measurement below). The 146 earlier verdicts are recorded in `corpus/adjudications/` with their original IDs
-(`Alamofire-1`, or `enum-case-1` for the enum-case table); 18 are on findings no longer reported
-and are marked retired.
+### Finding-drop gate
+
+`corpus/diff.sh` fails the nightly job on any row that differs from its expectation, but
+`corpus/accept.sh` can then record an expectation that lost many findings. `corpus/drop_gate.py`
+(run after `corpus/precision.py --check` in the `corpus` job) compares each `corpus/expected/<project>.json`
+with the same file at the merge base with `origin/master`, or at the newest release tag when the file
+does not differ there, and exits 1 when a project lost more than 2 % of its findings without an
+adjudication. Growth never fails, and a project with no expectation at the baseline is treated as new.
+
+To adjudicate a drop, check every removed row as the corpus diff requires, then add a list item to
+the end of this section with both counts exactly as the gate prints them, in the form
+`- <project>: <before> -> <after> findings, adjudicated`; for example (not recorded)
+`- example-app: 2,567 -> 2,480 findings, adjudicated`. Thousands separators are optional. Only list
+items in this section count, and text in backticks never does, so an example cannot adjudicate a
+drop. The items must lead from the baseline count to the current count: in one item, as a chain (`120 -> 100`
+and `100 -> 90` together adjudicate a drop from 120 to 90), or joined by changes that need no adjudication
+themselves, growth or a drop within the threshold (`100 -> 90` still covers 91 or 89 findings, and a drop
+from 120 when the item says `125 -> 100`). So a later drop past the threshold needs its own item, and the
+earlier items stay valid once a branch merges and the baseline moves back to the release tag. `--base <rev>`
+compares with another revision and `--threshold <share>` changes the 2 % limit; `corpus/test_drop_gate.py`
+checks the gate on fabricated expectations.
+
+Adjudicated drops:
+
+- None.
 
 ### Third measurement (2026-10-05)
 
