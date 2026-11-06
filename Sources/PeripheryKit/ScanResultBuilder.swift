@@ -114,7 +114,7 @@ public enum ScanResultBuilder {
             }
             return "referenced only from \(referencing.count) unused declaration\(referencing.count == 1 ? "" : "s")"
         case .assignOnlyProperty:
-            return "assigned but never read"
+            return "assigned but never read; if it exists to keep its value alive, mark it // periphery:ignore - reason"
         case .redundantProtocol:
             return "conformed to but never used as a type"
         case let .redundantPublicAccessibility(modules):

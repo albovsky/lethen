@@ -7,6 +7,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
     func testNonReferencedClass() throws {
         try analyze {
             assertNotReferenced(.class("FixtureClass1"))
+            assertReason(.class("FixtureClass1"), "no references in the scanned modules")
         }
     }
 
@@ -1425,6 +1426,7 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             }
             assertReferenced(.struct("FixtureStruct13_NotCodable")) {
                 self.assertAssignOnlyProperty(.varInstance("assignOnly"))
+                self.assertReason(.varInstance("assignOnly"), "assigned but never read; if it exists to keep its value alive, mark it // periphery:ignore - reason")
                 self.assertNotAssignOnlyProperty(.varInstance("used"))
             }
         }
