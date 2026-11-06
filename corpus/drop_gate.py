@@ -18,9 +18,11 @@ heading of that document, up to the next heading of the same or a higher level, 
   <project>: <baseline count> -> <current count> findings, adjudicated
 
 with thousands separators optional, for example (not recorded) `example-app: 2,567 -> 2,480 findings, adjudicated`.
-Text in backticks is ignored. The counts must match the ones computed, in one item or as a chain of items
-(`120 -> 100` and `100 -> 90` adjudicate a drop from 120 to 90), so a later drop needs a new item and the
-earlier items stay valid once its branch merges and the baseline moves back to the release tag.
+Text in backticks is ignored. A drop is adjudicated when the items lead from the baseline count to the current
+count: in one item, as a chain (`120 -> 100` and `100 -> 90` adjudicate 120 -> 90), or joined by changes that
+need no adjudication themselves, growth or a drop within the threshold (`100 -> 90` still adjudicates 100 -> 91
+and 100 -> 89, and 120 -> 100 when the item says `125 -> 100`). So a later drop past the threshold needs a new
+item, and the earlier items stay valid once a branch merges and the baseline moves back to the release tag.
 
 Usage:
   corpus/drop_gate.py                        compare with the merge base or the newest release tag
@@ -138,17 +140,23 @@ def adjudications(document: str, project: str) -> List[Tuple[int, int]]:
     return found
 
 
-def adjudicated(document: str, project: str, before: int, after: int) -> bool:
-    """True when the section's items for `project` lead from `before` to `after`, in one item or as a chain.
-    A chain (`120 -> 100`, `100 -> 90`) keeps earlier adjudications valid when a merged branch's baseline moves
-    back from the merge base to the release tag."""
+def needs_no_adjudication(start: int, end: int, threshold: float) -> bool:
+    """True for growth and for a drop within the threshold: a change the gate passes on its own."""
+    return end >= start or (start - end) / start <= threshold
+
+
+def adjudicated(document: str, project: str, before: int, after: int, threshold: float) -> bool:
+    """True when the section's items for `project` lead from `before` to `after`.
+    Items may chain (`120 -> 100`, `100 -> 90`), and the baseline, the items and the current count may be joined by
+    changes that need no adjudication, so an item stays valid after its branch merges and the baseline moves back to
+    the release tag, and after later growth or a small drop. At least one item must take part."""
     edges = adjudications(document, project)
-    reached, frontier = {before}, [before]
+    reached, frontier = set(), [before]
     while frontier:
         count = frontier.pop()
         for start, end in edges:
-            if start == count and end not in reached:
-                if end == after:
+            if end not in reached and needs_no_adjudication(count, start, threshold):
+                if needs_no_adjudication(end, after, threshold):
                     return True
                 reached.add(end)
                 frontier.append(end)
@@ -179,7 +187,7 @@ def check(root: Path, base: Optional[str], base_dir: Optional[Path], threshold: 
         share = (before - after) / before
         if share <= threshold:
             continue
-        if adjudicated(document, project, before, after):
+        if adjudicated(document, project, before, after, threshold):
             print(f"corpus: {project} {before:,} -> {after:,} findings ({share:.1%} lost), adjudicated")
             continue
         failures.append(f"{project}: {before:,} -> {after:,} findings, {share:.1%} lost since {revision} "
