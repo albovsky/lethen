@@ -84,6 +84,17 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         assertReferenced(.functionFree("calledOnlyInDebug()"))
     }
 
+    func testTouchingTheJSONProjectFileInvalidatesACompletedBuild() throws {
+        // The recording shell exercises the driver's reuse decision without asking Xcode to open a
+        // bundle containing both formats. Xcode itself rejects such a bundle.
+        let json = project.appending("project.xcproj")
+        try "{}".write(to: json.url, atomically: true, encoding: .utf8)
+        try assertReuses()
+        try assertBuilds {
+            try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: json.string)
+        }
+    }
+
     func testFileAddedToTheProjectDirectoryBuilds() throws {
         let shell = ForwardingRecordingShell(logger: Self.logger)
         _ = try scan(shell: shell)
