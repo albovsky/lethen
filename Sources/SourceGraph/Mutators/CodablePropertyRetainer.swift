@@ -67,7 +67,9 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             synthesizedTypes.insert(type)
         }
 
-        var hasOpaqueEncodeSite = false
+        // The declarations holding an opaque encode site, nil for top-level code. Whether they are used is known only
+        // after reachability, which drops the likely reads of sites in unused code.
+        var opaqueEncodeSites: Set<Declaration?> = []
         let encodableNames = encodableProtocolNames
         for use in graph.allReferences where use.kind == .normal && (!use.valueArgumentReferences.isEmpty || !use.valueArguments.isEmpty) {
             // A use with no parent is top-level code, which holds its reads as root references.
@@ -82,12 +84,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             }
             guard mayEncode else { continue }
 
-            hasOpaqueEncodeSite = hasOpaqueEncodeSite || isOpaqueEncodeSite(use, callee: callee, encodableNames: encodableNames)
+            if isOpaqueEncodeSite(use, callee: callee, encodableNames: encodableNames) {
+                opaqueEncodeSites.insert(caller)
+            }
             markEncodedReads(from: use, caller: caller, synthesizedTypes: synthesizedTypes)
         }
 
-        if hasOpaqueEncodeSite {
-            markReadsThroughEncodableExistentials(synthesizedTypes: synthesizedTypes)
+        if !opaqueEncodeSites.isEmpty {
+            markReadsThroughEncodableExistentials(synthesizedTypes: synthesizedTypes, sites: opaqueEncodeSites)
         }
     }
 
@@ -95,8 +99,9 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     /// A call that may encode, whose value the index cannot type: a local bound by `if let`, or a value declared as
     /// an `Encodable` existential. For an indexed callee the encoded values are the arguments for its `Encodable`
-    /// parameters; an unindexed encoder, such as `JSONEncoder.encode(_:)`, encodes its first argument. A literal is
-    /// not opaque.
+    /// parameters. A standard encoder, such as `JSONEncoder.encode(_:)` or a container's `encode(_:forKey:)`, encodes
+    /// its first argument. Another unindexed encoder, such as `emit(metadata:value:)` from another module, has no
+    /// parameter types to match, so every argument may be the encoded one. A literal is not opaque.
     private func isOpaqueEncodeSite(_ use: Reference, callee: Declaration?, encodableNames: Set<String>) -> Bool {
         let encoded: [ValueArgument] = if let callee {
             // A callee constrained through a generic parameter has its parameters typed by that parameter's name,
@@ -106,12 +111,14 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             } else {
                 Array(use.valueArguments.prefix(1))
             }
-        } else {
+        } else if Self.isStandardEncodingCall(usr: use.usr) {
             Array(use.valueArguments.prefix(1))
+        } else {
+            use.valueArguments
         }
 
         return encoded.contains { argument in
-            argument.isUnresolved || argument.references.contains { reference in
+            argument.isUnresolved || argument.references.union(argument.elementReferences).contains { reference in
                 isEncodableExistential(reference) || graph.declaration(withUsr: reference.usr).map(producesEncodableExistential) == true
             }
         }
@@ -119,7 +126,15 @@ final class CodablePropertyRetainer: SourceGraphMutator {
 
     private func isEncodableExistential(_ reference: Reference) -> Bool {
         Self.encodableUsrs.contains(reference.usr)
+            || isConfiguredEncodableProtocol(reference)
             || graph.declaration(withUsr: reference.usr).map { $0.kind == .protocol && graph.isEncodable($0) } == true
+    }
+
+    /// An imported protocol configured through `external_encodable_protocols` or `external_codable_protocols`, which
+    /// is not in the graph and is known by its name alone.
+    private func isConfiguredEncodableProtocol(_ reference: Reference) -> Bool {
+        reference.declarationKind == .protocol
+            && (configuration.externalEncodableProtocols.contains(reference.name) || configuration.externalCodableProtocols.contains(reference.name))
     }
 
     /// A declaration whose declared type is an `Encodable` existential, `Encodable?` and `any Encodable` included.
@@ -131,8 +146,9 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// it is not in the index, so which type is encoded cannot be known. When some encoder receives such a value, the
     /// synthesized encoder may read the properties of a type whose value is produced inside a declaration of an
     /// `Encodable` existential type, following constructions, accessors and enum payloads, and of the types it stores.
-    /// That is only likely, so those properties keep their reports but with `likely` confidence.
-    private func markReadsThroughEncodableExistentials(synthesizedTypes: Set<Declaration>) {
+    /// That is only likely, so those properties keep their reports but with `likely` confidence, as long as one of the
+    /// `sites` holding such an encoder is used.
+    private func markReadsThroughEncodableExistentials(synthesizedTypes: Set<Declaration>, sites: Set<Declaration?>) {
         var visited: Set<Declaration> = []
         var pending: Set<Declaration> = []
         for declaration in graph.allDeclarations where producesEncodableExistential(declaration) {
@@ -149,7 +165,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
                     !$0.isGenericSpecializationArgument && ![.functionAccessorGetter, .functionAccessorSetter].contains($0.declarationKind)
                 }
                 pending.formUnion(ValueTypeResolver.valueTypes(referencedBy: withGenericArguments(stored, classify: classifyEncode), in: graph, visited: &visited))
-                graph.markLikelyRead(property, reason: Self.existentialEncodeReason)
+                graph.markLikelyRead(property, reason: Self.existentialEncodeReason, sites: sites)
             }
         }
     }
@@ -201,9 +217,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     /// An instance `encode(to:)` taking the coder, visible to the type: a private or fileprivate member is
-    /// taken as visible only from the same file. A static overload is not the witness.
+    /// taken as visible only from the same file. A static overload is not the witness, and neither is an `async` or
+    /// `mutating` one, which cannot satisfy the synchronous, non-mutating requirement, so Swift still synthesizes it.
     private func isWitnessCandidate(_ member: Declaration, for type: Declaration) -> Bool {
-        guard member.kind == .functionMethodInstance,
+        guard member.kind == .functionMethodInstance, !member.isAsync, !member.modifiers.contains("mutating"),
               isCustomCoder(member, named: "encode(to:)", parameterType: "Encoder") else { return false }
 
         switch member.accessibility.value {
@@ -250,10 +267,12 @@ final class CodablePropertyRetainer: SourceGraphMutator {
             switch reference.role {
             case .genericParameterType, .genericRequirementType:
                 Self.encodableUsrs.contains(reference.usr)
+                    || isConfiguredEncodableProtocol(reference)
                     || graph.declaration(withUsr: reference.usr).map { graph.isEncodable($0) } == true
             case .parameterType:
                 // Only an existential parameter; a concrete Encodable type is not evidence.
                 Self.encodableUsrs.contains(reference.usr)
+                    || isConfiguredEncodableProtocol(reference)
                     || graph.declaration(withUsr: reference.usr).map { $0.kind == .protocol && graph.isEncodable($0) } == true
             default:
                 false
@@ -353,7 +372,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     private func matchedArguments(of use: Reference, callee: Declaration, names: Set<String>, matchingTypeNames: Bool = false) -> [ValueArgument]? {
         let parameters = callee.parameterTypeNames
         let accepts: (ParameterTypeNames) -> Bool = { [self] parameter in
-            !parameter.names.isDisjoint(with: names) || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName)))
+            !parameter.names.isDisjoint(with: names)
+                || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName).union(parameter.genericConstraintNames)))
         }
         var matched: [ValueArgument] = []
         var index = 0
@@ -401,6 +421,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     /// configured external ones.
     private var encodableProtocolNames: Set<String> {
         var names: Set<String> = ["Encodable", "Codable"]
+        names.formUnion(configuration.externalEncodableProtocols)
         names.formUnion(configuration.externalCodableProtocols)
         for decl in graph.declarations(ofKind: .protocol) where graph.isEncodable(decl) {
             names.insert(decl.name)
@@ -513,6 +534,16 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         let types = ["11JSONDecoderC", "19PropertyListDecoderC", "22KeyedDecodingContainerV", "30KeyedDecodingContainerProtocolP",
                      "24UnkeyedDecodingContainerP", "28SingleValueDecodingContainerP"]
         let exact = "^s:(s|10Foundation|20FoundationEssentials)(\(types.joined(separator: "|")))(sE)?(6decode|15decodeIfPresent)"
+        return usr.range(of: exact, options: .regularExpression) != nil
+    }
+
+    /// `encode(_:)` of `JSONEncoder` and `PropertyListEncoder`, and `encode`, `encodeIfPresent` and `encodeConditional`
+    /// of the keyed, unkeyed and single-value encoding containers, matched on the exact module and type in the USR as
+    /// for decoding. Each encodes its first argument.
+    private static func isStandardEncodingCall(usr: String) -> Bool {
+        let types = ["11JSONEncoderC", "19PropertyListEncoderC", "22KeyedEncodingContainerV", "30KeyedEncodingContainerProtocolP",
+                     "24UnkeyedEncodingContainerP", "28SingleValueEncodingContainerP"]
+        let exact = "^s:(s|10Foundation|20FoundationEssentials)(\(types.joined(separator: "|")))(sE)?(6encode|15encodeIfPresent|17encodeConditional)"
         return usr.range(of: exact, options: .regularExpression) != nil
     }
 
