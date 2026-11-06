@@ -40,6 +40,11 @@ extension FixtureConstructible10 {
     init(fixtureProtocol10 _: Int) { self.init() }
 }
 
+extension NSObject {
+    // A skipped `Foundation.NSString(fixtureSubclass10:)` inherits this from `NSObject`.
+    convenience init(fixtureSubclass10 _: Int) { self.init() }
+}
+
 public func fixtureQualifiedConstructions10() {
     _ = CDouble.self
     _ = Substring.FixtureNested10.self
@@ -51,6 +56,7 @@ public func fixtureQualifiedConstructions10() {
         _ = Substring.FixtureNested10(fixtureNested10: 1)
         _ = FixtureUnknown10.FixtureNested10(fixtureUnimported10: 1)
         _ = Swift.Bool(fixtureProtocol10: 1)
+        _ = Foundation.NSString(fixtureSubclass10: 1)
     #else
         _ = FixtureLocal10(fixtureCompiled10: 1)
     #endif

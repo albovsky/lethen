@@ -112,8 +112,11 @@ public final class ConfidenceAssessor {
                 return !isDistinct(receiver: receiver, from: enclosing)
             }
             if let extended = unscannedExtendedType(of: declaration) {
+                // Another module's class can also be a subclass of the extended class, `Foundation.NSString(...)`
+                // for an initializer of `extension NSObject`.
                 if isQualifiedByAnotherModule {
-                    return receiver == extended.name || Self.sdkTypeAliases[receiver]?.contains(extended.name) == true
+                    return extended.isClass || receiver == extended.name
+                        || Self.sdkTypeAliases[receiver]?.contains(extended.name) == true
                 }
                 return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
             }
