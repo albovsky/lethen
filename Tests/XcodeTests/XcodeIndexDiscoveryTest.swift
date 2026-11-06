@@ -154,11 +154,41 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
         let driver = try makeDriver(project: built.project, configuration: configuration, shell: built.shell, derivedData: built.derivedData)
 
         var plan: IndexPlan?
-        XCTAssertNoThrow(try built.project.removingLastComponent().chdir {
+        try built.project.removingLastComponent().chdir {
             plan = try driver.plan(logger: logger.contextualized(with: "test"))
-        })
+        }
 
         XCTAssertTrue(try XCTUnwrap(plan).sourceFiles.isEmpty)
+    }
+
+    /// `SharedBetweenTargets.swift` is compiled by the built target and by `UnscannedTool`, which the scheme does not
+    /// build. The unit belongs to the built target's module, so the unbuilt target has no unit of its own: its
+    /// `UnscannedMain.swift` is not a missing unit, and the store is accepted.
+    func testSkipBuildAcceptsAStoreWhoseUnbuiltTargetSharesAFileWithABuiltOne() throws {
+        let copy = root.appending("MixedLanguageProject")
+        try FileManager.default.copyItem(at: MixedLanguageProjectPath.removingLastComponent().url, to: copy.url)
+        let project = copy.appending("MixedLanguageProject.xcodeproj")
+        let derivedData = root.appending("DerivedData")
+        let shell = ShellImpl(logger: logger)
+        try shell.exec([
+            "xcodebuild", "-project", project.string, "-scheme", "MixedLanguageProject",
+            "-derivedDataPath", derivedData.appending("MixedLanguageProject-discovery").string,
+            "-quiet", "build-for-testing", "CODE_SIGNING_ALLOWED=NO",
+        ])
+
+        let configuration = Configuration()
+        configuration.schemes = ["MixedLanguageProject"]
+        configuration.skipBuild = true
+        let driver = try makeDriver(project: project, configuration: configuration, shell: shell, derivedData: derivedData, schemes: ["MixedLanguageProject"])
+
+        var plan: IndexPlan?
+        try project.removingLastComponent().chdir {
+            plan = try driver.plan(logger: logger.contextualized(with: "test"))
+        }
+
+        let planned = try XCTUnwrap(plan).sourceFiles.keys.map { resolved($0.path).lastComponent?.string }
+        XCTAssertTrue(planned.contains("SharedBetweenTargets.swift"), "\(planned)")
+        XCTAssertFalse(planned.contains("UnscannedMain.swift"), "\(planned)")
     }
 
     // MARK: - Private
@@ -195,7 +225,7 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
         FilePath(path.url.resolvingSymlinksInPath().path)
     }
 
-    private func makeDriver(project: FilePath, configuration: Configuration, shell: Shell, derivedData: FilePath) throws -> XcodeProjectDriver {
+    private func makeDriver(project: FilePath, configuration: Configuration, shell: Shell, derivedData: FilePath, schemes: Set<String> = ["SwiftUIProject"]) throws -> XcodeProjectDriver {
         let xcodebuild = Xcodebuild(shell: shell, logger: logger)
         var loaded: Set<FilePath> = []
         let xcodeProject = try XcodeProject(path: project, loadedProjectPaths: &loaded, xcodebuild: xcodebuild, shell: shell, logger: logger)
@@ -204,7 +234,7 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
             configuration: configuration,
             xcodebuild: xcodebuild,
             project: xcodeProject,
-            schemes: ["SwiftUIProject"],
+            schemes: schemes,
             derivedDataLocator: XcodeDerivedDataLocator(root: derivedData)
         )
     }

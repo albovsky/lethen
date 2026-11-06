@@ -156,6 +156,30 @@ final class XcodeBuildReuseTest: XcodeSourceGraphTestCase {
         assertReferenced(.functionFree("addedWhileTheCacheIsWarm()"))
     }
 
+    /// A reused build whose store lacks a unit builds from scratch. An incremental rebuild would not recompile a file
+    /// whose inputs are unchanged, so the unit would stay missing.
+    func testReusedBuildMissingAUnitBuildsFromScratch() throws {
+        let shell = ForwardingRecordingShell(logger: Self.logger)
+        _ = try scan(shell: shell)
+        let xcodebuild = Xcodebuild(shell: shell, logger: Self.logger)
+        let loaded = try Self.load(project, shell: shell)
+        let directory = try xcodebuild.derivedDataPath(for: loaded, schemes: ["ConfigurationsProject"], buildArguments: buildArguments)
+        let units = directory.appending("Index.noindex/DataStore/v5/units")
+        let doomed = try FileManager.default.contentsOfDirectory(atPath: units.string).filter { $0.hasPrefix("Conditional.swift-") }
+        XCTAssertFalse(doomed.isEmpty, "No unit of Conditional.swift in \(units)")
+        for unit in doomed {
+            try FileManager.default.removeItem(atPath: units.appending(unit).string)
+        }
+
+        let second = try scan(shell: shell)
+
+        XCTAssertEqual(second.builds, 0, "\(shell.streamed)")
+        XCTAssertEqual(second.buildsInPlan, 1, "\(shell.streamed)")
+        let planned = try XCTUnwrap(Self.plan).sourceFiles.keys.map { $0.path.lastComponent?.string }
+        XCTAssertTrue(planned.contains("Conditional.swift"), "\(planned)")
+        assertReferenced(.functionFree("calledOnlyInDebug()"))
+    }
+
     // MARK: - Never reused
 
     func testCleanBuildNeverReuses() throws {
