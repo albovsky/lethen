@@ -5,7 +5,9 @@ import SwiftSyntax
 /// Local variables are absent from the index, so resolve their lexical bindings here.
 public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var arguments: [Location: Set<Location>] = [:]
-    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>)]] = [:]
+    /// Keyed by a call's callee location: each argument's label, origins, and, for an element such as `values[0]`, the
+    /// origins of its collection, which only the opaque encoding check reads.
+    public private(set) var argumentLists: [Location: [(label: String?, origins: Set<Location>, elementOrigins: Set<Location>)]] = [:]
     public private(set) var parameterTypeNames: [Location: [ParameterTypeNames]] = [:]
     /// Keyed by a function's name location: see `Declaration.returnTypeNames`.
     public private(set) var returnTypeNames: [Location: Set<String>] = [:]
@@ -17,6 +19,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var specializationArgumentLocations: Set<Location> = []
     public private(set) var accessorBodyLocations: Set<Location> = []
     public private(set) var initializedConstantLocations: Set<Location> = []
+    /// Properties without a setter: a `let`, or a `var` whose accessors are only a getter.
+    public private(set) var readOnlyPropertyLocations: Set<Location> = []
+    /// Keyed by a function's name location: the functions declared `async`.
+    public private(set) var asyncFunctionLocations: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
@@ -67,6 +73,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             genericWhereClause: node.genericWhereClause,
             at: node.name.positionAfterSkippingLeadingTrivia
         )
+        if node.signature.effectSpecifiers?.asyncSpecifier != nil {
+            asyncFunctionLocations.insert(locations.location(at: node.name.positionAfterSkippingLeadingTrivia))
+        }
         return .visitChildren
     }
 
@@ -101,6 +110,10 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
                 accessorBodyLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
             }
 
+            if node.bindingSpecifier.tokenKind == .keyword(.let) || binding.accessorBlock.map(Self.isGetterOnly) == true {
+                readOnlyPropertyLocations.insert(locations.location(at: binding.positionAfterSkippingLeadingTrivia))
+            }
+
             let annotation = binding.typeAnnotation.map { tokens(in: $0.type) } ?? []
             let initial = binding.initializer.map { origins(of: $0.value) } ?? []
             scopes[scopes.count - 1][identifier.identifier.text] = annotation.union(initial)
@@ -116,7 +129,9 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         let callee = calleeLocation(node.calledExpression)
         arguments[callee, default: []].formUnion(values)
         resolvesMetatypes = true
-        argumentLists[callee] = node.arguments.map { (label: $0.label?.text, origins: origins(of: $0.expression)) }
+        argumentLists[callee] = node.arguments.map {
+            (label: $0.label?.text, origins: origins(of: $0.expression), elementOrigins: elementOrigins(of: $0.expression))
+        }
         resolvesMetatypes = false
         if let type = Self.contextualType(of: node) {
             recordSpecializations(in: type)
@@ -310,6 +325,26 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         return []
     }
 
+    /// The origins of the collection an element such as `values[0]`, `values[0]!` or `try values[key]` is read from;
+    /// none for any other expression.
+    private func elementOrigins(of expression: ExprSyntax) -> Set<Location> {
+        var current = expression
+        while true {
+            if let forced = current.as(ForceUnwrapExprSyntax.self) {
+                current = forced.expression
+            } else if let optional = current.as(OptionalChainingExprSyntax.self) {
+                current = optional.expression
+            } else if let tried = current.as(TryExprSyntax.self) {
+                current = tried.expression
+            } else if let awaited = current.as(AwaitExprSyntax.self) {
+                current = awaited.expression
+            } else {
+                break
+            }
+        }
+        return current.as(SubscriptCallExprSyntax.self).map { origins(of: $0.calledExpression) } ?? []
+    }
+
     /// A shorthand getter, or an accessor list with a getter, setter, `_read` or `_modify`; `willSet` and `didSet`
     /// observe a stored property.
     private static func isComputed(_ block: AccessorBlockSyntax) -> Bool {
@@ -318,6 +353,17 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             true
         case let .accessors(list):
             list.contains { ["get", "set", "_read", "_modify", "unsafeAddress", "unsafeMutableAddress"].contains($0.accessorSpecifier.text) }
+        }
+    }
+
+    /// A computed property, or a protocol requirement, with a getter and nothing to set it: `{ value }`, `{ get }`,
+    /// `{ get async throws { ... } }` or `{ _read { ... } }`. Observers belong to a stored, settable property.
+    private static func isGetterOnly(_ block: AccessorBlockSyntax) -> Bool {
+        switch block.accessors {
+        case .getter:
+            true
+        case let .accessors(list):
+            list.allSatisfy { ["get", "_read"].contains($0.accessorSpecifier.text) }
         }
     }
 
@@ -368,6 +414,15 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
         if let identifier = type.as(IdentifierTypeSyntax.self), identifier.genericArgumentClause == nil {
             return [identifier.name]
         }
+        // A standard container spelled out, `Array<Model>`, `Optional<Model>` or `Swift.Dictionary<Key, Model>`,
+        // passes its arguments through as the shorthand forms do.
+        if let (name, clause) = genericName(of: type), let clause, SpecializationCollector.transparent.contains(name.text) {
+            return clause.arguments.flatMap { argument -> [TokenSyntax] in
+                guard case let .type(argumentType) = argument.argument else { return [] }
+
+                return simpleTypeTokens(in: argumentType)
+            }
+        }
         if let array = type.as(ArrayTypeSyntax.self) {
             return simpleTypeTokens(in: array.element)
         }
@@ -382,6 +437,16 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             return simpleTypeTokens(in: optional.wrappedType)
         }
         return []
+    }
+
+    private static func genericName(of type: TypeSyntax) -> (TokenSyntax, GenericArgumentClauseSyntax?)? {
+        if let identifier = type.as(IdentifierTypeSyntax.self) {
+            return (identifier.name, identifier.genericArgumentClause)
+        }
+        if let member = type.as(MemberTypeSyntax.self), member.baseType.trimmedDescription == "Swift" {
+            return (member.name, member.genericArgumentClause)
+        }
+        return nil
     }
 
     private func recordParameterTypeNames(
@@ -412,7 +477,18 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
             signature.parameterClause.parameters.map { parameter in
                 let label = parameter.firstName.tokenKind == .wildcard ? nil : parameter.firstName.text
                 let names = Self.decodedMetatypeNames(of: parameter.type, constraints: constraints)
-                return ParameterTypeNames(label: label, names: names, isVariadic: parameter.ellipsis != nil, typeName: parameter.type.trimmedDescription)
+                var valueType = parameter.type
+                while let optional = valueType.as(OptionalTypeSyntax.self) {
+                    valueType = optional.wrappedType
+                }
+                let generic = valueType.as(IdentifierTypeSyntax.self).flatMap { constraints[$0.name.text] } ?? []
+                return ParameterTypeNames(
+                    label: label,
+                    names: names,
+                    isVariadic: parameter.ellipsis != nil,
+                    typeName: parameter.type.trimmedDescription,
+                    genericConstraintNames: generic
+                )
             }
     }
 
@@ -541,7 +617,7 @@ private final class QualifierCollector: SyntaxVisitor {
 }
 
 private final class SpecializationCollector: SyntaxVisitor {
-    private static let transparent: Set<String> = ["Array", "Optional", "Set", "Dictionary", "ContiguousArray"]
+    static let transparent: Set<String> = ["Array", "Optional", "Set", "Dictionary", "ContiguousArray"]
     var specializations: [(name: TokenSyntax, clause: GenericArgumentClauseSyntax)] = []
 
     override func visit(_ node: IdentifierTypeSyntax) -> SyntaxVisitorContinueKind {
