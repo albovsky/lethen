@@ -170,7 +170,7 @@
                 }
 
                 if configuration.outputFormat.supportsAuxiliaryOutput {
-                    logger.info("Using the index from the DerivedData at \(derivedDataPath), last written \(XcodeDerivedDataLocator.lastWritten(store).formatted(.iso8601)).")
+                    self.logger.info("Using the index from the DerivedData at \(derivedDataPath), last written \(XcodeDerivedDataLocator.lastWritten(store).formatted(.iso8601)).")
                 }
 
                 indexStorePaths = [store]
