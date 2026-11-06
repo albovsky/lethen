@@ -34,13 +34,18 @@ public struct XcodeDerivedDataLocator {
             let directory = root.appending(entry)
             guard let workspace = Self.workspacePath(in: directory), Self.resolved(workspace) == project else { return nil }
 
-            return ["Index.noindex/DataStore", "Index/DataStore"]
-                .map { directory.appending($0) }
-                .first { FileManager.default.fileExists(atPath: $0.string) }
-                .map { ($0, Self.lastWritten($0)) }
+            return Self.indexStore(in: directory).map { ($0, Self.lastWritten($0)) }
         }
 
         return matches.sorted { $0.date > $1.date }.map(\.store)
+    }
+
+    /// The index store inside a DerivedData directory, which Xcode names `Index.noindex/DataStore` and older versions
+    /// `Index/DataStore`.
+    public static func indexStore(in derivedData: FilePath) -> FilePath? {
+        ["Index.noindex/DataStore", "Index/DataStore"]
+            .map { derivedData.appending($0) }
+            .first { FileManager.default.fileExists(atPath: $0.string) }
     }
 
     // MARK: - Private

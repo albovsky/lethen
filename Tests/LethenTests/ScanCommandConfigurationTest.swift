@@ -72,6 +72,49 @@ final class ScanCommandConfigurationTest: XCTestCase {
         }
     }
 
+    func testDerivedDataPathIsRejectedUnlessItCanBeVerified() throws {
+        let xcode = ProjectKind.xcode(projectPath: FilePath("App.xcodeproj"))
+        let cases: [(name: String, kind: ProjectKind, skipBuild: Bool, indexStorePath: [FilePath], configurations: [String], message: String)] = [
+            ("without --skip-build", xcode, false, [], [], "--derived-data-path requires --skip-build"),
+            ("with --index-store-path", xcode, true, [FilePath("/lethen/store")], [], "Pass --derived-data-path or --index-store-path, not both"),
+            ("with --configurations", xcode, true, [], ["debug"], "--derived-data-path is not supported with --configurations"),
+            ("on a Swift package", .spm, true, [], [], "--derived-data-path is supported for Xcode projects only."),
+            ("on a generic project", .generic(genericProjectConfig: FilePath("generic.json")), true, [], [], "--derived-data-path is supported for Xcode projects only."),
+        ]
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+
+        for testCase in cases {
+            let configuration = Configuration()
+            configuration.derivedDataPath = FilePath("/lethen/derived-data")
+            configuration.skipBuild = testCase.skipBuild
+            configuration.indexStorePath = testCase.indexStorePath
+            configuration.configurations = testCase.configurations
+            let project = Project(kind: testCase.kind, configuration: configuration, shell: ShellImpl(logger: logger), logger: logger)
+
+            XCTAssertThrowsError(try project.driver(), testCase.name) { error in
+                guard case let LethenError.usageError(message) = error else { return XCTFail("\(testCase.name): \(error)") }
+
+                XCTAssertTrue(message.hasPrefix(testCase.message), "\(testCase.name): \(message)")
+            }
+        }
+    }
+
+    func testDerivedDataPathWithSkipBuildPassesValidationForXcodeProjects() throws {
+        let configuration = Configuration()
+        configuration.derivedDataPath = FilePath("/lethen/derived-data")
+        configuration.skipBuild = true
+        let logger = Logger(quiet: true, verbose: false, colorMode: .never)
+        let project = Project(kind: .xcode(projectPath: FilePath("App.xcodeproj")), configuration: configuration, shell: ShellImpl(logger: logger), logger: logger)
+
+        // Validation passes. The project does not exist, so the Xcode driver fails to load it (or, off macOS, is
+        // unavailable); either way the error is not one of the `--derived-data-path` usage errors.
+        do {
+            _ = try project.driver()
+        } catch let LethenError.usageError(message) {
+            XCTAssertFalse(message.contains("--derived-data-path"), message)
+        } catch {}
+    }
+
     func testNoColorForcesNeverOverColorOption() throws {
         let configuration = try makeConfiguration(["--color", "always", "--no-color"])
         XCTAssertEqual(configuration.color, .never)
