@@ -2,7 +2,7 @@
 
 ##### Breaking
 
-- None.
+- The GitHub Action fails a strict scan only on `certain` results when `min-confidence` is not set. In the `github-actions` format `likely` results are still annotated, as notices, and the step's log says how many there were, but they no longer fail the step or count in the `count` output; other formats run the scan with `--min-confidence certain`. Set `min-confidence: likely` to keep the previous behavior. The precision corpus at 2026.10.1 found no false positive among 81 sampled `certain` results but only 2 true positives among 9 sampled `likely` ones. `likely` notices from a `working-directory` below the repository root now point at the right file, as warnings already did ([#190](https://github.com/albovsky/lethen/issues/190)).
 
 ##### Enhancements
 
@@ -12,6 +12,7 @@
 
 - The `likely` hint for a name used in a `#if` branch the build skipped no longer attaches to a declaration the branch cannot name. A `private` or `fileprivate` declaration is downgraded only by a clause of its own file, the only file that can see it, and a declaration no type declares, a global, a free function, a top-level type, a type alias or an operator, only by a use that is not a member access, since `self.logger` names a member and not a global; a use qualified by the module, `MyApp.logger`, still counts ([#199](https://github.com/albovsky/lethen/issues/199)).
 - `private(set)` and `fileprivate(set)` no longer give a declaration their access level: they restrict only the setter, so `private(set) var count` is read wherever an unannotated one is. It was taken as `private`, which hid it from the rules that ask whether another file or an unscanned target can see it, and reported it as `private` in the `json` and `csv` formats. `public private(set)` is public whichever order the two modifiers are written in, and one used only inside its own module is now reported as redundantly public, which it was not before (Wikipedia iOS gains one such finding) ([#199](https://github.com/albovsky/lethen/issues/199)).
+- The ids of unused-import findings no longer depend on how `--project-root` is spelled. They hold the file's path relative to the project root, which was taken as given, so a relative root or one reached through a symbolic link gave the same finding an id starting with `../`. Lethen now resolves links to the project root before computing the relative path and preserves the names of links inside the project. Existing baseline entries recorded with the erroneous `../` prefix need the corrected ID ([#184](https://github.com/albovsky/lethen/issues/184)).
 - An Xcode project stored in Xcode 27.2's JSON project format, a `project.xcproj` with no `project.pbxproj` in the `.xcodeproj` bundle, stops with an error that names the format and says Lethen cannot read it yet, instead of an XcodeProj error, and an edit to `project.xcproj` makes the next scan build instead of reusing the last build ([#189](https://github.com/albovsky/lethen/issues/189)).
 
 ## 2026.10.1 (2026-10-14)
