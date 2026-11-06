@@ -81,6 +81,10 @@ public final class ConfidenceAssessor {
     /// `String.init(data:)` does not name another type's initializer. Neither says anything about a use that
     /// spells no labels or no type: `#selector(show)` can be any `show`, and `self.show()` names no type.
     private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling, inModules modules: Set<String>) -> Bool {
+        // A bare name inside a type's body reads a property or method of that type, or of one it inherits from.
+        if let types = spelling.implicitSelfTypes {
+            return Self.implicitSelfKinds.contains(declaration.kind) && isMember(declaration, ofAnyOf: Set(types))
+        }
         if Self.memberKinds.contains(declaration.kind), !spelling.isMember { return false }
 
         // A declaration no type declares is reached by its bare name, or qualified by its module
@@ -208,6 +212,22 @@ public final class ConfidenceAssessor {
         guard receivers.allSatisfy({ !Self.placeholderTypeKinds.contains($0.kind) }) else { return false }
 
         return !receivers.contains { $0 == enclosing || typeRelatives[enclosing, default: []].contains($0) || typeRelatives[$0, default: []].contains(enclosing) }
+    }
+
+    private static let implicitSelfKinds: Set<Declaration.Kind> = [
+        .varInstance, .varStatic, .varClass, .functionMethodInstance, .functionMethodStatic, .functionMethodClass,
+    ]
+
+    /// Whether the declaration is a member of a type named in `types`, of a subclass or type alias of one, or of an
+    /// unscanned type an extension of one of them adds it to.
+    private func isMember(_ declaration: Declaration, ofAnyOf types: Set<String>) -> Bool {
+        if let enclosing = enclosingTypeDeclaration(of: declaration) {
+            return ([enclosing] + typeRelatives[enclosing, default: []]).contains { types.contains(SourceGraph.baseName(of: $0.name)) }
+        }
+        if let extended = unscannedExtendedType(of: declaration) {
+            return types.contains(extended.name)
+        }
+        return false
     }
 
     private static let concreteTypeKinds: Set<Declaration.Kind> = [.class, .struct, .enum]

@@ -2428,6 +2428,40 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    /// A bare name in a skipped clause inside a type's body can read a member of that type without `self.`.
+    func testConfidenceSkippedBranchImplicitSelfMembers() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureStorage9")) {
+                self.assertNotReferenced(.varInstance("logger9"))
+                self.assertConfidence(.varInstance("logger9"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("formatter9()"))
+                self.assertConfidence(.functionMethodInstance("formatter9()"), .likely)
+                self.assertNotReferenced(.varInstance("unread9"))
+                self.assertConfidence(.varInstance("unread9"), .certain)
+                // A local of that name in the method is what the clause reads.
+                self.assertNotReferenced(.varInstance("shadowed9"))
+                self.assertConfidence(.varInstance("shadowed9"), .certain)
+                // Used-but-not-compared control.
+                self.assertReferenced(.varInstance("readNormally9"))
+            }
+            // The same name in an unrelated type is not read by the other type's clause.
+            assertReferenced(.class("FixtureOther9")) {
+                self.assertNotReferenced(.varInstance("logger9"))
+                self.assertConfidence(.varInstance("logger9"), .certain)
+            }
+            // A subclass's body reads what it inherits.
+            assertReferenced(.class("FixtureBase9")) {
+                self.assertNotReferenced(.varInstance("inherited9"))
+                self.assertConfidence(.varInstance("inherited9"), .likely)
+            }
+            // An extension of an unscanned type reads the members added to that type.
+            assertReferenced(.extensionStruct("Int")) {
+                self.assertNotReferenced(.varInstance("fixtureDoubled9"))
+                self.assertConfidence(.varInstance("fixtureDoubled9"), .likely)
+            }
+        }
+    }
+
     func testConfidenceSkippedBranchCapitalizedValueReceivers() throws {
         try analyze(retainPublic: true) {
             // `Store` is a parameter, so `Store.shared8` names no type and can be either `shared8`.

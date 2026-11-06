@@ -299,6 +299,37 @@ final class NameUseCollectorTest: XCTestCase {
         ])
     }
 
+    /// A bare name inside a type's body carries the types around it, unless the member around it binds that name.
+    func testABareNameInsideATypeCarriesTheTypesAroundIt() throws {
+        typealias Spelling = NameSites.Spelling
+        let source = """
+        struct Outer {
+            struct Store {
+                func run(handler: Int) {
+                    #if os(Windows)
+                    _ = logger
+                    _ = handler
+                    logger.info()
+                    #endif
+                }
+            }
+        }
+        func free() { _ = logger }
+        """
+        let tree = Parser.parse(source: source)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        let collector = NameUseCollector(Syntax(elements))
+        XCTAssertEqual(collector.spellings["logger"], [
+            Spelling(),
+            Spelling(isMember: true, implicitSelfTypes: ["Store", "Outer"]),
+        ])
+        // `handler` is a parameter of the method around the use.
+        XCTAssertEqual(collector.spellings["handler"], [Spelling()])
+        // Outside any type, a bare name reads no member.
+        XCTAssertEqual(collect("func free() { _ = logger }").spellings["logger"], [Spelling()])
+    }
+
     func testAGenericParameterIsNotAReceiver() {
         typealias Spelling = NameSites.Spelling
         let collector = collect("func make<T: Base>(_: T.Type) { _ = T.shared }\nfunc other() { _ = U.shared }")
