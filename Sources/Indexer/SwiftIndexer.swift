@@ -147,6 +147,10 @@ final class SwiftIndexer: Indexer {
                 let isImplicit: Bool
                 let isObjcAccessible: Bool
                 let location: Location
+                /// The names of the declarations this one is a child of. A macro expansion's declarations all
+                /// sit at the attach site, and some have no name (the `_modify` accessor of every property an
+                /// `@Observable` class tracks), so without their parents distinct siblings would share a key.
+                let parentNames: [String]
             }
 
             let usr: String
@@ -155,11 +159,19 @@ final class SwiftIndexer: Indexer {
             let isImplicit: Bool
             let isObjcAccessible: Bool
             let location: Location
+            let parentNames: [String]
             /// The module of the index unit that recorded the declaration.
             var module = ""
 
             var key: Key {
-                Key(kind: kind, name: name, isImplicit: isImplicit, isObjcAccessible: isObjcAccessible, location: location)
+                Key(
+                    kind: kind,
+                    name: name,
+                    isImplicit: isImplicit,
+                    isObjcAccessible: isObjcAccessible,
+                    location: location,
+                    parentNames: parentNames
+                )
             }
         }
 
@@ -237,8 +249,10 @@ final class SwiftIndexer: Indexer {
             // Declarations are equal when their USRs are, so when two keys share USRs (an index built from
             // code that failed to type-check can give overloads the same USR) the first one inserted wins.
             // Walking keys in a fixed order keeps that choice the same in every process.
-            let orderedKeys = rawDeclsByKey.keys.sorted {
-                ($0.location, $0.name, $0.kind.rawValue, $0.isImplicit ? 1 : 0) < ($1.location, $1.name, $1.kind.rawValue, $1.isImplicit ? 1 : 0)
+            let orderedKeys = rawDeclsByKey.keys.sorted { lhs, rhs in
+                let lhsOrder = (lhs.location, lhs.name, lhs.kind.rawValue, lhs.isImplicit ? 1 : 0)
+                let rhsOrder = (rhs.location, rhs.name, rhs.kind.rawValue, rhs.isImplicit ? 1 : 0)
+                return lhsOrder == rhsOrder ? lhs.parentNames.lexicographicallyPrecedes(rhs.parentNames) : lhsOrder < rhsOrder
             }
 
             // Only the first copy of a USR set reaches the graph. Later copies (a declaration written in both
@@ -333,7 +347,8 @@ final class SwiftIndexer: Indexer {
             )
             associateLatentReferences()
             associateDanglingReferences(
-                topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder)
+                topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder),
+                declarationRanges: declarationSyntaxVisitor.rangesByLocation
             )
             visitDeclarations(using: declarationSyntaxVisitor)
             let file = IndexedFile(
@@ -407,7 +422,14 @@ final class SwiftIndexer: Indexer {
 
         // Swift does not associate some type references with the containing declaration, resulting in references
         // with no clear parent. Property references are one example: https://github.com/apple/swift/issues/56163
-        private func associateDanglingReferences(topLevelStatements: [ClosedRange<Location>]) {
+        //
+        // A reference is held by the innermost declaration whose syntax range contains it. Only a reference no
+        // recorded range contains falls back to the declaration on its line, or to the nearest one before it, which
+        // is wrong whenever an unrelated declaration starts between the container's first line and the reference.
+        private func associateDanglingReferences(
+            topLevelStatements: [ClosedRange<Location>],
+            declarationRanges: [Location: ClosedRange<Location>]
+        ) {
             guard !danglingReferences.isEmpty else { return }
 
             // Sort declarations to ensure deterministic candidate selection when
@@ -428,6 +450,11 @@ final class SwiftIndexer: Indexer {
                 // References from top-level code have no parent declaration by definition. Leaving them unassociated
                 // makes them root references; attributing them to a nearby declaration would hide their uses.
                 if topLevelStatements.contains(where: { $0.contains(ref.location) }) {
+                    continue
+                }
+
+                if let decl = innermostDeclaration(containing: ref, in: sortedDeclarations, ranges: declarationRanges) {
+                    associate(ref, with: keptDeclarationsByUsrs[decl.usrs] ?? decl)
                     continue
                 }
 
@@ -460,6 +487,45 @@ final class SwiftIndexer: Indexer {
                     associate(ref, with: keptDeclarationsByUsrs[decl.usrs] ?? decl)
                 }
             }
+        }
+
+        /// The declaration with the smallest syntax range that contains the reference, its lexical container. A
+        /// reference that names the container or one of its ancestors is held by it all the same, and
+        /// `AncestralReferenceEliminator` removes it later. Between equal ranges, such as a property and its accessor,
+        /// a declaration without a parent wins, then the first in declaration order, as for declarations on the same
+        /// line.
+        private func innermostDeclaration(
+            containing ref: Reference,
+            in sortedDeclarations: [Declaration],
+            ranges: [Location: ClosedRange<Location>]
+        ) -> Declaration? {
+            var best: (decl: Declaration, size: (lines: Int, columns: Int))?
+
+            for decl in sortedDeclarations {
+                guard let range = ranges[decl.location],
+                      range.contains(ref.location)
+                else { continue }
+
+                let size = (
+                    lines: range.upperBound.line - range.lowerBound.line,
+                    columns: range.upperBound.column - range.lowerBound.column
+                )
+
+                guard let current = best else {
+                    best = (decl, size)
+                    continue
+                }
+
+                let isSmaller = (size.lines, size.columns) < (current.size.lines, current.size.columns)
+                let isEqual = size == current.size
+                // `sortedDeclarations` is ordered, so on a tie the earlier candidate is kept unless this one has no
+                // parent and the kept one does.
+                if isSmaller || (isEqual && decl.parent == nil && current.decl.parent != nil) {
+                    best = (decl, size)
+                }
+            }
+
+            return best?.decl
         }
 
         private func visitDeclarations(using declarationVisitor: DeclarationSyntaxVisitor) {
@@ -578,7 +644,8 @@ final class SwiftIndexer: Indexer {
                 name: occurrence.symbol.name,
                 isImplicit: occurrence.roles.contains(.implicit),
                 isObjcAccessible: usr.hasPrefix("c:"),
-                location: location
+                location: location,
+                parentNames: relations.filter { $0.roles.contains(.childOf) }.map(\.symbol.name).sorted()
             )
 
             return (decl, relations)

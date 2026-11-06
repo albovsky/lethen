@@ -3340,6 +3340,32 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    /// The macro expands every tracked property at the class's attach site, and the index names none of their
+    /// `_modify` accessors, so each must stay its own declaration under its own property. Merged into one
+    /// declaration under all of them, the accessor's keypath to every property kept them all alive, unless the
+    /// property the merged accessor happened to get as its parent was the unused one.
+    func testObservablePropertiesAreIndependent() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureClass326")) {
+                self.assertReferenced(.varInstance("readProperty"))
+                self.assertNotReferenced(.varInstance("neverUsedProperty"))
+                self.assertNotReferenced(.varInstance("otherNeverUsedProperty"))
+            }
+
+            let modifyAccessors = Self.allIndexedDeclarations.filter {
+                $0.kind == .functionAccessorModify && $0.parent?.parent?.name == "FixtureClass326"
+            }
+            XCTAssertEqual(modifyAccessors.count, 3)
+            XCTAssertEqual(
+                modifyAccessors.mapSet { $0.parent?.name ?? "" },
+                ["readProperty", "neverUsedProperty", "otherNeverUsedProperty"]
+            )
+            for accessor in modifyAccessors {
+                XCTAssertEqual(accessor.usrs.count, 1, "\(accessor.usrs.sorted())")
+            }
+        }
+    }
+
     func testUnconstructedEnumCases() throws {
         try analyze(retainPublic: true) {
             assertReferenced(.enum("FixtureEnum229")) {
@@ -3379,6 +3405,45 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertReferenced(.functionSubscript("subscript(_:)")) {
                     self.assertReferenced(.varParameter("position"))
                 }
+            }
+        }
+    }
+
+    /// The alias is the declaration the reference to its target sits in, not the live declaration that starts the line.
+    func testDanglingReferenceInsideContainerReportsDeadNeighbor() throws {
+        try analyze(retainPublic: true) {
+            // Used control: the neighbor is used by the public function and is never reported.
+            assertReferenced(.struct("FixtureDanglingLiveNeighbor1"))
+            assertNotReferenced(.typealias("FixtureDanglingDeadAlias1"))
+            assertNotReferenced(.struct("FixtureDanglingDeadTarget1"))
+        }
+    }
+
+    /// The target is used only through the live alias, so it stays even though a dead declaration starts the line.
+    func testDanglingReferenceInsideContainerRetainsUsedTarget() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.typealias("FixtureDanglingLiveAlias2"))
+            assertReferenced(.struct("FixtureDanglingUsedTarget2"))
+            assertNotReferenced(.struct("FixtureDanglingDeadNeighbor2"))
+        }
+    }
+
+    /// Passes with the nearest-declaration rule and with the range rule: only the alias is on its line.
+    func testDanglingReferenceAgreementControl() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.typealias("FixtureDanglingUsedAlias3"))
+            assertReferenced(.struct("FixtureDanglingUsedTarget3"))
+            assertNotReferenced(.typealias("FixtureDanglingUnusedAlias3"))
+            assertNotReferenced(.struct("FixtureDanglingUnusedTarget3"))
+        }
+    }
+
+    /// A reference to an enclosing type from inside one of its members stays with that member, so the ancestor rule drops it.
+    func testDanglingReferenceToAncestorIsNotPromotedToTheContainer() throws {
+        try analyze(retainPublic: true) {
+            // Used control: the namespace is used by the public function and is never reported.
+            assertReferenced(.enum("FixtureDanglingNamespace4")) {
+                self.assertNotReferenced(.struct("Target"))
             }
         }
     }

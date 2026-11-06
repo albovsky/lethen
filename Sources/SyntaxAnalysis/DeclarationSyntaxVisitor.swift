@@ -6,6 +6,7 @@ import SwiftSyntax
 public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
     public typealias Result = (
         location: Location,
+        range: ClosedRange<Location>,
         accessibility: Accessibility?,
         modifiers: [String],
         attributes: Set<DeclarationAttribute>,
@@ -35,6 +36,15 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
         }
     }
 
+    /// The source range of each declaration, from the first token after its leading trivia to the last token before
+    /// its trailing trivia, keyed by the declaration's location. A declaration's attributes, modifiers and body are
+    /// within it.
+    public var rangesByLocation: [Location: ClosedRange<Location>] {
+        results.reduce(into: [Location: ClosedRange<Location>]()) { dict, result in
+            dict[result.location] = result.range
+        }
+    }
+
     public init(sourceLocationBuilder: SourceLocationBuilder, swiftVersion _: SwiftVersion) {
         // swiftVersion is not used in this visitor but is required by the protocol
         self.sourceLocationBuilder = sourceLocationBuilder
@@ -49,6 +59,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -61,6 +72,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -72,6 +84,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             trivia: node.commentCommandTrivia,
             inheritanceClause: node.inheritanceClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -84,6 +97,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -96,6 +110,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -107,6 +122,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
                 attributes: node.attributes,
                 trivia: node.leadingTrivia,
                 enumCaseParameterClause: element.parameterClause,
+                range: range(of: node.elements.count == 1 ? Syntax(node) : Syntax(element)),
                 at: element.name.positionAfterSkippingLeadingTrivia
             )
         }
@@ -129,6 +145,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             trivia: node.commentCommandTrivia,
             inheritanceClause: node.inheritanceClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: position
         )
     }
@@ -143,6 +160,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             returnClause: node.signature.returnClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -156,6 +174,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             throwsClause: node.signature.effectSpecifiers?.throwsClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.initKeyword.positionAfterSkippingLeadingTrivia
         )
     }
@@ -165,6 +184,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             modifiers: node.modifiers,
             attributes: node.attributes,
             trivia: node.commentCommandTrivia,
+            range: range(of: node),
             at: node.deinitKeyword.positionAfterSkippingLeadingTrivia
         )
     }
@@ -178,6 +198,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             returnClause: node.returnClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            range: range(of: node),
             at: node.subscriptKeyword.positionAfterSkippingLeadingTrivia
         )
     }
@@ -197,6 +218,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
                     returnClause: closureSignature?.returnClause,
                     variableInitFunctionCallExpr: functionCallExpr,
                     variableInitExpr: binding.initializer?.value,
+                    range: range(of: variableRangeNode(node, binding)),
                     at: binding.positionAfterSkippingLeadingTrivia
                 )
             } else if let tuplePatternSyntax = binding.pattern.as(TuplePatternSyntax.self) {
@@ -211,6 +233,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
                     modifiers: node.modifiers,
                     attributes: node.attributes,
                     trivia: node.leadingTrivia.merging(node.trailingTrivia),
+                    range: range(of: variableRangeNode(node, binding)),
                     at: binding.positionAfterSkippingLeadingTrivia
                 )
             }
@@ -240,6 +263,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
                     trivia: node.commentCommandTrivia,
                     variableType: type?.type,
                     variableInitFunctionCallExpr: initializer?.expression.as(FunctionCallExprSyntax.self),
+                    range: range(of: variableRangeNode(node, element)),
                     at: element.positionAfterSkippingLeadingTrivia
                 )
             }
@@ -254,6 +278,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
             typeInitializerClause: node.initializer,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -266,6 +291,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericWhereClause: node.genericWhereClause,
             typeInitializerClause: node.initializer,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -275,6 +301,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             modifiers: nil,
             attributes: nil,
             trivia: node.commentCommandTrivia,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
@@ -284,11 +311,24 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             modifiers: node.modifiers,
             attributes: node.attributes,
             trivia: node.commentCommandTrivia,
+            range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
     }
 
     // MARK: - Private
+
+    private func range(of node: some SyntaxProtocol) -> ClosedRange<Location> {
+        sourceLocationBuilder.location(at: node.positionAfterSkippingLeadingTrivia)
+            ... sourceLocationBuilder.location(at: node.endPositionBeforeTrailingTrivia)
+    }
+
+    /// A variable declaration with one binding is the whole declaration, attributes and modifiers included. With
+    /// several bindings each is its own declaration in the index, so its range is the binding's, or the tuple
+    /// element's.
+    private func variableRangeNode(_ node: VariableDeclSyntax, _ part: some SyntaxProtocol) -> Syntax {
+        node.bindings.count == 1 ? Syntax(node) : Syntax(part)
+    }
 
     private func parse(
         modifiers: DeclModifierListSyntax?,
@@ -306,6 +346,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
         variableInitFunctionCallExpr: FunctionCallExprSyntax? = nil,
         variableInitExpr: ExprSyntax? = nil,
         typeInitializerClause: TypeInitializerClauseSyntax? = nil,
+        range: ClosedRange<Location>,
         at position: AbsolutePosition
     ) {
         let modifierNames = modifiers?.map(\.name.text) ?? []
@@ -349,6 +390,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
 
         results.append((
             location: location,
+            range: range,
             accessibility: accessibility,
             modifiers: modifierNames,
             attributes: parsedAttributes,
