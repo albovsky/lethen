@@ -318,22 +318,12 @@
             }
         }
 
-        /// A compilation-cache hit writes no index unit, so a store lethen did not just build can lack the unit of a file
-        /// its target compiled. A target with no unit of its own is left alone: lethen cannot tell one the schemes do not
-        /// build from one the cache skipped. Which target a unit belongs to is decided by its module, as for unscanned
-        /// targets, so a file an unbuilt target shares with a built one does not make the unbuilt target look indexed.
+        /// A store lethen did not just build can lack the unit of a file its target compiled, because a compilation-cache
+        /// hit writes none; see `IndexCompleteness`.
         private func rejectIncompleteIndex(indexedModules: [FilePath: Set<String>], indexStorePaths: Set<FilePath>, targets: Set<XcodeTarget>) throws {
-            let indexed = indexedFiles(byTarget: targets, indexedModules: indexedModules)
-            var missing: Set<String> = []
-            for target in targets {
-                let own = indexed[target, default: []]
-                guard !own.isEmpty else { continue }
+            guard let store = indexStorePaths.map(\.string).sorted().first else { return }
 
-                missing.formUnion(collectableCompiledFiles(of: target).subtracting(own).map(\.string))
-            }
-            guard !missing.isEmpty, let store = indexStorePaths.map(\.string).sorted().first else { return }
-
-            throw LethenError.incompleteIndexStore(path: store, missingFiles: missing.sorted())
+            try IndexCompleteness.check(byTarget: completenessTargets(targets), indexedModules: indexedModules, store: FilePath(store))
         }
 
         private static func indexedModules(of sourceFiles: CollectedSourceFiles) -> [FilePath: Set<String>] {
@@ -347,37 +337,15 @@
             target.files(kind: .swiftSource).union(target.files(kind: .clangSource)).filter(isCollectable).mapSet { $0.lexicallyNormalized() }
         }
 
-        /// The collectable compiled files of each target whose unit belongs to it.
-        ///
-        /// A file compiled into several targets has a unit for each target that built it, named by module, so a
-        /// unit counts for a target unless the file's modules show another target of the project compiled it
-        /// instead. A unit whose module matches no target, such as a clang one, counts for every target that
-        /// compiles the file, which errs toward scanned.
-        private func indexedFiles(byTarget projectTargets: Set<XcodeTarget>, indexedModules: [FilePath: Set<String>]) -> [XcodeTarget: Set<FilePath>] {
-            let modules = Dictionary(indexedModules.map { ($0.key.lexicallyNormalized(), $0.value) }, uniquingKeysWith: { $0.union($1) })
-            let compiled = Dictionary(uniqueKeysWithValues: projectTargets.map { ($0, collectableCompiledFiles(of: $0)) })
-            func isIndexed(_ file: FilePath, for target: XcodeTarget) -> Bool {
-                guard let fileModules = modules[file] else { return false }
-
-                let matched = fileModules.intersection(target.moduleNames)
-                guard matched.isEmpty else {
-                    // A unit whose module two targets share cannot say which of them built the file, so it proves
-                    // neither; each of them still counts as scanned through a file only it compiles. Units of
-                    // distinct modules each belong to their own target.
-                    return !projectTargets.contains {
-                        $0 != target && !matched.isDisjoint(with: $0.moduleNames) && compiled[$0]?.contains(file) == true
-                    }
-                }
-
-                let builtByAnother = projectTargets.contains {
-                    $0 != target && !fileModules.isDisjoint(with: $0.moduleNames) && compiled[$0]?.contains(file) == true
-                }
-                return !builtByAnother
-            }
-
-            return Dictionary(uniqueKeysWithValues: projectTargets.map { target in
-                (target, compiled[target, default: []].filter { isIndexed($0, for: target) })
+        private func completenessTargets(_ projectTargets: Set<XcodeTarget>) -> [XcodeTarget: IndexCompleteness.Target] {
+            Dictionary(uniqueKeysWithValues: projectTargets.map {
+                ($0, IndexCompleteness.Target(moduleNames: $0.moduleNames, sourceFiles: collectableCompiledFiles(of: $0)))
             })
+        }
+
+        /// The collectable compiled files of each target whose unit belongs to it.
+        private func indexedFiles(byTarget projectTargets: Set<XcodeTarget>, indexedModules: [FilePath: Set<String>]) -> [XcodeTarget: Set<FilePath>] {
+            IndexCompleteness.indexedFiles(byTarget: completenessTargets(projectTargets), indexedModules: indexedModules)
         }
 
         /// Builds every scheme into each of `configurations`, which are marked complete once all their builds succeed.
