@@ -102,14 +102,31 @@ public final class ConfidenceAssessor {
         if declaration.kind != .functionFree, let receiver = spelling.receiver,
            !mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType)
         {
+            // `Foundation.TimeInterval(...)` constructs a type of another module, which no type of the scan is,
+            // whatever its name.
+            let isOfAnotherModule = isOfAnotherModule(spelling, receiver: receiver, modules: modules)
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
-                return !isDistinct(receiver: receiver, from: enclosing)
+                return !isOfAnotherModule && !isDistinct(receiver: receiver, from: enclosing)
             }
             if let extended = unscannedExtendedType(of: declaration) {
+                if isOfAnotherModule {
+                    return receiver == extended.name || Self.sdkTypeAliases[receiver]?.contains(extended.name) == true
+                }
                 return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
             }
         }
         return true
+    }
+
+    /// Whether a type is spelled through a qualifier that names neither a type of the scan, `Outer` in `Outer.Inner(...)`,
+    /// nor a type the scan extends, `URLSession` in `URLSession.Config(...)` for a `Config` declared in an extension of
+    /// it, nor the declaration's own module, so names a module the scan does not declare the type in: `Foundation` in
+    /// `Foundation.TimeInterval(...)`.
+    private func isOfAnotherModule(_ spelling: NameSites.Spelling, receiver: String, modules: Set<String>) -> Bool {
+        guard let qualifier = spelling.qualifier, qualifier != receiver, qualifier != "Self" else { return false }
+
+        return typeDeclarationsByName[qualifier, default: []].isEmpty && !extendedTypeNames.contains(qualifier)
+            && !modules.contains(qualifier)
     }
 
     /// Whether a type name spelled inside an extension may be a generic parameter or associated type of the extended
@@ -223,6 +240,15 @@ public final class ConfidenceAssessor {
         }
         return declarations
     }()
+
+    /// The base names of the types the scan extends, each by the last component of its name. Built on first use, after
+    /// indexing.
+    private lazy var extendedTypeNames: Set<String> = Set(Declaration.Kind.extensionKinds.flatMap { kind in
+        graph.declarations(ofKind: kind).map { declaration in
+            let name = SourceGraph.baseName(of: declaration.name)
+            return name.split(separator: ".").last.map(String.init) ?? name
+        }
+    })
 
     /// The declarations that can stand for each type, its type aliases and subclasses, followed through each
     /// other. `typeAliasNames` finds a subclass by a reference it holds to its superclass, which the index records

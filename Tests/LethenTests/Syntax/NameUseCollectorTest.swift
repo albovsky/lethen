@@ -70,7 +70,7 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(collector.spellings["init"], [
             Spelling(labels: ["size"], receiver: "Widget", isMember: true),
             Spelling(labels: [], hasTrailingClosure: true, receiver: "Widget", isMember: true),
-            Spelling(labels: ["name"], receiver: "Gadget", isMember: true),
+            Spelling(labels: ["name"], receiver: "Gadget", isMember: true, qualifier: "Framework"),
             Spelling(labels: ["size"], isMember: true),
             Spelling(labels: [], isMember: true),
         ])

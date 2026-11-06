@@ -180,9 +180,11 @@ public struct NameUseCollector {
                 // skipped use to this type's initializers. A generic parameter or `Self` stands for any type.
                 if let call = Self.call(spelling: reference) {
                     let constructed = name == "Self" || placeholderTypeNames.contains(name) ? nil : name
+                    // `Foundation.TimeInterval(...)` keeps its qualifier, the module or type the type is reached through.
                     record(
                         "init", isMember: true, isConstruction: !inPattern, at: node, spellingOnly: true, inPattern: inPattern,
-                        labels: Self.labels(of: call), hasTrailingClosure: call.trailingClosure != nil, receiver: constructed
+                        labels: Self.labels(of: call), hasTrailingClosure: call.trailingClosure != nil, receiver: constructed,
+                        qualifier: constructed == nil || !isQualifiedTypeCall ? nil : qualifier
                     )
                 }
             }

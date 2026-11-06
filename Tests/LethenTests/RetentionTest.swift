@@ -2428,6 +2428,33 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    /// A construction spelled through a module names that module's type, not a type of the scan with the same name.
+    func testConfidenceSkippedBranchModuleQualifiedConstructions() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.extensionStruct("Double")) {
+                // `Swift.CDouble` is the SDK's alias of `Double`, whatever the scan declares as `CDouble`.
+                self.assertConfidence(.functionConstructor("init(fixtureQualified10:)"), .likely)
+                // Control: a bare `CDouble` is the scan's own type.
+                self.assertConfidence(.functionConstructor("init(fixtureBare10:)"), .certain)
+            }
+            assertReferenced(.struct("FixtureLocal10")) {
+                self.assertNotReferenced(.functionConstructor("init(fixtureOwnModule10:)"))
+                self.assertConfidence(.functionConstructor("init(fixtureOwnModule10:)"), .likely)
+                // Control: another module's type of the same name.
+                self.assertNotReferenced(.functionConstructor("init(fixtureOtherModule10:)"))
+                self.assertConfidence(.functionConstructor("init(fixtureOtherModule10:)"), .certain)
+                // Used-but-not-compared control.
+                self.assertReferenced(.functionConstructor("init(fixtureCompiled10:)"))
+            }
+            // Qualified by a type the scan extends, not by a module.
+            assertReferenced(.extensionStruct("Substring")) {
+                self.assertReferenced(.struct("FixtureNested10")) {
+                    self.assertConfidence(.functionConstructor("init(fixtureNested10:)"), .likely)
+                }
+            }
+        }
+    }
+
     func testConfidenceSkippedBranchCapitalizedValueReceivers() throws {
         try analyze(retainPublic: true) {
             // `Store` is a parameter, so `Store.shared8` names no type and can be either `shared8`.
