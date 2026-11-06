@@ -2,6 +2,7 @@ import Configuration
 import Foundation
 import Logger
 import Shared
+import SystemPackage
 
 public final class SourceGraph {
     public private(set) var allDeclarations: Set<Declaration> = []
@@ -335,10 +336,48 @@ public final class SourceGraph {
     }
 
     func markUnusedModuleImport(_ statement: ImportStatement) {
-        let location = statement.location.relativeTo(configuration.projectRoot)
+        let location = unusedImportLocation(statement.location)
         let usr = "import-\(statement.qualifiedModule)-\(location)"
         let decl = Declaration(name: statement.qualifiedModule, kind: .module, usrs: [usr], location: statement.location)
         unusedModuleImports.insert(decl)
+    }
+
+    private func unusedImportLocation(_ location: Location) -> Location {
+        let root = configuration.projectRoot
+        let file = location.file.path
+        guard !root.isEmpty, let realRoot = Self.realPath(root) else { return location.relativeTo(root) }
+
+        if file.starts(with: realRoot), !file.components.contains(where: { $0.kind == .parentDirectory }) {
+            return location.relativeTo(realRoot)
+        }
+
+        // Express the root in the indexed file's spelling. Use their closest shared physical
+        // directory, keeping the outermost spelling on a tie (a link back to the root).
+        var directory = file
+        var shared: (indexed: FilePath, real: FilePath)?
+        while directory.removeLastComponent() {
+            if let real = Self.realPath(directory), realRoot.starts(with: real),
+               shared.map({ real.starts(with: $0.real) }) ?? true
+            {
+                shared = (directory, real)
+            }
+            // A suffix containing ".." cannot be made relative lexically across a symlink.
+            if directory.lastComponent?.kind == .parentDirectory { break }
+        }
+        if let shared {
+            let indexedRoot = shared.indexed.pushing(realRoot.relativeTo(shared.real))
+            return location.relativeTo(indexedRoot)
+        }
+
+        let source = SourceFile(path: Self.realPath(file) ?? file, modules: [])
+        return Location(file: source, line: location.line, column: location.column).relativeTo(realRoot)
+    }
+
+    private static func realPath(_ path: FilePath) -> FilePath? {
+        guard let resolved = path.withPlatformString({ realpath($0, nil) }) else { return nil }
+
+        defer { free(resolved) }
+        return FilePath(platformString: resolved)
     }
 
     func markExtension(_ extensionDecl: Declaration, extending extendedDecl: Declaration) {
