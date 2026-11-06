@@ -330,6 +330,29 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(collect("func free() { _ = logger }").spellings["logger"], [Spelling()])
     }
 
+    func testEscapedTypeNamesAreReadWithoutBackticks() throws {
+        typealias Spelling = NameSites.Spelling
+        let source = """
+        class `Store` {
+            func run() {
+                struct `shadow` {}
+                #if os(Windows)
+                _ = logger
+                _ = shadow.self
+                #endif
+            }
+        }
+        """
+        let tree = Parser.parse(source: source)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        let collector = NameUseCollector(Syntax(elements))
+        // The enclosing type is `Store`, not `` `Store` ``.
+        XCTAssertEqual(collector.spellings["logger"], [Spelling(), Spelling(isMember: true, implicitSelfTypes: ["Store"])])
+        // The local type ``struct `shadow` {}`` is what `shadow` names.
+        XCTAssertEqual(collector.spellings["shadow"], [Spelling()])
+    }
+
     func testAGenericParameterIsNotAReceiver() {
         typealias Spelling = NameSites.Spelling
         let collector = collect("func make<T: Base>(_: T.Type) { _ = T.shared }\nfunc other() { _ = U.shared }")

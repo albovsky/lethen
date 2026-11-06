@@ -289,12 +289,22 @@ public struct NameUseCollector {
         }
     }
 
+    /// The name a type declaration declares, without backticks: `Store` for ``struct `Store` {}``.
     private static func typeName(of node: Syntax) -> String? {
-        if let decl = node.as(ClassDeclSyntax.self) { return decl.name.text }
-        if let decl = node.as(StructDeclSyntax.self) { return decl.name.text }
-        if let decl = node.as(EnumDeclSyntax.self) { return decl.name.text }
-        if let decl = node.as(ActorDeclSyntax.self) { return decl.name.text }
-        if let decl = node.as(ProtocolDeclSyntax.self) { return decl.name.text }
+        let name: TokenSyntax? = if let decl = node.as(ClassDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(StructDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(EnumDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(ActorDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(ProtocolDeclSyntax.self) {
+            decl.name
+        } else {
+            nil
+        }
+        if let name { return name.identifier?.name ?? name.text }
         if let decl = node.as(ExtensionDeclSyntax.self) { return baseName(of: decl.extendedType) }
         return nil
     }
