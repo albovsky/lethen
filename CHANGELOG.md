@@ -8,6 +8,7 @@
 
 - The precision scorecard gives each confidence tier its own precision with a 95 % Wilson score interval, per project and overall, and the overall precision weighted by each project's findings beside the pooled figure: at the current verdicts `certain` is 100.0 % over 82 sampled findings (95.5–100.0 %), `likely` 12.5 % over 8 (2.2–47.1 %), pooled 92.2 % and weighted 96.0 %. `corpus/precision.py` prints the same per project, and the README quotes the `certain` interval ([#193](https://github.com/albovsky/lethen/issues/193)).
 - The guide has a section, [code used outside Swift](docs/guide.md#code-used-outside-swift), on what Lethen does not see (build and verification scripts that read source text, string-based lookups it does not model, resource names and external tooling) and how to record such a use with `// periphery:ignore - reason`, `--retain-files` or `--retain-assign-only-property-types`, linked from the unused-declaration and assign-only sections ([#204](https://github.com/albovsky/lethen/issues/204)).
+- The reason of an assign-only property, shown by `--verbose` and in the `json` and `csv` formats, is now `assigned but never read; if it exists to keep its value alive, mark it // periphery:ignore - reason`, so a write-only strong reference that is intentional, such as a window a coordinator holds, says how to record that. The `xcode` message, `Assign-only property 'x' is assigned, but never used`, is unchanged ([#202](https://github.com/albovsky/lethen/issues/202)).
 
 ##### Bug Fixes
 
