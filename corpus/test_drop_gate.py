@@ -66,6 +66,31 @@ class DropGateTest(unittest.TestCase):
     def test_adjudication_with_thousands_separator_passes(self):
         self.assertEqual(self.run_gate(2567, 2480, note=SECTION + "- demo: 2,567 -> 2,480 findings, adjudicated")[0], 0)
 
+    def test_chain_of_adjudications_passes(self):
+        # Master adjudicated 120 -> 100 since the release; a merged branch adjudicated 100 -> 90.
+        # On master the baseline is the release tag again, so the two items must adjudicate 120 -> 90 together.
+        note = SECTION + "- demo: 120 -> 100 findings, adjudicated\n- demo: 100 -> 90 findings, adjudicated"
+        self.assertEqual(self.run_gate(120, 90, note=note)[0], 0)
+        self.assertEqual(self.run_gate(100, 90, note=note)[0], 0)
+
+    def test_broken_chain_fails(self):
+        note = SECTION + "- demo: 120 -> 100 findings, adjudicated\n- demo: 95 -> 90 findings, adjudicated"
+        self.assertEqual(self.run_gate(120, 90, note=note)[0], 1)
+        cycle = SECTION + "- demo: 120 -> 100 findings, adjudicated\n- demo: 100 -> 120 findings, adjudicated"
+        self.assertEqual(self.run_gate(120, 90, note=cycle)[0], 1)
+
+    def test_changes_that_need_no_adjudication_keep_an_item_valid(self):
+        note = SECTION + "- demo: 100 -> 90 findings, adjudicated"
+        # Growth and a drop within the threshold after the adjudicated drop, measured from the release again.
+        self.assertEqual(self.run_gate(100, 91, note=note)[0], 0)
+        self.assertEqual(self.run_gate(100, 89, note=note)[0], 0)
+        # A further drop past the threshold needs its own item.
+        self.assertEqual(self.run_gate(100, 80, note=note)[0], 1)
+        # Growth before the adjudicated drop: the release had 120, master grew to 125, the branch adjudicated 125 -> 100.
+        self.assertEqual(self.run_gate(120, 100, note=SECTION + "- demo: 125 -> 100 findings, adjudicated")[0], 0)
+        # A drop past the threshold before the item is not covered by it.
+        self.assertEqual(self.run_gate(120, 100, note=SECTION + "- demo: 110 -> 100 findings, adjudicated")[0], 1)
+
     def test_adjudication_with_other_counts_or_project_fails(self):
         self.assertEqual(self.run_gate(100, 97, note="demo: 100 -> 98 findings, adjudicated")[0], 1)
         self.assertEqual(self.run_gate(100, 97, note="other: 100 -> 97 findings, adjudicated")[0], 1)
