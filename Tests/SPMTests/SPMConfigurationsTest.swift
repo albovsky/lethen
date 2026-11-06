@@ -88,6 +88,13 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
             #endif
 
             #if DEBUG
+                public func collidingTypoEntry(x a: Int, y b: Int) { print(a) }
+            #else
+                // periphery:ignore:parameters b
+                public func collidingTypoEntry(x c: Int, y d: Int) { print(c) }
+            #endif
+
+            #if DEBUG
                 struct IgnoredContainerEntry { func nestedUnused() {} }
             #else
                 // periphery:ignore
@@ -135,7 +142,7 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
 
             """.write(toFile: root.appending("Sources/TargetA/Branched.swift").string, atomically: true, encoding: .utf8)
             let main = root.appending("Sources/MainTarget/main.swift")
-            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\nuseUnexposedPublicControl()\n_ = ExposingHolder().exposingProperty\n_ = BranchedIterator().next()\n_ = PlainIterator().next()\n")
+            try (String(contentsOfFile: main.string, encoding: .utf8) + "conditionalEntry()\nbranchedEntry(debugUsed: 1, releaseUsed: 2)\nignoredParameterOnLaterCopyEntry(kept: 1, dropped: 2)\nunusedInBothEntry(kept: 1, dropped: 2)\nrenamedIgnoredEntry(x: 1, y: 2)\nmistypedIgnoreEntry(kept: 1)\ncollidingTypoEntry(x: 1, y: 2)\nusedInOneCopyEntry(first: 1, second: 2)\nrenamedEntry(x: 1, y: 2)\nuseUnexposedPublicControl()\n_ = ExposingHolder().exposingProperty\n_ = BranchedIterator().next()\n_ = PlainIterator().next()\n")
                 .write(toFile: main.string, atomically: true, encoding: .utf8)
         }
     }
@@ -193,6 +200,12 @@ final class SPMConfigurationsTest: SPMSourceGraphTestCase {
         let mistyped = Self.results.flatMap(\.usrs).filter { $0.contains("mistypedIgnoreEntry") }
         XCTAssertEqual(mistyped.count, 1)
         XCTAssertTrue(mistyped.first?.hasPrefix("superfluous-ignore-param-typo") ?? false, "\(mistyped)")
+        // The mistyped name happens to be what the kept copy calls its unused second parameter. It ignores nothing on
+        // its own copy, whose parameters are `c` and `d`, so it is still superfluous, and `b` is still reported.
+        let colliding = Self.results.flatMap(\.usrs).filter { $0.contains("collidingTypoEntry") }.sorted()
+        XCTAssertEqual(colliding.count, 2, "\(colliding)")
+        XCTAssertTrue(colliding.contains { $0.hasPrefix("param-b-collidingTypoEntry") }, "\(colliding)")
+        XCTAssertTrue(colliding.contains { $0.hasPrefix("superfluous-ignore-param-b-collidingTypoEntry") }, "\(colliding)")
         let renamed = Self.results.flatMap(\.usrs).filter { $0.contains("renamedEntry") }
         XCTAssertEqual(renamed.count, 1)
         XCTAssertTrue(renamed.first?.hasPrefix("param-b-renamedEntry") ?? false, "\(renamed)")

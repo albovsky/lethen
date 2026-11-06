@@ -27,6 +27,9 @@ public struct NameSites: Equatable {
         public var qualifier: String?
         /// Whether the use is inside a pattern, `case .ready:`, where an enum case is matched, not constructed.
         public var isPattern: Bool
+        /// For a use with a `receiver`, the base name of the type extended by the extension around it, whose generic
+        /// parameters and associated types, `Element` in `extension Array`, the extension uses without declaring them.
+        public var extendedType: String?
 
         public init(
             labels: [String]? = nil,
@@ -35,7 +38,8 @@ public struct NameSites: Equatable {
             isMember: Bool = false,
             isMemberAccess: Bool = false,
             qualifier: String? = nil,
-            isPattern: Bool = false
+            isPattern: Bool = false,
+            extendedType: String? = nil
         ) {
             self.labels = labels
             self.hasTrailingClosure = hasTrailingClosure
@@ -44,6 +48,7 @@ public struct NameSites: Equatable {
             self.isMemberAccess = isMemberAccess
             self.qualifier = qualifier
             self.isPattern = isPattern
+            self.extendedType = extendedType
         }
     }
 
