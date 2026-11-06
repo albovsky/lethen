@@ -201,9 +201,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     /// An instance `encode(to:)` taking the coder, visible to the type: a private or fileprivate member is
-    /// taken as visible only from the same file. A static overload is not the witness.
+    /// taken as visible only from the same file. A static overload is not the witness, and neither is an `async` or
+    /// `mutating` one, which cannot satisfy the synchronous, non-mutating requirement, so Swift still synthesizes it.
     private func isWitnessCandidate(_ member: Declaration, for type: Declaration) -> Bool {
-        guard member.kind == .functionMethodInstance,
+        guard member.kind == .functionMethodInstance, !member.isAsync, !member.modifiers.contains("mutating"),
               isCustomCoder(member, named: "encode(to:)", parameterType: "Encoder") else { return false }
 
         switch member.accessibility.value {
