@@ -46,7 +46,8 @@
         }
 
         func testRetainsUnionValueStaticWitnesses() throws {
-            #if compiler(>=6.4)
+            // Xcode 27.0 (27A266a) AppIntents user-module-version: 301.0.51.1.404 macOS/macabi, .104 iOS/simulator, .202 tvOS, .302 watchOS, .503 visionOS.
+            #if canImport(AppIntents, _version: 301)
                 try analyze {
                     assertReferenced(.enum("UnionChoice")) {
                         self.assertReferenced(.varStatic("caseDisplayRepresentations"))
@@ -55,7 +56,7 @@
                     }
                 }
             #else
-                throw XCTSkip("@UnionValue generates Cases only in the Xcode 27 SDK")
+                throw XCTSkip("@UnionValue generates Cases only in the Xcode 27 SDK (AppIntents module version 301)")
             #endif
         }
 
