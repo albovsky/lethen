@@ -114,7 +114,7 @@ final class CodablePropertyRetainer: SourceGraphMutator {
         }
 
         return encoded.contains { argument in
-            argument.isUnresolved || argument.references.contains { reference in
+            argument.isUnresolved || argument.references.union(argument.elementReferences).contains { reference in
                 isEncodableExistential(reference) || graph.declaration(withUsr: reference.usr).map(producesEncodableExistential) == true
             }
         }
@@ -212,9 +212,10 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     }
 
     /// An instance `encode(to:)` taking the coder, visible to the type: a private or fileprivate member is
-    /// taken as visible only from the same file. A static overload is not the witness.
+    /// taken as visible only from the same file. A static overload is not the witness, and neither is an `async` or
+    /// `mutating` one, which cannot satisfy the synchronous, non-mutating requirement, so Swift still synthesizes it.
     private func isWitnessCandidate(_ member: Declaration, for type: Declaration) -> Bool {
-        guard member.kind == .functionMethodInstance,
+        guard member.kind == .functionMethodInstance, !member.isAsync, !member.modifiers.contains("mutating"),
               isCustomCoder(member, named: "encode(to:)", parameterType: "Encoder") else { return false }
 
         switch member.accessibility.value {
@@ -366,7 +367,8 @@ final class CodablePropertyRetainer: SourceGraphMutator {
     private func matchedArguments(of use: Reference, callee: Declaration, names: Set<String>, matchingTypeNames: Bool = false) -> [ValueArgument]? {
         let parameters = callee.parameterTypeNames
         let accepts: (ParameterTypeNames) -> Bool = { [self] parameter in
-            !parameter.names.isDisjoint(with: names) || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName)))
+            !parameter.names.isDisjoint(with: names)
+                || (matchingTypeNames && !names.isDisjoint(with: Self.bareTypeNames(parameter.typeName).union(parameter.genericConstraintNames)))
         }
         var matched: [ValueArgument] = []
         var index = 0
