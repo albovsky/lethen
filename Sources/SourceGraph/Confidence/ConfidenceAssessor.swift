@@ -81,6 +81,11 @@ public final class ConfidenceAssessor {
     /// `String.init(data:)` does not name another type's initializer. Neither says anything about a use that
     /// spells no labels or no type: `#selector(show)` can be any `show`, and `self.show()` names no type.
     private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling, inModules modules: Set<String>) -> Bool {
+        if Self.functionKinds.contains(declaration.kind), let labels = spelling.labels,
+           !Self.labels(labels, hasTrailingClosure: spelling.hasTrailingClosure, fit: Self.parameterLabels(of: declaration))
+        {
+            return false
+        }
         // A bare name inside a type's body reads a property or method of that type, or of one it inherits from.
         if let types = spelling.implicitSelfTypes {
             return Self.implicitSelfKinds.contains(declaration.kind) && isMember(declaration, ofAnyOf: Set(types))
@@ -98,11 +103,6 @@ public final class ConfidenceAssessor {
             return false
         }
 
-        if Self.functionKinds.contains(declaration.kind), let labels = spelling.labels,
-           !Self.labels(labels, hasTrailingClosure: spelling.hasTrailingClosure, fit: Self.parameterLabels(of: declaration))
-        {
-            return false
-        }
         if declaration.kind != .functionFree, let receiver = spelling.receiver,
            !mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType)
         {

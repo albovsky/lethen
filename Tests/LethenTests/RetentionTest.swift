@@ -2436,6 +2436,11 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertConfidence(.varInstance("logger9"), .likely)
                 self.assertNotReferenced(.functionMethodInstance("formatter9()"))
                 self.assertConfidence(.functionMethodInstance("formatter9()"), .likely)
+                // The labels of a bare name still pick the overload.
+                self.assertNotReferenced(.functionMethodInstance("show9(title:)"))
+                self.assertConfidence(.functionMethodInstance("show9(title:)"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("show9(message:)"))
+                self.assertConfidence(.functionMethodInstance("show9(message:)"), .certain)
                 self.assertNotReferenced(.varInstance("unread9"))
                 self.assertConfidence(.varInstance("unread9"), .certain)
                 // A local of that name in the method is what the clause reads.

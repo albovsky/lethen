@@ -9,11 +9,16 @@ public class FixtureStorage9 {
     func formatter9() -> Int { 0 }
     // Used-but-not-compared control: read in the clause this build compiled.
     var readNormally9 = 0
+    // Named bare, with its labels, in a skipped clause.
+    func show9(title _: String) {}
+    // Control: the skipped clause's labels name the other overload.
+    func show9(message _: String) {}
 
     public init() {}
 
     public func value() -> Int {
         #if os(Windows)
+            _ = show9(title:)
             return logger9 + formatter9()
         #else
             return readNormally9
