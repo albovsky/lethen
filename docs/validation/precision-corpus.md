@@ -53,7 +53,9 @@ the end of this section with both counts exactly as the gate prints them, in the
 `- <project>: <before> -> <after> findings, adjudicated`; for example (not recorded)
 `- example-app: 2,567 -> 2,480 findings, adjudicated`. Thousands separators are optional. Only list
 items in this section count, and text in backticks never does, so an example cannot adjudicate a
-drop. The counts must match, so a later drop needs its own item. `--base <rev>` compares with another
+drop. The counts must match, in one item or as a chain of items: `120 -> 100` and `100 -> 90` together
+adjudicate a drop from 120 to 90, so a later drop needs its own item and the earlier items stay valid
+once its branch merges and the baseline moves back to the release tag. `--base <rev>` compares with another
 revision and `--threshold <share>` changes the 2 % limit; `corpus/test_drop_gate.py` checks the gate
 on fabricated expectations.
 
