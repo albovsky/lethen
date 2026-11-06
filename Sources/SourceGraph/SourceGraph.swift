@@ -2,6 +2,7 @@ import Configuration
 import Foundation
 import Logger
 import Shared
+import SystemPackage
 
 public final class SourceGraph {
     public private(set) var allDeclarations: Set<Declaration> = []
@@ -24,6 +25,8 @@ public final class SourceGraph {
     /// Properties something may read through a path Lethen cannot follow, each with why it is only likely that they
     /// are read. A property here that is reported is not `certain`.
     public private(set) var likelyReads: [Declaration: String] = [:]
+    /// For each of `likelyReads`, the declarations holding the code it rests on, nil standing for top-level code.
+    private var likelyReadSites: [Declaration: Set<Declaration?>] = [:]
     public private(set) var extensions: [Declaration: Set<Declaration>] = [:]
     public private(set) var commandIgnoredDeclarations: [Declaration: CommandIgnoreKind] = [:]
     public private(set) var functionsWithIgnoredParameters: Set<Declaration> = []
@@ -168,9 +171,19 @@ public final class SourceGraph {
         _ = assignOnlyProperties.insert(declaration)
     }
 
-    func markLikelyRead(_ declaration: Declaration, reason: String) {
+    func markLikelyRead(_ declaration: Declaration, reason: String, sites: Set<Declaration?>) {
         if likelyReads[declaration] == nil {
             likelyReads[declaration] = reason
+        }
+        likelyReadSites[declaration, default: []].formUnion(sites)
+    }
+
+    /// Drops the likely reads that rest only on code nothing uses, such as an encode in an unused private function,
+    /// once reachability is known.
+    func removeUnreachableLikelyReads() {
+        // Top-level code always runs.
+        for (declaration, sites) in likelyReadSites where !sites.contains(where: { $0.map(isUsed) ?? true }) {
+            likelyReads.removeValue(forKey: declaration)
         }
     }
 
@@ -239,6 +252,7 @@ public final class SourceGraph {
         assignOnlyProperties.remove(declaration)
         suppressedAssignOnlyProperties.remove(declaration)
         likelyReads.removeValue(forKey: declaration)
+        likelyReadSites.removeValue(forKey: declaration)
         // A conflicting declaration can own the USR; removing this one must not unmap it.
         for usr in declaration.usrs where allDeclarationsByUsr[usr] === declaration {
             allDeclarationsByUsr.removeValue(forKey: usr)
@@ -342,10 +356,48 @@ public final class SourceGraph {
     }
 
     func markUnusedModuleImport(_ statement: ImportStatement) {
-        let location = statement.location.relativeTo(configuration.projectRoot)
+        let location = unusedImportLocation(statement.location)
         let usr = "import-\(statement.qualifiedModule)-\(location)"
         let decl = Declaration(name: statement.qualifiedModule, kind: .module, usrs: [usr], location: statement.location)
         unusedModuleImports.insert(decl)
+    }
+
+    private func unusedImportLocation(_ location: Location) -> Location {
+        let root = configuration.projectRoot
+        let file = location.file.path
+        guard !root.isEmpty, let realRoot = Self.realPath(root) else { return location.relativeTo(root) }
+
+        if file.starts(with: realRoot), !file.components.contains(where: { $0.kind == .parentDirectory }) {
+            return location.relativeTo(realRoot)
+        }
+
+        // Express the root in the indexed file's spelling. Use their closest shared physical
+        // directory, keeping the outermost spelling on a tie (a link back to the root).
+        var directory = file
+        var shared: (indexed: FilePath, real: FilePath)?
+        while directory.removeLastComponent() {
+            if let real = Self.realPath(directory), realRoot.starts(with: real),
+               shared.map({ real.starts(with: $0.real) }) ?? true
+            {
+                shared = (directory, real)
+            }
+            // A suffix containing ".." cannot be made relative lexically across a symlink.
+            if directory.lastComponent?.kind == .parentDirectory { break }
+        }
+        if let shared {
+            let indexedRoot = shared.indexed.pushing(realRoot.relativeTo(shared.real))
+            return location.relativeTo(indexedRoot)
+        }
+
+        let source = SourceFile(path: Self.realPath(file) ?? file, modules: [])
+        return Location(file: source, line: location.line, column: location.column).relativeTo(realRoot)
+    }
+
+    private static func realPath(_ path: FilePath) -> FilePath? {
+        guard let resolved = path.withPlatformString({ realpath($0, nil) }) else { return nil }
+
+        defer { free(resolved) }
+        return FilePath(platformString: resolved)
     }
 
     func markExtension(_ extensionDecl: Declaration, extending extendedDecl: Declaration) {
