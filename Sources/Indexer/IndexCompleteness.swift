@@ -52,8 +52,10 @@ public enum IndexCompleteness {
 
     /// The files of targets that have a unit of their own but lack one for a file they compile, sorted by path.
     ///
-    /// A target with no unit of its own is left alone, since a target the schemes do not build cannot be told from
-    /// one the cache skipped. A file of an indexed target without a unit of its own is missing when no unit names it
+    /// A target counts as built only when a unit of one of its own modules names a file it compiles. A target with no
+    /// such unit is left alone, since a target the schemes do not build cannot be told from one the cache skipped,
+    /// and a unit of a module no target claims, such as a clang one for a file two targets share, cannot say which
+    /// target built it. A file of a built target without a unit of its own is missing when no unit names it
     /// at all, or when every module that does belongs to another target and none to this one, as when this target's
     /// compile of a file it shares with a built target was a cache hit. A unit whose module this target shares
     /// with another cannot say which of them built the file, and a unit of a module no target claims, such as a
@@ -68,7 +70,8 @@ public enum IndexCompleteness {
         var missing: Set<FilePath> = []
         for (id, target) in targets {
             let own = indexed[id, default: []]
-            guard !own.isEmpty else { continue }
+            let built = own.contains { !modules[$0, default: []].isDisjoint(with: target.moduleNames) }
+            guard built else { continue }
 
             for file in target.sourceFiles.subtracting(own) {
                 guard let fileModules = modules[file] else {

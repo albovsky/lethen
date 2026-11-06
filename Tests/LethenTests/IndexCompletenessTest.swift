@@ -63,6 +63,19 @@ final class IndexCompletenessTest: XCTestCase {
         XCTAssertEqual(IndexCompleteness.missingFiles(byTarget: targets, indexedModules: units(["A.swift": ["A"], "Impl.m": ["Impl"]])), [])
     }
 
+    /// A clang unit names no module, so one for a file both targets compile cannot show that the unbuilt target was
+    /// built; its own files are not missing.
+    func testTargetWhoseOnlyEvidenceIsAnUnclaimedSharedUnitIsLeftAlone() {
+        let targets = [
+            "A": target(["A"], ["A.swift", "Shared.m"]),
+            "B": target(["B"], ["B.swift", "Shared.m"]),
+        ]
+        let modules = units(["A.swift": ["A"], "Shared.m": []])
+
+        XCTAssertEqual(IndexCompleteness.missingFiles(byTarget: targets, indexedModules: modules), [])
+        XCTAssertEqual(IndexCompleteness.indexedFiles(byTarget: targets, indexedModules: modules)["B"], [path("Shared.m")])
+    }
+
     func testTargetWithNoUnitOfItsOwnIsLeftAlone() {
         let targets = ["A": target(["A"], ["A.swift"])]
 
