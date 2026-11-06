@@ -187,13 +187,127 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
         }
     }
 
+    /// A compilation-cache hit writes no index unit. A store in which a file of an indexed target has no unit is refused
+    /// rather than scanned with that file's references missing.
+    func testSkipBuildRejectsAStoreMissingAUnitOfAnIndexedTarget() throws {
+        let built = try buildSwiftUIProject()
+        try removeUnits(ofSourceFilesNamed: ["App.swift"], from: built.store)
+
+        let configuration = Configuration()
+        configuration.schemes = ["SwiftUIProject"]
+        configuration.skipBuild = true
+        let driver = try makeDriver(project: built.project, configuration: configuration, shell: built.shell, derivedData: built.derivedData)
+
+        XCTAssertThrowsError(try built.project.removingLastComponent().chdir { _ = try driver.plan(logger: logger.contextualized(with: "test")) }) { error in
+            guard case let LethenError.incompleteIndexStore(path, missingFiles) = error else {
+                return XCTFail("Expected an incomplete index error, got \(error)")
+            }
+
+            XCTAssertEqual(missingFiles.map { FilePath($0).lastComponent?.string }, ["App.swift"])
+            XCTAssertEqual(resolved(FilePath(path)), resolved(built.store))
+        }
+
+        // Control: an explicit store stays authoritative, so the same store plans, without the file that has no unit.
+        let explicit = Configuration()
+        explicit.schemes = ["SwiftUIProject"]
+        explicit.indexStorePath = [built.store]
+        let explicitDriver = try makeDriver(project: built.project, configuration: explicit, shell: built.shell, derivedData: built.derivedData)
+        var plan: IndexPlan?
+        try built.project.removingLastComponent().chdir {
+            plan = try explicitDriver.plan(logger: logger.contextualized(with: "test"))
+        }
+
+        let planned = try XCTUnwrap(plan).sourceFiles.keys.map { resolved($0.path).lastComponent?.string }
+        XCTAssertFalse(planned.contains("App.swift"), "\(planned)")
+        XCTAssertTrue(planned.contains("ContentView.swift"), "The other units must still be read, got \(planned)")
+    }
+
+    /// Lethen cannot tell a target the schemes do not build from one the compilation cache skipped, so a target without
+    /// a single unit is left to the partial-store handling it always had.
+    func testSkipBuildStillAcceptsAStoreWithoutAnyUnitOfATarget() throws {
+        // SwiftUIProject has one target, so removing every unit leaves that target with none.
+        let built = try buildSwiftUIProject()
+        try removeUnits(ofSourceFilesNamed: nil, from: built.store)
+
+        let configuration = Configuration()
+        configuration.schemes = ["SwiftUIProject"]
+        configuration.skipBuild = true
+        let driver = try makeDriver(project: built.project, configuration: configuration, shell: built.shell, derivedData: built.derivedData)
+
+        var plan: IndexPlan?
+        try built.project.removingLastComponent().chdir {
+            plan = try driver.plan(logger: logger.contextualized(with: "test"))
+        }
+
+        XCTAssertTrue(try XCTUnwrap(plan).sourceFiles.isEmpty)
+    }
+
+    /// `SharedBetweenTargets.swift` is compiled by the built target and by `UnscannedTool`, which the scheme does not
+    /// build. The unit belongs to the built target's module, so the unbuilt target has no unit of its own: its
+    /// `UnscannedMain.swift` is not a missing unit, and the store is accepted.
+    func testSkipBuildAcceptsAStoreWhoseUnbuiltTargetSharesAFileWithABuiltOne() throws {
+        let copy = root.appending("MixedLanguageProject")
+        try FileManager.default.copyItem(at: MixedLanguageProjectPath.removingLastComponent().url, to: copy.url)
+        let project = copy.appending("MixedLanguageProject.xcodeproj")
+        let derivedData = root.appending("DerivedData")
+        let shell = ShellImpl(logger: logger)
+        try shell.exec([
+            "xcodebuild", "-project", project.string, "-scheme", "MixedLanguageProject",
+            "-derivedDataPath", derivedData.appending("MixedLanguageProject-discovery").string,
+            "-quiet", "build-for-testing", "CODE_SIGNING_ALLOWED=NO",
+        ])
+
+        let configuration = Configuration()
+        configuration.schemes = ["MixedLanguageProject"]
+        configuration.skipBuild = true
+        let driver = try makeDriver(project: project, configuration: configuration, shell: shell, derivedData: derivedData, schemes: ["MixedLanguageProject"])
+
+        var plan: IndexPlan?
+        try project.removingLastComponent().chdir {
+            plan = try driver.plan(logger: logger.contextualized(with: "test"))
+        }
+
+        let planned = try XCTUnwrap(plan).sourceFiles.keys.map { resolved($0.path).lastComponent?.string }
+        XCTAssertTrue(planned.contains("SharedBetweenTargets.swift"), "\(planned)")
+        XCTAssertFalse(planned.contains("UnscannedMain.swift"), "\(planned)")
+    }
+
     // MARK: - Private
+
+    /// Copies SwiftUIProject and builds it into a DerivedData of its own, as Xcode does.
+    private func buildSwiftUIProject() throws -> (project: FilePath, derivedData: FilePath, store: FilePath, shell: Shell) {
+        let copy = root.appending("SwiftUIProject")
+        try FileManager.default.copyItem(at: SwiftUIProjectPath.removingLastComponent().url, to: copy.url)
+        let project = copy.appending("SwiftUIProject.xcodeproj")
+        let derivedData = root.appending("DerivedData")
+        let shell = ShellImpl(logger: logger)
+        let directory = derivedData.appending("SwiftUIProject-discovery")
+        try shell.exec([
+            "xcodebuild", "-project", project.string, "-scheme", "SwiftUIProject",
+            "-derivedDataPath", directory.string,
+            "-quiet", "build-for-testing", "CODE_SIGNING_ALLOWED=NO",
+        ])
+        return (project, derivedData, directory.appending("Index.noindex/DataStore"), shell)
+    }
+
+    /// Deletes the unit files of the named source files, or of every file when `names` is nil. A unit file's name starts
+    /// with its source file's name, such as `App.swift-<hash>`.
+    private func removeUnits(ofSourceFilesNamed names: [String]?, from store: FilePath) throws {
+        let units = store.appending("v5/units")
+        let all = try FileManager.default.contentsOfDirectory(atPath: units.string)
+        // A unit is named after the compiled file, `App.swift-<hash>` or `App.o-<hash>` depending on the build system.
+        let doomed = all.filter { unit in names?.contains { unit.hasPrefix(FilePath($0).stem! + ".") } ?? true }
+        XCTAssertFalse(doomed.isEmpty, "No unit of \(names ?? ["any file"]) in \(all)")
+        for unit in doomed {
+            try FileManager.default.removeItem(atPath: units.appending(unit).string)
+        }
+    }
 
     private func resolved(_ path: FilePath) -> FilePath {
         FilePath(path.url.resolvingSymlinksInPath().path)
     }
 
-    private func makeDriver(project: FilePath, configuration: Configuration, shell: Shell, derivedData: FilePath) throws -> XcodeProjectDriver {
+    private func makeDriver(project: FilePath, configuration: Configuration, shell: Shell, derivedData: FilePath, schemes: Set<String> = ["SwiftUIProject"]) throws -> XcodeProjectDriver {
         let xcodebuild = Xcodebuild(shell: shell, logger: logger)
         var loaded: Set<FilePath> = []
         let xcodeProject = try XcodeProject(path: project, loadedProjectPaths: &loaded, xcodebuild: xcodebuild, shell: shell, logger: logger)
@@ -202,7 +316,7 @@ final class XcodeIndexDiscoveryTest: XCTestCase {
             configuration: configuration,
             xcodebuild: xcodebuild,
             project: xcodeProject,
-            schemes: ["SwiftUIProject"],
+            schemes: schemes,
             derivedDataLocator: XcodeDerivedDataLocator(root: derivedData)
         )
     }

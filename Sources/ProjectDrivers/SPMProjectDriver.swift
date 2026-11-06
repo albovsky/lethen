@@ -90,6 +90,9 @@ extension SPMProjectDriver: ProjectDriver {
             configuration: configuration
         )
         let sourceFiles = try collector.collect()
+        if configuration.skipBuild, configuration.indexStorePath.isEmpty {
+            try rejectIncompleteIndex(description: description, excludedTestTargets: excludedTestTargets, sourceFiles: sourceFiles, indexStorePaths: indexStorePaths)
+        }
         let xibPaths = interfaceBuilderFiles(from: description)
         let coverage = clangCoverage(
             description: description,
@@ -158,19 +161,43 @@ extension SPMProjectDriver: ProjectDriver {
             : configuration.configurations.map { configuration.buildArguments + ["-c", $0] }
     }
 
-    /// Whether the index has a unit for every C and Objective-C file of the targets the scan covers.
-    /// The collector drops files that match an index exclusion or are missing on disk, so they are
-    /// not expected to have a unit.
-    private func clangCoverage(description: PackageDescription, excludedTestTargets: Set<String>, indexedFiles: Set<FilePath>) -> ClangCoverage {
-        let targets = description.targets
-            .filter { $0.type != "plugin" && !excludedTestTargets.contains($0.name) && !configuration.excludeTargets.contains($0.name) }
-            .map { target in
-                let targetPath = pkg.path.appending(target.path)
-                let files = (target.sources ?? []).map { targetPath.appending($0) }.filter {
-                    $0.exists && !configuration.indexExcludeMatchers.anyMatch(filename: $0.string)
-                }
-                return ClangCoverage.Target(sourceFiles: Set(files))
+    /// A store this scan did not build can lack the unit of a file its target compiled, as after an interrupted
+    /// build or a compilation-cache hit, which writes none; see `IndexCompleteness`. An explicit
+    /// `--index-store-path` stays authoritative.
+    private func rejectIncompleteIndex(description: PackageDescription, excludedTestTargets: Set<String>, sourceFiles: CollectedSourceFiles, indexStorePaths: Set<FilePath>) throws {
+        guard let store = indexStorePaths.map(\.string).sorted().first else { return }
+
+        let byTarget = Dictionary(uniqueKeysWithValues: scannedTargets(in: description, excludedTestTargets: excludedTestTargets).map { target in
+            let compiled = collectableFiles(of: target).filter { file in
+                ProjectFileKind.swiftSource.extensions.contains(file.extension ?? "") || ProjectFileKind.clangSource.extensions.contains(file.extension ?? "")
             }
+            return (target.name, IndexCompleteness.Target(moduleNames: [target.c99name ?? target.name], sourceFiles: compiled))
+        })
+        let indexedModules = Dictionary(
+            sourceFiles.sourceFiles.keys.map { ($0.path, $0.modules) } + sourceFiles.clangSourceFiles.keys.map { ($0.path, $0.modules) },
+            uniquingKeysWith: { $0.union($1) }
+        )
+        try IndexCompleteness.check(byTarget: byTarget, indexedModules: indexedModules, store: FilePath(store))
+    }
+
+    /// The targets the scan covers: no plugins, and none excluded by name or as a test target.
+    private func scannedTargets(in description: PackageDescription, excludedTestTargets: Set<String>) -> [Target] {
+        description.targets.filter { $0.type != "plugin" && !excludedTestTargets.contains($0.name) && !configuration.excludeTargets.contains($0.name) }
+    }
+
+    /// The target's source files the collector can read: the collector drops files that match an index
+    /// exclusion or are missing on disk, so they are not expected to have a unit.
+    private func collectableFiles(of target: Target) -> Set<FilePath> {
+        let targetPath = pkg.path.appending(target.path)
+        return Set((target.sources ?? []).map { targetPath.appending($0) }.filter {
+            $0.exists && !configuration.indexExcludeMatchers.anyMatch(filename: $0.string)
+        })
+    }
+
+    /// Whether the index has a unit for every C and Objective-C file of the targets the scan covers.
+    private func clangCoverage(description: PackageDescription, excludedTestTargets: Set<String>, indexedFiles: Set<FilePath>) -> ClangCoverage {
+        let targets = scannedTargets(in: description, excludedTestTargets: excludedTestTargets)
+            .map { ClangCoverage.Target(sourceFiles: collectableFiles(of: $0)) }
         return ClangCoverage.assess(
             targets: targets,
             indexedFiles: indexedFiles,

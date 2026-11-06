@@ -2,6 +2,22 @@
 
 ##### Breaking
 
+- None.
+
+##### Enhancements
+
+- None.
+
+##### Bug Fixes
+
+- None.
+
+## 2026.11.1 (2026-11-06)
+
+The GitHub Action now fails a strict scan only on `certain` results by default. The `xcode` format separates `likely` and non-dead-code results under their own headers, the precision scorecard grades each confidence tier with an interval, and `--derived-data-path` reads the index of a build a pipeline made into its own DerivedData. An Xcode compilation-cache hit no longer drops index units, and a set of false positives around `@Observable`, `private(set)`, `Encodable` existentials and skipped `#if` branches is fixed.
+
+##### Breaking
+
 - The GitHub Action fails a strict scan only on `certain` results when `min-confidence` is not set. In the `github-actions` format `likely` results are still annotated, as notices, and the step's log says how many there were, but they no longer fail the step or count in the `count` output; other formats run the scan with `--min-confidence certain`. Set `min-confidence: likely` to keep the previous behavior. The precision corpus at 2026.10.1 found no false positive among 81 sampled `certain` results but only 2 true positives among 9 sampled `likely` ones. `likely` notices from a `working-directory` below the repository root now point at the right file, as warnings already did ([#190](https://github.com/albovsky/lethen/issues/190)).
 
 ##### Enhancements
@@ -18,6 +34,7 @@
 
 - A construction spelled through another module in a `#if` branch the build skipped, `Foundation.TimeInterval(seconds:)`, no longer makes a scanned type of the same name `likely`: it constructs that module's type. It now names the initializers of an extension of the type the module's name stands for, so `Swift.CDouble(...)` reaches an initializer of an `extension Double` even when the scan declares its own `CDouble`. Only a qualifier the file imports, or `Swift`, is read as a module; a construction qualified by the scan's own module, by a module that declares a type or type alias of that name, `Models.Widget(...)` for an initializer another module adds to `Widget`, or by any other name, `NSString.Widget(...)`, still counts, as does a protocol's initializer reached through a conforming type ([#163](https://github.com/albovsky/lethen/issues/163)).
 - Repeated scans now consistently report unused properties of an `@Observable` class. The indexer now keeps each tracked property’s generated accessor separate. This consistently reports the unused `CurrentAccount.isUpdating` property in IceCubesApp ([#229](https://github.com/albovsky/lethen/pull/229)).
+- An Xcode compilation-cache hit no longer leaves compiled files without index units. When the cache outlived Lethen's clean, a managed build left 38 of 70 units and the scan lost 9 findings without saying so. Managed builds now pass `COMPILATION_CACHE_ENABLE_CACHING=NO` after your build arguments, and a `--skip-build` scan of a store in which a compiled file of an indexed target has no unit stops with an "incomplete" error instead of reporting from it, for an Xcode project and for a Swift package alike; a reused Xcode build with such a store is rebuilt. A target with no unit at all is not detected, a file the build leaves out on purpose, such as one behind a platform filter, is reported the same way and is left out with `--index-exclude`, and an explicit `--index-store-path` is not checked ([#196](https://github.com/albovsky/lethen/issues/196)).
 - The `likely` hint for a name used in a `#if` branch the build skipped no longer attaches to a declaration the branch cannot name. A `private` or `fileprivate` declaration is downgraded only by a clause of its own file, the only file that can see it, and a declaration no type declares, a global, a free function, a top-level type, a type alias or an operator, only by a use that is not a member access, since `self.logger` names a member and not a global; a use qualified by the module, `MyApp.logger`, still counts ([#199](https://github.com/albovsky/lethen/issues/199)).
 - `private(set)` and `fileprivate(set)` no longer give a declaration their access level: they restrict only the setter, so `private(set) var count` is read wherever an unannotated one is. It was taken as `private`, which hid it from the rules that ask whether another file or an unscanned target can see it, and reported it as `private` in the `json` and `csv` formats. `public private(set)` is public whichever order the two modifiers are written in, and one used only inside its own module is now reported as redundantly public, which it was not before (Wikipedia iOS gains one such finding) ([#199](https://github.com/albovsky/lethen/issues/199)).
 - The ids of unused-import findings no longer depend on how `--project-root` is spelled. They hold the file's path relative to the project root, which was taken as given, so a relative root or one reached through a symbolic link gave the same finding an id starting with `../`. Lethen now resolves links to the project root before computing the relative path and preserves the names of links inside the project. Existing baseline entries recorded with the erroneous `../` prefix need the corrected ID ([#184](https://github.com/albovsky/lethen/issues/184)).
