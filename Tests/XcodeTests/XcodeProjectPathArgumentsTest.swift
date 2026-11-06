@@ -119,6 +119,32 @@ final class XcodeProjectPathArgumentsTest: XCTestCase {
         XCTAssertFalse(derivedData.contains("'"), derivedData)
         XCTAssertTrue(build.contains("CODE_SIGNING_ALLOWED=NO"))
         XCTAssertTrue(build.contains("COMPILER_INDEX_STORE_ENABLE=YES"))
-        XCTAssertEqual(Array(build.suffix(3)), ["-destination", "platform=macOS", "OTHER_SWIFT_FLAGS=-DA -DB"])
+        XCTAssertEqual(Array(build.suffix(4)), ["-destination", "platform=macOS", "OTHER_SWIFT_FLAGS=-DA -DB", "COMPILATION_CACHE_ENABLE_CACHING=NO"])
+    }
+
+    func testBuildTurnsCachingOffAfterAUserSettingThatTurnsItOn() throws {
+        var loaded: Set<FilePath> = []
+        let loadingShell = ShellImpl(logger: logger)
+        let project = try XcodeProject(
+            path: SwiftUIProjectPath,
+            loadedProjectPaths: &loaded,
+            xcodebuild: Xcodebuild(shell: loadingShell, logger: logger),
+            shell: loadingShell,
+            logger: logger
+        )
+        let shell = RecordingShell()
+
+        try Xcodebuild(shell: shell, logger: logger).build(
+            project: project,
+            scheme: "SwiftUIProject",
+            allSchemes: ["SwiftUIProject"],
+            additionalArguments: ["COMPILATION_CACHE_ENABLE_CACHING=YES"]
+        )
+
+        let build = try XCTUnwrap(shell.all.first { $0.contains("build-for-testing") })
+        let on = try XCTUnwrap(build.firstIndex(of: "COMPILATION_CACHE_ENABLE_CACHING=YES"))
+        let off = try XCTUnwrap(build.firstIndex(of: "COMPILATION_CACHE_ENABLE_CACHING=NO"))
+        XCTAssertLessThan(on, off, "xcodebuild applies the last setting, so Lethen's must follow the user's")
+        XCTAssertEqual(build.last, "COMPILATION_CACHE_ENABLE_CACHING=NO")
     }
 }
