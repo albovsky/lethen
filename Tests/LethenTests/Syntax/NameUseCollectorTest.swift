@@ -334,6 +334,29 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(collect("func free() { _ = logger }").spellings["logger"], [Spelling()])
     }
 
+    func testAnInitAccessorBindsNewValue() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: """
+        struct Store {
+            var newValue = 0
+            private var stored: Int
+            var wrapped: Int {
+                @storageRestrictions(initializes: stored)
+                init {
+                    #if os(Windows)
+                    stored = newValue
+                    #endif
+                }
+                get { stored }
+            }
+        }
+        """)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        // The `init` accessor's implicit `newValue` is what the clause reads, not the property.
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["newValue"], [Spelling()])
+    }
+
     func testEscapedTypeNamesAreReadWithoutBackticks() throws {
         typealias Spelling = NameSites.Spelling
         let source = """
