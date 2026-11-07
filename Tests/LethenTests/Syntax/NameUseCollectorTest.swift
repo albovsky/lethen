@@ -303,6 +303,148 @@ final class NameUseCollectorTest: XCTestCase {
         ])
     }
 
+    /// A bare name inside a type's body carries the types around it, unless the member around it binds that name.
+    func testABareNameInsideATypeCarriesTheTypesAroundIt() throws {
+        typealias Spelling = NameSites.Spelling
+        let source = """
+        struct Outer {
+            struct Store {
+                func run(handler: Int) {
+                    #if os(Windows)
+                    _ = logger
+                    _ = handler
+                    logger.info()
+                    #endif
+                }
+            }
+        }
+        func free() { _ = logger }
+        """
+        let tree = Parser.parse(source: source)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        let collector = NameUseCollector(Syntax(elements))
+        XCTAssertEqual(collector.spellings["logger"], [
+            Spelling(),
+            Spelling(isMember: true, implicitSelfTypes: ["Store", "Outer"]),
+        ])
+        // `handler` is a parameter of the method around the use.
+        XCTAssertEqual(collector.spellings["handler"], [Spelling()])
+        // Outside any type, a bare name reads no member.
+        XCTAssertEqual(collect("func free() { _ = logger }").spellings["logger"], [Spelling()])
+    }
+
+    func testAWrappedLocalBindsItsBackingStorage() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: """
+        struct Store {
+            var _logger = 0
+            func run() {
+                @Wrapper var logger = 1
+                #if os(Windows)
+                _ = _logger
+                #endif
+            }
+        }
+        """)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        // The local's backing storage is what the clause reads, not the property.
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["_logger"], [Spelling()])
+
+        // A wrapped parameter's backing storage too.
+        let parameterTree = Parser.parse(source: """
+        struct Store {
+            var _logger = 0
+            func run(@Wrapper logger: Int) {
+                #if os(Windows)
+                _ = _logger
+                #endif
+            }
+        }
+        """)
+        let parameterClause = try XCTUnwrap(findIfConfig(Syntax(parameterTree)))
+        let parameterElements = try XCTUnwrap(parameterClause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(parameterElements)).spellings["_logger"], [Spelling()])
+    }
+
+    func testAnInitAccessorBindsNewValue() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: """
+        struct Store {
+            var newValue = 0
+            private var stored: Int
+            var wrapped: Int {
+                @storageRestrictions(initializes: stored)
+                init {
+                    #if os(Windows)
+                    stored = newValue
+                    #endif
+                }
+                get { stored }
+            }
+        }
+        """)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        // The `init` accessor's implicit `newValue` is what the clause reads, not the property.
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["newValue"], [Spelling()])
+    }
+
+    func testEscapedTypeNamesAreReadWithoutBackticks() throws {
+        typealias Spelling = NameSites.Spelling
+        let source = """
+        class `Store` {
+            func run() {
+                struct `shadow` {}
+                #if os(Windows)
+                _ = logger
+                _ = shadow.self
+                #endif
+            }
+        }
+        """
+        let tree = Parser.parse(source: source)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        let collector = NameUseCollector(Syntax(elements))
+        // The enclosing type is `Store`, not `` `Store` ``.
+        XCTAssertEqual(collector.spellings["logger"], [Spelling(), Spelling(isMember: true, implicitSelfTypes: ["Store"])])
+        // The local type ``struct `shadow` {}`` is what `shadow` names.
+        XCTAssertEqual(collector.spellings["shadow"], [Spelling()])
+
+        // An escaped generic parameter is what `T` names.
+        let genericTree = Parser.parse(source: """
+        class Store {
+            func run<`T`>(_: T.Type) {
+                #if os(Windows)
+                _ = T.self
+                #endif
+            }
+        }
+        """)
+        let genericClause = try XCTUnwrap(findIfConfig(Syntax(genericTree)))
+        let genericElements = try XCTUnwrap(genericClause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(genericElements)).spellings["T"], [Spelling()])
+
+        // An escaped extension too.
+        let extensionTree = Parser.parse(source: """
+        extension `Store` {
+            func run() {
+                #if os(Windows)
+                _ = logger
+                #endif
+            }
+        }
+        """)
+        let extensionClause = try XCTUnwrap(findIfConfig(Syntax(extensionTree)))
+        let extensionElements = try XCTUnwrap(extensionClause.clauses.first?.elements)
+        XCTAssertEqual(
+            NameUseCollector(Syntax(extensionElements)).spellings["logger"],
+            [Spelling(), Spelling(isMember: true, implicitSelfTypes: ["Store"])]
+        )
+    }
+
     func testAGenericParameterIsNotAReceiver() {
         typealias Spelling = NameSites.Spelling
         let collector = collect("func make<T: Base>(_: T.Type) { _ = T.shared }\nfunc other() { _ = U.shared }")

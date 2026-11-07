@@ -2428,6 +2428,72 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    /// A bare name in a skipped clause inside a type's body can read a member of that type without `self.`.
+    func testConfidenceSkippedBranchImplicitSelfMembers() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.class("FixtureStorage9")) {
+                self.assertNotReferenced(.varInstance("logger9"))
+                self.assertConfidence(.varInstance("logger9"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("formatter9()"))
+                self.assertConfidence(.functionMethodInstance("formatter9()"), .likely)
+                // The labels of a bare name still pick the overload.
+                self.assertNotReferenced(.functionMethodInstance("show9(title:)"))
+                self.assertConfidence(.functionMethodInstance("show9(title:)"), .likely)
+                self.assertNotReferenced(.functionMethodInstance("show9(message:)"))
+                self.assertConfidence(.functionMethodInstance("show9(message:)"), .certain)
+                self.assertNotReferenced(.varInstance("unread9"))
+                self.assertConfidence(.varInstance("unread9"), .certain)
+                // A local of that name in the method is what the clause reads.
+                self.assertNotReferenced(.varInstance("shadowed9"))
+                self.assertConfidence(.varInstance("shadowed9"), .certain)
+                // A local function of that name in the method is what the clause reads.
+                self.assertNotReferenced(.functionMethodInstance("localized9()"))
+                self.assertConfidence(.functionMethodInstance("localized9()"), .certain)
+                // A generic parameter of that name is what the clause reads.
+                self.assertNotReferenced(.varInstance("Generic9"))
+                self.assertConfidence(.varInstance("Generic9"), .certain)
+                // A local type of that name in the method is what the clause reads.
+                self.assertNotReferenced(.varInstance("localType9"))
+                self.assertConfidence(.varInstance("localType9"), .certain)
+                // A bare `catch`'s implicit `error`, and a `catch where`'s, is what the clause reads.
+                self.assertNotReferenced(.varInstance("error"))
+                self.assertConfidence(.varInstance("error"), .certain)
+                // A closure's capture of that name is what the clause reads.
+                self.assertNotReferenced(.varInstance("captured9"))
+                self.assertConfidence(.varInstance("captured9"), .certain)
+                // An accessor's parameter of that name, written or implicit, is what the clause reads.
+                self.assertNotReferenced(.varInstance("setterParameter9"))
+                self.assertConfidence(.varInstance("setterParameter9"), .certain)
+                self.assertNotReferenced(.varInstance("newValue"))
+                self.assertConfidence(.varInstance("newValue"), .certain)
+                self.assertNotReferenced(.varInstance("oldValue"))
+                self.assertConfidence(.varInstance("oldValue"), .certain)
+                // Used-but-not-compared control.
+                self.assertReferenced(.varInstance("readNormally9"))
+            }
+            // A sibling method's parameter in a type-level clause does not hide the read.
+            assertReferenced(.class("FixtureConditional9")) {
+                self.assertNotReferenced(.varInstance("conditionalRead9"))
+                self.assertConfidence(.varInstance("conditionalRead9"), .likely)
+            }
+            // The same name in an unrelated type is not read by the other type's clause.
+            assertReferenced(.class("FixtureOther9")) {
+                self.assertNotReferenced(.varInstance("logger9"))
+                self.assertConfidence(.varInstance("logger9"), .certain)
+            }
+            // A subclass's body reads what it inherits.
+            assertReferenced(.class("FixtureBase9")) {
+                self.assertNotReferenced(.varInstance("inherited9"))
+                self.assertConfidence(.varInstance("inherited9"), .likely)
+            }
+            // An extension of an unscanned type reads the members added to that type.
+            assertReferenced(.extensionStruct("Int")) {
+                self.assertNotReferenced(.varInstance("fixtureDoubled9"))
+                self.assertConfidence(.varInstance("fixtureDoubled9"), .likely)
+            }
+        }
+    }
+
     /// A construction spelled through a module names that module's type, not a type of the scan with the same name.
     func testConfidenceSkippedBranchModuleQualifiedConstructions() throws {
         try analyze(retainPublic: true) {

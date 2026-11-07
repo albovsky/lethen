@@ -44,20 +44,34 @@ public struct NameUseCollector {
     /// The type extended by the extension around the node being collected, which can use generic parameters and
     /// associated types of that type that no syntax declares.
     private var extendedTypeName: String?
-    /// The capitalized names the file binds to values, `let Handler = …` or a parameter `Handler`, against the Swift
-    /// API guidelines: calling one, `Handler()`, can run a `callAsFunction` rather than construct a type, and
-    /// `Store.shared` through one names no type. Gathered on first use, across the whole file rather than by scope, so
-    /// a part of it sees the parameters and locals around it.
-    private var capitalizedValueNames: Set<String>?
-    /// The modules the file imports, anywhere in it, and `Swift`, which every file imports. Gathered on first use.
-    private var importedModuleNames: Set<String>?
+    /// What the collector reads from the whole file, shared with the collectors of its other parts.
+    private let facts: FileFacts
     private let root: Syntax
+
+    /// What a collector reads from the whole file around the syntax it collects, gathered on first use. The
+    /// collectors of one file's `#if` clauses share one, so the file is read once rather than once for each clause.
+    public final class FileFacts {
+        /// The capitalized names the file binds to values, `let Handler = …` or a parameter `Handler`, against the
+        /// Swift API guidelines: calling one, `Handler()`, can run a `callAsFunction` rather than construct a type,
+        /// and `Store.shared` through one names no type. Gathered across the whole file rather than by scope, so a
+        /// part of it sees the parameters and locals around it.
+        fileprivate var capitalizedValueNames: Set<String>?
+        /// The names each member of a type binds, so a member is scanned once rather than once for each of its
+        /// bare names.
+        fileprivate var boundNamesByMember: [SyntaxIdentifier: Set<String>] = [:]
+        /// The modules the file imports, anywhere in it, and `Swift`, which every file imports.
+        fileprivate var importedModuleNames: Set<String>?
+
+        public init() {}
+    }
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
     /// declaration, such as the elements of an `#if` clause; the generic parameters and associated types of the
     /// declarations around it count as placeholders too.
-    public init(_ node: Syntax, onUse: ((Use) -> Void)? = nil) {
+    /// `facts` are what it reads from the whole file; collectors of parts of the same file can share them.
+    public init(_ node: Syntax, facts: FileFacts = FileFacts(), onUse: ((Use) -> Void)? = nil) {
         self.onUse = onUse
+        self.facts = facts
         Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
         Self.collectEnclosingPlaceholderTypeNames(of: node, into: &placeholderTypeNames)
         extendedTypeName = Self.enclosingExtendedTypeName(of: node)
@@ -83,11 +97,13 @@ public struct NameUseCollector {
         hasTrailingClosure: Bool = false,
         receiver: String? = nil,
         isMemberAccess: Bool = false,
-        qualifier: String? = nil
+        qualifier: String? = nil,
+        implicitSelfTypes: [String]? = nil
     ) {
         let spelling = NameSites.Spelling(
             labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess,
-            qualifier: qualifier, isPattern: inPattern, extendedType: receiver == nil ? nil : extendedTypeName
+            qualifier: qualifier, isPattern: inPattern, extendedType: receiver == nil ? nil : extendedTypeName,
+            implicitSelfTypes: implicitSelfTypes
         )
         if spellingOnly {
             spellings[name, default: []].insert(spelling)
@@ -166,6 +182,17 @@ public struct NameUseCollector {
                 labels: labels, hasTrailingClosure: call.map { $0.trailingClosure != nil } ?? false, receiver: receiver,
                 isMemberAccess: isMemberAccess, qualifier: qualifier
             )
+            // Inside a type's body a bare name, `logger` or the `logger` of `logger.info()`, can read a member of that
+            // type without `self.`, unless the member around it binds a value of that name.
+            // A generic parameter of that name, `T` in `func f<T>()`, is what the name refers to.
+            if !isMember, !isMemberAccess, reference.baseName.identifier != nil, !placeholderTypeNames.contains(name),
+               let types = implicitSelfTypes(of: name, at: node)
+            {
+                record(
+                    name, isMember: true, isConstruction: !inPattern, at: node, spellingOnly: true, inPattern: inPattern,
+                    labels: labels, implicitSelfTypes: types
+                )
+            }
             // `Widget(...)` calls an initializer of `Widget`, which the index records under `init`; a type name
             // starts with a capital letter, a function does not. The use is also recorded as `Widget.init`, so
             // a match can be placed at a use of this type's initializer rather than any type's.
@@ -236,6 +263,69 @@ public struct NameUseCollector {
         }
     }
 
+    /// The base names of the types and extensions around `node`, innermost first, for a bare `name` that can read one of
+    /// their members; `nil` outside any type, or when the declaration directly inside the innermost type, such as the
+    /// method holding the use, binds a value of that name anywhere: a local, a parameter, a pattern or a local function.
+    private mutating func implicitSelfTypes(of name: String, at node: Syntax) -> [String]? {
+        var types: [String] = []
+        var member: Syntax?
+        var current: Syntax? = node
+        while let syntax = current {
+            if let name = Self.typeName(of: syntax) {
+                types.append(name)
+            } else if types.isEmpty, member == nil, syntax.parent?.is(MemberBlockItemSyntax.self) == true {
+                // The innermost one: a type-level `#if` around the method is a member too, holding its siblings.
+                member = syntax
+            }
+            current = syntax.parent
+        }
+        guard !types.isEmpty else { return nil }
+
+        if let member {
+            if facts.boundNamesByMember[member.id] == nil {
+                var bound: Set<String> = []
+                Self.collectBoundValueNames(member, into: &bound)
+                Self.collectLocalDeclarationNames(in: member, into: &bound)
+                facts.boundNamesByMember[member.id] = bound
+            }
+            if facts.boundNamesByMember[member.id]?.contains(name) == true { return nil }
+        }
+        return types
+    }
+
+    /// The names of the functions, types and type aliases declared inside `member`, not `member` itself: a bare name
+    /// in it names one of them rather than a member of the type.
+    private static func collectLocalDeclarationNames(in member: Syntax, into names: inout Set<String>) {
+        for child in member.children(viewMode: .sourceAccurate) {
+            if let name = (child.as(FunctionDeclSyntax.self)?.name ?? child.as(TypeAliasDeclSyntax.self)?.name)?.identifier?.name
+                ?? typeName(of: child)
+            {
+                names.insert(name)
+            }
+            collectLocalDeclarationNames(in: child, into: &names)
+        }
+    }
+
+    /// The name a type declaration declares, without backticks: `Store` for ``struct `Store` {}``.
+    private static func typeName(of node: Syntax) -> String? {
+        let name: TokenSyntax? = if let decl = node.as(ClassDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(StructDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(EnumDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(ActorDeclSyntax.self) {
+            decl.name
+        } else if let decl = node.as(ProtocolDeclSyntax.self) {
+            decl.name
+        } else {
+            nil
+        }
+        if let name { return name.identifier?.name ?? name.text }
+        if let decl = node.as(ExtensionDeclSyntax.self) { return baseName(of: decl.extendedType) }
+        return nil
+    }
+
     /// The type extended by the innermost extension around `node`.
     private static func enclosingExtendedTypeName(of node: Syntax) -> String? {
         var current = node.parent
@@ -251,10 +341,10 @@ public struct NameUseCollector {
     /// The last component of a type's name, without generic arguments: `Array` for `Swift.Array<Int>`.
     private static func baseName(of type: TypeSyntax) -> String {
         if let member = type.as(MemberTypeSyntax.self) {
-            return member.name.text
+            return member.name.identifier?.name ?? member.name.text
         }
         if let identifier = type.as(IdentifierTypeSyntax.self) {
-            return identifier.name.text
+            return identifier.name.identifier?.name ?? identifier.name.text
         }
         return type.trimmedDescription
     }
@@ -297,13 +387,13 @@ public struct NameUseCollector {
             for child in ancestor.children(viewMode: .sourceAccurate) {
                 if let clause = child.as(GenericParameterClauseSyntax.self) {
                     for parameter in clause.parameters {
-                        names.insert(parameter.name.text)
+                        names.insert(parameter.name.identifier?.name ?? parameter.name.text)
                     }
                 }
             }
             if let protocolDecl = ancestor.as(ProtocolDeclSyntax.self) {
                 for member in protocolDecl.memberBlock.members {
-                    if let associated = member.decl.as(AssociatedTypeDeclSyntax.self) { names.insert(associated.name.text) }
+                    if let associated = member.decl.as(AssociatedTypeDeclSyntax.self) { names.insert(associated.name.identifier?.name ?? associated.name.text) }
                 }
             }
             current = ancestor.parent
@@ -311,12 +401,12 @@ public struct NameUseCollector {
     }
 
     private mutating func isImportedModule(_ name: String) -> Bool {
-        if importedModuleNames == nil {
+        if facts.importedModuleNames == nil {
             var names: Set<String> = ["Swift"]
             Self.collectImportedModuleNames(root, into: &names)
-            importedModuleNames = names
+            facts.importedModuleNames = names
         }
-        return importedModuleNames?.contains(name) == true
+        return facts.importedModuleNames?.contains(name) == true
     }
 
     private static func collectImportedModuleNames(_ node: Syntax, into names: inout Set<String>) {
@@ -330,15 +420,26 @@ public struct NameUseCollector {
     }
 
     private mutating func isCapitalizedValue(_ name: String) -> Bool {
-        if capitalizedValueNames == nil {
+        if facts.capitalizedValueNames == nil {
             var names: Set<String> = []
             Self.collectCapitalizedValueNames(root, into: &names)
-            capitalizedValueNames = names
+            facts.capitalizedValueNames = names
         }
-        return capitalizedValueNames?.contains(name) == true
+        return facts.capitalizedValueNames?.contains(name) == true
     }
 
     private static func collectCapitalizedValueNames(_ node: Syntax, into names: inout Set<String>) {
+        var bound: Set<String> = []
+        collectBoundValueNames(node, into: &bound)
+        names.formUnion(bound.filter { $0.first?.isUppercase == true })
+    }
+
+    /// The names `node` binds to values: `let` and `var` bindings and other identifier patterns, function and
+    /// closure parameters by their local names, a closure's captures, `[logger = …]`, the parameters of
+    /// accessors, `set(value)` or the implicit `newValue` of `set`, `willSet` and `init` and `oldValue` of
+    /// `didSet`, a bare `catch`'s implicit `error`, and the backing storage of a wrapped local or parameter,
+    /// `_logger` for `@Wrapper var logger` or `run(@Wrapper logger: Int)`.
+    private static func collectBoundValueNames(_ node: Syntax, into names: inout Set<String>) {
         let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
             pattern.identifier
         } else if let parameter = node.as(FunctionParameterSyntax.self) {
@@ -347,22 +448,50 @@ public struct NameUseCollector {
             parameter.secondName ?? parameter.firstName
         } else if let parameter = node.as(ClosureShorthandParameterSyntax.self) {
             parameter.name
+        } else if let parameters = node.as(AccessorParametersSyntax.self) {
+            parameters.name
+        } else if let capture = node.as(ClosureCaptureSyntax.self) {
+            capture.name
         } else {
             nil
         }
-        if let name = bound?.identifier?.name, name.first?.isUppercase == true {
+        if let name = bound?.identifier?.name {
             names.insert(name)
+            // `run(@Wrapper logger: Int)` binds its backing storage `_logger` and projection `$logger` too.
+            let isWrapped = node.as(FunctionParameterSyntax.self).map { !$0.attributes.isEmpty }
+                ?? node.as(ClosureParameterSyntax.self).map { !$0.attributes.isEmpty } ?? false
+            if isWrapped { names.formUnion(["_" + name, "$" + name]) }
+        }
+        // `@Wrapper var logger` binds its backing storage `_logger` and projection `$logger` too. Any attribute counts:
+        // which one is a property wrapper is not known from syntax.
+        if let variable = node.as(VariableDeclSyntax.self), !variable.attributes.isEmpty {
+            for binding in variable.bindings {
+                if let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.identifier?.name {
+                    names.formUnion(["_" + name, "$" + name])
+                }
+            }
+        }
+        // `catch` and `catch where error is Failure` bind `error` themselves; `catch let failure` does not.
+        if let clause = node.as(CatchClauseSyntax.self), clause.catchItems.isEmpty || clause.catchItems.contains(where: { $0.pattern == nil }) {
+            names.insert("error")
+        }
+        if let accessor = node.as(AccessorDeclSyntax.self), accessor.parameters == nil {
+            switch accessor.accessorSpecifier.tokenKind {
+            case .keyword(.set), .keyword(.willSet), .keyword(.`init`): names.insert("newValue")
+            case .keyword(.didSet): names.insert("oldValue")
+            default: break
+            }
         }
         for child in node.children(viewMode: .sourceAccurate) {
-            collectCapitalizedValueNames(child, into: &names)
+            collectBoundValueNames(child, into: &names)
         }
     }
 
     private static func collectPlaceholderTypeNames(_ node: Syntax, into names: inout Set<String>) {
         if let parameter = node.as(GenericParameterSyntax.self) {
-            names.insert(parameter.name.text)
+            names.insert(parameter.name.identifier?.name ?? parameter.name.text)
         } else if let associated = node.as(AssociatedTypeDeclSyntax.self) {
-            names.insert(associated.name.text)
+            names.insert(associated.name.identifier?.name ?? associated.name.text)
         }
         for child in node.children(viewMode: .sourceAccurate) {
             collectPlaceholderTypeNames(child, into: &names)

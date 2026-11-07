@@ -28,6 +28,8 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
 
     private let locationBuilder: SourceLocationBuilder
     private let evidence: Set<Location>
+    /// What the clauses' collectors read from the whole file, read once for all of them. A visitor walks one file.
+    private let facts = NameUseCollector.FileFacts()
 
     public init(locationBuilder: SourceLocationBuilder, evidence: Set<Location>) {
         self.locationBuilder = locationBuilder
@@ -44,7 +46,7 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
             let isTaken = evidence.contains { start <= $0 && $0 <= end }
             guard !isTaken else { continue }
 
-            let content = NameUseCollector(Syntax(elements))
+            let content = NameUseCollector(Syntax(elements), facts: facts)
             guard content.hasIndexableSyntax else { continue }
 
             let keyword = clause.poundKeyword.text
