@@ -11,3 +11,8 @@ public protocol FixtureProtocol236 {
 
 // Retained by --retain-public-targets CrossModuleRetentionSupportFixtures, with its unused parameter.
 public func fixtureFunction236(unused: Int) {}
+
+// Extended with initializers by CrossModuleRetentionFixtures.
+public struct FixtureWidget11 {
+    public init() {}
+}

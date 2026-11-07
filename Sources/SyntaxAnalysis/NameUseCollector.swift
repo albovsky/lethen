@@ -49,6 +49,8 @@ public struct NameUseCollector {
     /// `Store.shared` through one names no type. Gathered on first use, across the whole file rather than by scope, so
     /// a part of it sees the parameters and locals around it.
     private var capitalizedValueNames: Set<String>?
+    /// The modules the file imports, anywhere in it, and `Swift`, which every file imports. Gathered on first use.
+    private var importedModuleNames: Set<String>?
     private let root: Syntax
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
@@ -180,9 +182,13 @@ public struct NameUseCollector {
                 // skipped use to this type's initializers. A generic parameter or `Self` stands for any type.
                 if let call = Self.call(spelling: reference) {
                     let constructed = name == "Self" || placeholderTypeNames.contains(name) ? nil : name
+                    // `Foundation.TimeInterval(...)` keeps its qualifier when the file imports it, so it names a
+                    // module. Any other qualifier, `NSString` in `NSString.Widget(...)`, may be a type.
+                    let module = constructed == nil || !isQualifiedTypeCall ? nil : qualifier.flatMap { isImportedModule($0) ? $0 : nil }
                     record(
                         "init", isMember: true, isConstruction: !inPattern, at: node, spellingOnly: true, inPattern: inPattern,
-                        labels: Self.labels(of: call), hasTrailingClosure: call.trailingClosure != nil, receiver: constructed
+                        labels: Self.labels(of: call), hasTrailingClosure: call.trailingClosure != nil, receiver: constructed,
+                        qualifier: module
                     )
                 }
             }
@@ -301,6 +307,25 @@ public struct NameUseCollector {
                 }
             }
             current = ancestor.parent
+        }
+    }
+
+    private mutating func isImportedModule(_ name: String) -> Bool {
+        if importedModuleNames == nil {
+            var names: Set<String> = ["Swift"]
+            Self.collectImportedModuleNames(root, into: &names)
+            importedModuleNames = names
+        }
+        return importedModuleNames?.contains(name) == true
+    }
+
+    private static func collectImportedModuleNames(_ node: Syntax, into names: inout Set<String>) {
+        if let importDecl = node.as(ImportDeclSyntax.self) {
+            if let module = importDecl.path.first?.name.text { names.insert(module) }
+            return
+        }
+        for child in node.children(viewMode: .sourceAccurate) {
+            collectImportedModuleNames(child, into: &names)
         }
     }
 
