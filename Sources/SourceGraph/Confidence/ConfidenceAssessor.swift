@@ -114,6 +114,7 @@ public final class ConfidenceAssessor {
             if let extended = unscannedExtendedType(of: declaration) {
                 if isQualifiedByAnotherModule {
                     return receiver == extended.name || Self.sdkTypeAliases[receiver]?.contains(extended.name) == true
+                        || mayBeUnscannedRelative(receiver, ofUnscanned: extended.isClass)
                 }
                 return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
             }
@@ -175,19 +176,43 @@ public final class ConfidenceAssessor {
 
     /// Whether a use spelled through the type `receiver` cannot reach a member of `extended`, a type the scan does
     /// not declare. It can when it is that type, a type alias of it, which a type alias of the scan or one of the
-    /// SDK's may be, or a subclass of it, which a class of the scan may be. Any other name is another type, or a
-    /// function that is called like one, as `DDLogDebug("...")` is. A name the scan does not declare could also be an unscanned
-    /// subclass or alias this does not list; that is accepted, since ruling out every such name would leave nothing to narrow.
+    /// SDK's may be, or a subclass of it, which a class of the scan may be. A name the scan does not declare can also
+    /// be an unscanned alias or subclass, which the build's own references to it show: see `mayBeUnscannedRelative`.
+    /// Any other name is another type, or a function that is called like one, as `DDLogDebug("...")` is.
     private func isDistinct(receiver: String, fromUnscanned extended: String, isClass: Bool) -> Bool {
         if receiver == extended { return false }
 
         let receivers = typeDeclarationsByName[receiver, default: []]
         // A type of the scan with an SDK alias's name shadows the alias.
         if receivers.isEmpty, Self.sdkTypeAliases[receiver]?.contains(extended) == true { return false }
+        if receivers.isEmpty, mayBeUnscannedRelative(receiver, ofUnscanned: isClass) { return false }
         // Only a class can subclass an unscanned class; a struct or enum has no subclasses.
         let compatible: Set<Declaration.Kind> = isClass ? [.class, .typealias, .protocol, .associatedtype, .genericTypeParam] : [.typealias, .protocol, .associatedtype, .genericTypeParam]
         return receivers.allSatisfy { !compatible.contains($0.kind) }
     }
+
+    /// Whether `name`, which the scan does not declare as a type, can stand for an unscanned type the scan extends,
+    /// as its alias, or as its subclass when it is a class. The index records the kind of every declaration the build
+    /// references, so a name the compiled code uses as an unscanned type alias, or as an unscanned class for a class,
+    /// may be one: `NSString` for an initializer of `extension NSObject`. What it aliases or inherits from is not
+    /// recorded, so any such alias or class is accepted. A name the build uses only as a function, `DDLogDebug`, or
+    /// never uses at all, is not.
+    private func mayBeUnscannedRelative(_ name: String, ofUnscanned isClass: Bool) -> Bool {
+        let kinds = unscannedTypeKindsByName[name, default: []]
+        return kinds.contains(.typealias) || (isClass && kinds.contains(.class))
+    }
+
+    /// The kinds of the types the build references that no declaration of the scan is, by name: the SDK's and
+    /// unscanned modules' classes and type aliases. Built on first use, after indexing.
+    private lazy var unscannedTypeKindsByName: [String: Set<Declaration.Kind>] = {
+        var kinds: [String: Set<Declaration.Kind>] = [:]
+        for reference in graph.allReferences where [.class, .typealias].contains(reference.declarationKind)
+            && graph.declaration(withUsr: reference.usr) == nil
+        {
+            kinds[SourceGraph.baseName(of: reference.name), default: []].insert(reference.declarationKind)
+        }
+        return kinds
+    }()
 
     /// The types each SDK type alias can stand for, which an unscanned extension adds members to under either name.
     /// An alias of a C type is platform-dependent, `CLong` is `Int` where `long` is 64 bits and `Int32` on Windows, and
