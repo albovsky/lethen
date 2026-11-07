@@ -437,7 +437,8 @@ public struct NameUseCollector {
     /// The names `node` binds to values: `let` and `var` bindings and other identifier patterns, function and
     /// closure parameters by their local names, a closure's captures, `[logger = …]`, the parameters of
     /// accessors, `set(value)` or the implicit `newValue` of `set`, `willSet` and `init` and `oldValue` of
-    /// `didSet`, and a bare `catch`'s implicit `error`.
+    /// `didSet`, a bare `catch`'s implicit `error`, and a wrapped local's backing storage, `_logger` for
+    /// `@Wrapper var logger`.
     private static func collectBoundValueNames(_ node: Syntax, into names: inout Set<String>) {
         let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
             pattern.identifier
@@ -456,6 +457,15 @@ public struct NameUseCollector {
         }
         if let name = bound?.identifier?.name {
             names.insert(name)
+        }
+        // `@Wrapper var logger` binds its backing storage `_logger` and projection `$logger` too. Any attribute counts:
+        // which one is a property wrapper is not known from syntax.
+        if let variable = node.as(VariableDeclSyntax.self), !variable.attributes.isEmpty {
+            for binding in variable.bindings {
+                if let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.identifier?.name {
+                    names.formUnion(["_" + name, "$" + name])
+                }
+            }
         }
         // `catch` and `catch where error is Failure` bind `error` themselves; `catch let failure` does not.
         if let clause = node.as(CatchClauseSyntax.self), clause.catchItems.isEmpty || clause.catchItems.contains(where: { $0.pattern == nil }) {

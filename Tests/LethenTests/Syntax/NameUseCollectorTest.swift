@@ -334,6 +334,25 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(collect("func free() { _ = logger }").spellings["logger"], [Spelling()])
     }
 
+    func testAWrappedLocalBindsItsBackingStorage() throws {
+        typealias Spelling = NameSites.Spelling
+        let tree = Parser.parse(source: """
+        struct Store {
+            var _logger = 0
+            func run() {
+                @Wrapper var logger = 1
+                #if os(Windows)
+                _ = _logger
+                #endif
+            }
+        }
+        """)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        // The local's backing storage is what the clause reads, not the property.
+        XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["_logger"], [Spelling()])
+    }
+
     func testAnInitAccessorBindsNewValue() throws {
         typealias Spelling = NameSites.Spelling
         let tree = Parser.parse(source: """
