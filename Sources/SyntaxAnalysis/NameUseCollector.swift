@@ -44,23 +44,34 @@ public struct NameUseCollector {
     /// The type extended by the extension around the node being collected, which can use generic parameters and
     /// associated types of that type that no syntax declares.
     private var extendedTypeName: String?
-    /// The capitalized names the file binds to values, `let Handler = …` or a parameter `Handler`, against the Swift
-    /// API guidelines: calling one, `Handler()`, can run a `callAsFunction` rather than construct a type, and
-    /// `Store.shared` through one names no type. Gathered on first use, across the whole file rather than by scope, so
-    /// a part of it sees the parameters and locals around it.
-    private var capitalizedValueNames: Set<String>?
-    /// The names each member of a type binds, gathered on the first bare name in it, so a member is scanned once
-    /// rather than once for each of its bare names.
-    private var boundNamesByMember: [SyntaxIdentifier: Set<String>] = [:]
-    /// The modules the file imports, anywhere in it, and `Swift`, which every file imports. Gathered on first use.
-    private var importedModuleNames: Set<String>?
+    /// What the collector reads from the whole file, shared with the collectors of its other parts.
+    private let facts: FileFacts
     private let root: Syntax
+
+    /// What a collector reads from the whole file around the syntax it collects, gathered on first use. The
+    /// collectors of one file's `#if` clauses share one, so the file is read once rather than once for each clause.
+    public final class FileFacts {
+        /// The capitalized names the file binds to values, `let Handler = …` or a parameter `Handler`, against the
+        /// Swift API guidelines: calling one, `Handler()`, can run a `callAsFunction` rather than construct a type,
+        /// and `Store.shared` through one names no type. Gathered across the whole file rather than by scope, so a
+        /// part of it sees the parameters and locals around it.
+        fileprivate var capitalizedValueNames: Set<String>?
+        /// The names each member of a type binds, so a member is scanned once rather than once for each of its
+        /// bare names.
+        fileprivate var boundNamesByMember: [SyntaxIdentifier: Set<String>] = [:]
+        /// The modules the file imports, anywhere in it, and `Swift`, which every file imports.
+        fileprivate var importedModuleNames: Set<String>?
+
+        public init() {}
+    }
 
     /// Collects the uses in `node`, calling `onUse` for each one in source order. `node` can be a part of a larger
     /// declaration, such as the elements of an `#if` clause; the generic parameters and associated types of the
     /// declarations around it count as placeholders too.
-    public init(_ node: Syntax, onUse: ((Use) -> Void)? = nil) {
+    /// `facts` are what it reads from the whole file; collectors of parts of the same file can share them.
+    public init(_ node: Syntax, facts: FileFacts = FileFacts(), onUse: ((Use) -> Void)? = nil) {
         self.onUse = onUse
+        self.facts = facts
         Self.collectPlaceholderTypeNames(node, into: &placeholderTypeNames)
         Self.collectEnclosingPlaceholderTypeNames(of: node, into: &placeholderTypeNames)
         extendedTypeName = Self.enclosingExtendedTypeName(of: node)
@@ -271,13 +282,13 @@ public struct NameUseCollector {
         guard !types.isEmpty else { return nil }
 
         if let member {
-            if boundNamesByMember[member.id] == nil {
+            if facts.boundNamesByMember[member.id] == nil {
                 var bound: Set<String> = []
                 Self.collectBoundValueNames(member, into: &bound)
                 Self.collectLocalDeclarationNames(in: member, into: &bound)
-                boundNamesByMember[member.id] = bound
+                facts.boundNamesByMember[member.id] = bound
             }
-            if boundNamesByMember[member.id]?.contains(name) == true { return nil }
+            if facts.boundNamesByMember[member.id]?.contains(name) == true { return nil }
         }
         return types
     }
@@ -390,12 +401,12 @@ public struct NameUseCollector {
     }
 
     private mutating func isImportedModule(_ name: String) -> Bool {
-        if importedModuleNames == nil {
+        if facts.importedModuleNames == nil {
             var names: Set<String> = ["Swift"]
             Self.collectImportedModuleNames(root, into: &names)
-            importedModuleNames = names
+            facts.importedModuleNames = names
         }
-        return importedModuleNames?.contains(name) == true
+        return facts.importedModuleNames?.contains(name) == true
     }
 
     private static func collectImportedModuleNames(_ node: Syntax, into names: inout Set<String>) {
@@ -409,12 +420,12 @@ public struct NameUseCollector {
     }
 
     private mutating func isCapitalizedValue(_ name: String) -> Bool {
-        if capitalizedValueNames == nil {
+        if facts.capitalizedValueNames == nil {
             var names: Set<String> = []
             Self.collectCapitalizedValueNames(root, into: &names)
-            capitalizedValueNames = names
+            facts.capitalizedValueNames = names
         }
-        return capitalizedValueNames?.contains(name) == true
+        return facts.capitalizedValueNames?.contains(name) == true
     }
 
     private static func collectCapitalizedValueNames(_ node: Syntax, into names: inout Set<String>) {
