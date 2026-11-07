@@ -437,8 +437,8 @@ public struct NameUseCollector {
     /// The names `node` binds to values: `let` and `var` bindings and other identifier patterns, function and
     /// closure parameters by their local names, a closure's captures, `[logger = …]`, the parameters of
     /// accessors, `set(value)` or the implicit `newValue` of `set`, `willSet` and `init` and `oldValue` of
-    /// `didSet`, a bare `catch`'s implicit `error`, and a wrapped local's backing storage, `_logger` for
-    /// `@Wrapper var logger`.
+    /// `didSet`, a bare `catch`'s implicit `error`, and the backing storage of a wrapped local or parameter,
+    /// `_logger` for `@Wrapper var logger` or `run(@Wrapper logger: Int)`.
     private static func collectBoundValueNames(_ node: Syntax, into names: inout Set<String>) {
         let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
             pattern.identifier
@@ -457,6 +457,10 @@ public struct NameUseCollector {
         }
         if let name = bound?.identifier?.name {
             names.insert(name)
+            // `run(@Wrapper logger: Int)` binds its backing storage `_logger` and projection `$logger` too.
+            let isWrapped = node.as(FunctionParameterSyntax.self).map { !$0.attributes.isEmpty }
+                ?? node.as(ClosureParameterSyntax.self).map { !$0.attributes.isEmpty } ?? false
+            if isWrapped { names.formUnion(["_" + name, "$" + name]) }
         }
         // `@Wrapper var logger` binds its backing storage `_logger` and projection `$logger` too. Any attribute counts:
         // which one is a property wrapper is not known from syntax.

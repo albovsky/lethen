@@ -351,6 +351,21 @@ final class NameUseCollectorTest: XCTestCase {
         let elements = try XCTUnwrap(clause.clauses.first?.elements)
         // The local's backing storage is what the clause reads, not the property.
         XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["_logger"], [Spelling()])
+
+        // A wrapped parameter's backing storage too.
+        let parameterTree = Parser.parse(source: """
+        struct Store {
+            var _logger = 0
+            func run(@Wrapper logger: Int) {
+                #if os(Windows)
+                _ = _logger
+                #endif
+            }
+        }
+        """)
+        let parameterClause = try XCTUnwrap(findIfConfig(Syntax(parameterTree)))
+        let parameterElements = try XCTUnwrap(parameterClause.clauses.first?.elements)
+        XCTAssertEqual(NameUseCollector(Syntax(parameterElements)).spellings["_logger"], [Spelling()])
     }
 
     func testAnInitAccessorBindsNewValue() throws {
