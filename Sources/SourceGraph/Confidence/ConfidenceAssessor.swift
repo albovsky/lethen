@@ -106,14 +106,45 @@ public final class ConfidenceAssessor {
         if declaration.kind != .functionFree, let receiver = spelling.receiver,
            !mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType)
         {
+            // `Foundation.TimeInterval(...)` constructs a type of another module, which no type of the scan is,
+            // whatever its name.
+            let isQualifiedByAnotherModule = isOfAnotherModule(spelling, receiver: receiver, modules: modules)
             if let enclosing = enclosingTypeDeclaration(of: declaration) {
+                // A protocol's member is reached through any conforming type, `Foundation.Date(...)` included.
+                if isQualifiedByAnotherModule, Self.concreteTypeKinds.contains(enclosing.kind) { return false }
+
                 return !isDistinct(receiver: receiver, from: enclosing)
             }
             if let extended = unscannedExtendedType(of: declaration) {
+                if isQualifiedByAnotherModule {
+                    return receiver == extended.name || Self.sdkTypeAliases[receiver]?.contains(extended.name) == true
+                }
                 return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
             }
         }
         return true
+    }
+
+    /// The modules a declaration belongs to: those the index recorded it in, else those that compile its file.
+    private static func modules(of declaration: Declaration) -> Set<String> {
+        declaration.indexedModules.isEmpty ? declaration.location.file.modules : declaration.indexedModules
+    }
+
+    /// Whether a type is spelled through a qualifier that names neither a type of the scan, `Outer` in `Outer.Inner(...)`,
+    /// nor a type the scan extends, `URLSession` in `URLSession.Config(...)` for a `Config` declared in an extension of
+    /// it, nor the declaration's own module, nor a module that declares a type or type alias of the receiver's name,
+    /// `Models` in `Models.Widget(...)` and `Aliases` in `Aliases.Renamed(...)`, so names a module the scan does not
+    /// declare the type in: `Foundation` in `Foundation.TimeInterval(...)`.
+    private func isOfAnotherModule(_ spelling: NameSites.Spelling, receiver: String, modules: Set<String>) -> Bool {
+        guard let qualifier = spelling.qualifier, qualifier != receiver, qualifier != "Self",
+              typeDeclarationsByName[qualifier, default: []].isEmpty, !extendedTypeNames.contains(qualifier),
+              !modules.contains(qualifier)
+        else { return false }
+
+        // `Facade.Widget(...)` reaches `Models.Widget` too when `Facade` re-exports `Models`.
+        return !typeDeclarationsByName[receiver, default: []].contains { declaration in
+            Self.modules(of: declaration).contains { $0 == qualifier || graph.isModule($0, exportedBy: qualifier) }
+        }
     }
 
     /// Whether a type name spelled inside an extension may be a generic parameter or associated type of the extended
@@ -243,6 +274,15 @@ public final class ConfidenceAssessor {
         }
         return declarations
     }()
+
+    /// The base names of the types the scan extends, each by the last component of its name. Built on first use, after
+    /// indexing.
+    private lazy var extendedTypeNames: Set<String> = Set(Declaration.Kind.extensionKinds.flatMap { kind in
+        graph.declarations(ofKind: kind).map { declaration in
+            let name = SourceGraph.baseName(of: declaration.name)
+            return name.split(separator: ".").last.map(String.init) ?? name
+        }
+    })
 
     /// The declarations that can stand for each type, its type aliases and subclasses, followed through each
     /// other. `typeAliasNames` finds a subclass by a reference it holds to its superclass, which the index records
