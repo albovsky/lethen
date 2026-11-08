@@ -86,9 +86,13 @@ public final class ConfidenceAssessor {
         {
             return false
         }
-        // A bare name inside a type's body reads a property or method of that type, or of one it inherits from.
+        // A bare name inside a type's body reads a property or method of that type, or of one it inherits from. Of the
+        // types around it, it reads only a static or class member: a nested type's instance has no instance of them.
         if let types = spelling.implicitSelfTypes {
-            return Self.implicitSelfKinds.contains(declaration.kind) && isMember(declaration, ofAnyOf: Set(types))
+            guard Self.implicitSelfKinds.contains(declaration.kind), let innermost = types.first else { return false }
+
+            return isMember(declaration, ofAnyOf: [innermost])
+                || Self.typeMemberKinds.contains(declaration.kind) && isMember(declaration, ofAnyOf: Set(types.dropFirst()))
         }
         if Self.memberKinds.contains(declaration.kind), !spelling.isMember { return false }
 
@@ -250,6 +254,7 @@ public final class ConfidenceAssessor {
     private static let implicitSelfKinds: Set<Declaration.Kind> = [
         .varInstance, .varStatic, .varClass, .functionMethodInstance, .functionMethodStatic, .functionMethodClass,
     ]
+    private static let typeMemberKinds: Set<Declaration.Kind> = [.varStatic, .varClass, .functionMethodStatic, .functionMethodClass]
 
     /// Whether the declaration is a member of a type named in `types`, of a subclass or type alias of one, or of an
     /// unscanned type an extension of one of them adds it to.

@@ -168,6 +168,25 @@ public class FixtureOther9 {
     public init() {}
 }
 
+public class FixtureOuter9 {
+    // Same name as a property of the nested type, which reads its own: it has no instance of this type.
+    var nestedRead9 = 0
+    // Read bare in a skipped clause of the nested type, which reaches this type's static members.
+    static var outerStatic9 = 0
+
+    public class FixtureInner9 {
+        var nestedRead9 = 0
+
+        public func run() -> Int {
+            #if os(Windows)
+                return nestedRead9 + outerStatic9
+            #else
+                return 0
+            #endif
+        }
+    }
+}
+
 public class FixtureBase9 {
     // Read as a bare name in a skipped clause of a subclass, which inherits it.
     var inherited9 = 0

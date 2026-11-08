@@ -2485,6 +2485,18 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotReferenced(.varInstance("logger9"))
                 self.assertConfidence(.varInstance("logger9"), .certain)
             }
+            // A nested type's body reads its own instance members and the static members of the types around it, never
+            // their instance members.
+            assertReferenced(.class("FixtureOuter9")) {
+                self.assertNotReferenced(.varInstance("nestedRead9"))
+                self.assertConfidence(.varInstance("nestedRead9"), .certain)
+                self.assertNotReferenced(.varStatic("outerStatic9"))
+                self.assertConfidence(.varStatic("outerStatic9"), .likely)
+                self.assertReferenced(.class("FixtureInner9")) {
+                    self.assertNotReferenced(.varInstance("nestedRead9"))
+                    self.assertConfidence(.varInstance("nestedRead9"), .likely)
+                }
+            }
             // A subclass's body reads what it inherits.
             assertReferenced(.class("FixtureBase9")) {
                 self.assertNotReferenced(.varInstance("inherited9"))
