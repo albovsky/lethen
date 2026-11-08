@@ -284,26 +284,12 @@ public struct NameUseCollector {
         if let member {
             if facts.boundNamesByMember[member.id] == nil {
                 var bound: Set<String> = []
-                Self.collectBoundValueNames(member, into: &bound)
-                Self.collectLocalDeclarationNames(in: member, into: &bound)
+                Self.collectBoundValueNames(member, includingLocalDeclarations: true, into: &bound)
                 facts.boundNamesByMember[member.id] = bound
             }
             if facts.boundNamesByMember[member.id]?.contains(name) == true { return nil }
         }
         return types
-    }
-
-    /// The names of the functions, types and type aliases declared inside `member`, not `member` itself: a bare name
-    /// in it names one of them rather than a member of the type.
-    private static func collectLocalDeclarationNames(in member: Syntax, into names: inout Set<String>) {
-        for child in member.children(viewMode: .sourceAccurate) {
-            if let name = (child.as(FunctionDeclSyntax.self)?.name ?? child.as(TypeAliasDeclSyntax.self)?.name)?.identifier?.name
-                ?? typeName(of: child)
-            {
-                names.insert(name)
-            }
-            collectLocalDeclarationNames(in: child, into: &names)
-        }
     }
 
     /// The name a type declaration declares, without backticks: `Store` for ``struct `Store` {}``.
@@ -439,7 +425,22 @@ public struct NameUseCollector {
     /// accessors, `set(value)` or the implicit `newValue` of `set`, `willSet` and `init` and `oldValue` of
     /// `didSet`, a bare `catch`'s implicit `error`, and the backing storage of a wrapped local or parameter,
     /// `_logger` for `@Wrapper var logger` or `run(@Wrapper logger: Int)`.
-    private static func collectBoundValueNames(_ node: Syntax, into names: inout Set<String>) {
+    private static func collectBoundValueNames(_ root: Syntax, includingLocalDeclarations: Bool = false, into names: inout Set<String>) {
+        // A collector may already be deep inside a skipped expression when it requests facts about the whole file.
+        var pending = [root]
+        while let node = pending.popLast() {
+            recordBindings(of: node, into: &names)
+            if includingLocalDeclarations, node.id != root.id,
+               let name = (node.as(FunctionDeclSyntax.self)?.name ?? node.as(TypeAliasDeclSyntax.self)?.name)?.identifier?.name
+               ?? typeName(of: node)
+            {
+                names.insert(name)
+            }
+            pending.append(contentsOf: node.children(viewMode: .sourceAccurate))
+        }
+    }
+
+    private static func recordBindings(of node: Syntax, into names: inout Set<String>) {
         let bound: TokenSyntax? = if let pattern = node.as(IdentifierPatternSyntax.self) {
             pattern.identifier
         } else if let parameter = node.as(FunctionParameterSyntax.self) {
@@ -481,9 +482,6 @@ public struct NameUseCollector {
             case .keyword(.didSet): names.insert("oldValue")
             default: break
             }
-        }
-        for child in node.children(viewMode: .sourceAccurate) {
-            collectBoundValueNames(child, into: &names)
         }
     }
 

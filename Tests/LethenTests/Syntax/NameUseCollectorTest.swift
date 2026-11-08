@@ -391,6 +391,31 @@ final class NameUseCollectorTest: XCTestCase {
         XCTAssertEqual(NameUseCollector(Syntax(elements)).spellings["newValue"], [Spelling()])
     }
 
+    func testImplicitSelfWithDeepExpressionsInTheEnclosingMethod() throws {
+        let chain = String(repeating: ".next", count: 1800)
+        let tree = Parser.parse(source: """
+        struct Store {
+            func run() {
+                #if os(Windows)
+                _ = shadow
+                _ = member
+                #endif
+                let shadow = value\(chain)
+            }
+        }
+        """)
+        let clause = try XCTUnwrap(findIfConfig(Syntax(tree)))
+        let elements = try XCTUnwrap(clause.clauses.first?.elements)
+        let finished = expectation(description: "Collected member bindings on an indexing worker")
+        DispatchQueue.global().async {
+            let collector = NameUseCollector(Syntax(elements))
+            XCTAssertEqual(collector.spellings["shadow"], [NameSites.Spelling()])
+            XCTAssertEqual(collector.spellings["member"], [.init(), .init(isMember: true, implicitSelfTypes: ["Store"])])
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 30)
+    }
+
     func testEscapedTypeNamesAreReadWithoutBackticks() throws {
         typealias Spelling = NameSites.Spelling
         let source = """
