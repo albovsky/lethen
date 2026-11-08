@@ -16,6 +16,9 @@ struct FixtureNamed7 {
 struct FixtureOther7 {
     // No skipped use spells these labels.
     init(weight _: Int) {}
+    init(descriptor _: Int, nonblocking _: Bool = false) {}
+    init(defaulted _: Int = 0) {}
+    init(variadic _: Int...) {}
 }
 
 extension Array where Element: FixtureMarker7 {
@@ -25,6 +28,7 @@ extension Array where Element: FixtureMarker7 {
         _ = FixtureOther7.self
         #if os(Windows)
             _ = Element(size: 1)
+            _ = Int()
             _ = FixtureNamed7(label: 1)
         #endif
     }

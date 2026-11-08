@@ -103,9 +103,11 @@ public final class ConfidenceAssessor {
             return false
         }
 
-        if declaration.kind != .functionFree, let receiver = spelling.receiver,
-           !mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType)
-        {
+        if declaration.kind != .functionFree, let receiver = spelling.receiver {
+            if mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType) {
+                // An unknown receiver in an extension can stand for this type, but Unknown() still supplies no arguments.
+                return !(declaration.initializerRequiresArgument && spelling.labels == [] && !spelling.hasTrailingClosure)
+            }
             // `Foundation.TimeInterval(...)` constructs a type of another module, which no type of the scan is,
             // whatever its name.
             let isQualifiedByAnotherModule = isOfAnotherModule(spelling, receiver: receiver, modules: modules)

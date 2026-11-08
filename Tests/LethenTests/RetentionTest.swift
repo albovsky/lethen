@@ -2391,6 +2391,10 @@ final class RetentionTest: FixtureSourceGraphTestCase {
             assertReferenced(.struct("FixtureOther7")) {
                 self.assertNotReferenced(.functionConstructor("init(weight:)"))
                 self.assertConfidence(.functionConstructor("init(weight:)"), .certain)
+                self.assertNotReferenced(.functionConstructor("init(descriptor:nonblocking:)"))
+                self.assertConfidence(.functionConstructor("init(descriptor:nonblocking:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(defaulted:)"), .likely)
+                self.assertConfidence(.functionConstructor("init(variadic:)"), .likely)
             }
         }
     }
