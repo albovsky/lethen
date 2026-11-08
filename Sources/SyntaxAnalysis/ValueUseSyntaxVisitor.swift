@@ -23,6 +23,8 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     public private(set) var readOnlyPropertyLocations: Set<Location> = []
     /// Keyed by a function's name location: the functions declared `async`.
     public private(set) var asyncFunctionLocations: Set<Location> = []
+    /// Initializers whose written signature needs at least one caller-supplied argument.
+    public private(set) var initializersRequiringArguments: Set<Location> = []
     public private(set) var genericTypeLocations: Set<Location> = []
     private var genericNames: [Set<String>] = [[]]
     private let locations: SourceLocationBuilder
@@ -85,6 +87,13 @@ public final class ValueUseSyntaxVisitor: SyntaxVisitor {
     }
 
     override public func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
+        let requiresArgument = node.signature.parameterClause.parameters.contains { parameter in
+            parameter.defaultValue == nil && parameter.ellipsis == nil && !parameter.type.is(PackExpansionTypeSyntax.self)
+        }
+        // An override or required initializer may be called through a signature that supplies a default.
+        if requiresArgument, !node.modifiers.contains(where: { [.keyword(.override), .keyword(.required)].contains($0.name.tokenKind) }) {
+            initializersRequiringArguments.insert(locations.location(at: node.initKeyword.positionAfterSkippingLeadingTrivia))
+        }
         recordParameterTypeNames(
             of: node.signature,
             genericParameterClause: node.genericParameterClause,

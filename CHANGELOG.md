@@ -10,6 +10,7 @@
 
 ##### Bug Fixes
 
+- A zero-argument call inside a skipped extension of an unscanned type no longer lowers confidence in an unrelated initializer that requires an argument. This restores three swift-nio socket initializers to `certain`.
 - A construction spelled through another module in a `#if` branch the build skipped, `Foundation.TimeInterval(seconds:)`, no longer makes a scanned type of the same name `likely`: it constructs that module's type. It now names the initializers of an extension of the type the module's name stands for, so `Swift.CDouble(...)` reaches an initializer of an `extension Double` even when the scan declares its own `CDouble`. Only a qualifier the file imports, or `Swift`, is read as a module; a construction qualified by the scan's own module, by a module that declares a type or type alias of that name, `Models.Widget(...)` for an initializer another module adds to `Widget`, or by any other name, `NSString.Widget(...)`, still counts, as does a protocol's initializer reached through a conforming type ([#163](https://github.com/albovsky/lethen/issues/163)).
 
 ## 2026.11.1 (2026-11-06)

@@ -242,6 +242,8 @@ public final class Declaration {
     /// True for a Swift property with no setter: a `let`, or a `var` with only a getter. Such a property has no
     /// setter selector at run time.
     public var isReadOnly: Bool = false
+    /// True for an initializer whose signature rules out a call with no arguments.
+    public var initializerRequiresArgument: Bool = false
     /// True for a function declared `async`.
     public var isAsync: Bool = false
     public var parent: Declaration?
