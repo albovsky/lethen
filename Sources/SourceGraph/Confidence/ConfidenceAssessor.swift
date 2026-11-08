@@ -81,6 +81,21 @@ public final class ConfidenceAssessor {
     /// `String.init(data:)` does not name another type's initializer. Neither says anything about a use that
     /// spells no labels or no type: `#selector(show)` can be any `show`, and `self.show()` names no type.
     private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling, inModules modules: Set<String>) -> Bool {
+        if Self.functionKinds.contains(declaration.kind), let labels = spelling.labels,
+           !Self.labels(labels, hasTrailingClosure: spelling.hasTrailingClosure, fit: Self.parameterLabels(of: declaration))
+        {
+            return false
+        }
+        // A bare name inside a type's body reads a property or method of that type, or of one it inherits from. Of the
+        // types around it, it reads only a static or class member: a nested type's instance has no instance of them.
+        // In a static or class member it reads only static and class members of its own type too.
+        if let types = spelling.implicitSelfTypes {
+            guard Self.implicitSelfKinds.contains(declaration.kind), let innermost = types.first else { return false }
+
+            let isTypeMember = Self.typeMemberKinds.contains(declaration.kind)
+            if isTypeMember || !spelling.isStaticContext, isMember(declaration, ofAnyOf: [innermost]) { return true }
+            return isTypeMember && isMember(declaration, ofAnyOf: Set(types.dropFirst()))
+        }
         if Self.memberKinds.contains(declaration.kind), !spelling.isMember { return false }
 
         // A declaration no type declares is reached by its bare name, or qualified by its module
@@ -94,11 +109,6 @@ public final class ConfidenceAssessor {
             return false
         }
 
-        if Self.functionKinds.contains(declaration.kind), let labels = spelling.labels,
-           !Self.labels(labels, hasTrailingClosure: spelling.hasTrailingClosure, fit: Self.parameterLabels(of: declaration))
-        {
-            return false
-        }
         if declaration.kind != .functionFree, let receiver = spelling.receiver {
             if mayBeInheritedPlaceholder(receiver, inExtensionOf: spelling.extendedType) {
                 // An unknown receiver in an extension can stand for this type, but Unknown() still supplies no arguments.
@@ -266,6 +276,23 @@ public final class ConfidenceAssessor {
         guard receivers.allSatisfy({ !Self.placeholderTypeKinds.contains($0.kind) }) else { return false }
 
         return !receivers.contains { $0 == enclosing || typeRelatives[enclosing, default: []].contains($0) || typeRelatives[$0, default: []].contains(enclosing) }
+    }
+
+    private static let implicitSelfKinds: Set<Declaration.Kind> = [
+        .varInstance, .varStatic, .varClass, .functionMethodInstance, .functionMethodStatic, .functionMethodClass,
+    ]
+    private static let typeMemberKinds: Set<Declaration.Kind> = [.varStatic, .varClass, .functionMethodStatic, .functionMethodClass]
+
+    /// Whether the declaration is a member of a type named in `types`, of a subclass or type alias of one, or of an
+    /// unscanned type an extension of one of them adds it to.
+    private func isMember(_ declaration: Declaration, ofAnyOf types: Set<String>) -> Bool {
+        if let enclosing = enclosingTypeDeclaration(of: declaration) {
+            return ([enclosing] + typeRelatives[enclosing, default: []]).contains { types.contains(SourceGraph.baseName(of: $0.name)) }
+        }
+        if let extended = unscannedExtendedType(of: declaration) {
+            return types.contains(extended.name)
+        }
+        return false
     }
 
     private static let concreteTypeKinds: Set<Declaration.Kind> = [.class, .struct, .enum]
