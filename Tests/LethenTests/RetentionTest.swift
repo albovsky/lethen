@@ -2540,6 +2540,25 @@ final class RetentionTest: FixtureSourceGraphTestCase {
         }
     }
 
+    /// A construction through a name the build references as an unscanned class or type alias can reach an extension
+    /// of an unscanned type, as a subclass or an alias of it.
+    func testConfidenceSkippedBranchUnscannedRelatives() throws {
+        try analyze(retainPublic: true) {
+            assertReferenced(.extensionClass("NSObject")) {
+                self.assertConfidence(.functionConstructor("init(fixtureSubclass12:)"), .likely)
+                self.assertConfidence(.functionConstructor("init(fixtureQualifiedSubclass12:)"), .likely)
+                // Controls: a name the build references only as a function, and one it never references.
+                self.assertConfidence(.functionConstructor("init(fixtureFunction12:)"), .certain)
+                self.assertConfidence(.functionConstructor("init(fixtureUnknown12:)"), .certain)
+            }
+            assertReferenced(.extensionStruct("String")) {
+                self.assertConfidence(.functionConstructor("init(fixtureAlias12:)"), .likely)
+                // Control: a class cannot stand for a struct.
+                self.assertConfidence(.functionConstructor("init(fixtureClassForStruct12:)"), .certain)
+            }
+        }
+    }
+
     /// A construction spelled through a module names that module's type, not a type of the scan with the same name.
     func testConfidenceSkippedBranchModuleQualifiedConstructions() throws {
         try analyze(retainPublic: true) {
