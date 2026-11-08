@@ -202,6 +202,21 @@ public class FixtureStatic9 {
     }
 }
 
+public class FixtureNoInstance9 {
+    // Same names as the static properties that a stored property's initial value and a default argument read bare:
+    // neither has an instance to read these from.
+    var initialRead9 = 0
+    var defaultRead9 = 0
+    // Read bare in a skipped stored property's initial value and in a skipped default argument.
+    static var initialRead9 = 0
+    static var defaultRead9 = 0
+
+    #if os(Windows)
+        var copied9 = initialRead9
+        func withDefault9(value: Int = defaultRead9) -> Int { value }
+    #endif
+}
+
 public class FixtureBase9 {
     // Read as a bare name in a skipped clause of a subclass, which inherits it.
     var inherited9 = 0

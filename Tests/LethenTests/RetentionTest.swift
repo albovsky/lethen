@@ -2504,6 +2504,17 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotReferenced(.varStatic("staticRead9"))
                 self.assertConfidence(.varStatic("staticRead9"), .likely)
             }
+            // A stored property's initial value and a default argument read static members, not instance members.
+            assertReferenced(.class("FixtureNoInstance9")) {
+                self.assertNotReferenced(.varInstance("initialRead9"))
+                self.assertConfidence(.varInstance("initialRead9"), .certain)
+                self.assertNotReferenced(.varStatic("initialRead9"))
+                self.assertConfidence(.varStatic("initialRead9"), .likely)
+                self.assertNotReferenced(.varInstance("defaultRead9"))
+                self.assertConfidence(.varInstance("defaultRead9"), .certain)
+                self.assertNotReferenced(.varStatic("defaultRead9"))
+                self.assertConfidence(.varStatic("defaultRead9"), .likely)
+            }
             // A subclass's body reads what it inherits.
             assertReferenced(.class("FixtureBase9")) {
                 self.assertNotReferenced(.varInstance("inherited9"))

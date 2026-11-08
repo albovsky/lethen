@@ -267,10 +267,11 @@ public struct NameUseCollector {
     /// The base names of the types and extensions around `node`, innermost first, for a bare `name` that can read one of
     /// their members; `nil` outside any type, or when the declaration directly inside the innermost type, such as the
     /// method holding the use, binds a value of that name anywhere: a local, a parameter, a pattern or a local function.
-    /// `isStatic` is whether that declaration is `static` or `class`, which has no instance of the innermost type.
+    /// `isStatic` is whether the use runs without an instance of the innermost type: see `runsWithoutInstance`.
     private mutating func implicitSelfContext(of name: String, at node: Syntax) -> (types: [String], isStatic: Bool)? {
         var types: [String] = []
         var member: Syntax?
+        var outermostInitializer: InitializerClauseSyntax?
         var current: Syntax? = node
         while let syntax = current {
             if let name = Self.typeName(of: syntax) {
@@ -278,6 +279,8 @@ public struct NameUseCollector {
             } else if types.isEmpty, member == nil, syntax.parent?.is(MemberBlockItemSyntax.self) == true {
                 // The innermost one: a type-level `#if` around the method is a member too, holding its siblings.
                 member = syntax
+            } else if types.isEmpty, member == nil, let initializer = syntax.as(InitializerClauseSyntax.self) {
+                outermostInitializer = initializer
             }
             current = syntax.parent
         }
@@ -291,10 +294,32 @@ public struct NameUseCollector {
             }
             if facts.boundNamesByMember[member.id]?.contains(name) == true { return nil }
         }
-        let isStatic = member?.asProtocol(WithModifiersSyntax.self)?.modifiers.contains {
-            $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class)
-        } ?? false
-        return (types, isStatic)
+        return (types, member.map { Self.runsWithoutInstance($0, in: outermostInitializer) } ?? false)
+    }
+
+    /// Whether code in `member`, inside `initializer` when it is in one, runs without an instance of its type: all of a
+    /// `static` or `class` member, the initial value of a stored property that is not `lazy`, `var copy = logger`, and
+    /// a default argument of the member's own parameters, `func run(value: Int = logger)`.
+    private static func runsWithoutInstance(_ member: Syntax, in initializer: InitializerClauseSyntax?) -> Bool {
+        let modifiers = member.asProtocol(WithModifiersSyntax.self)?.modifiers ?? []
+        if modifiers.contains(where: { $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class) }) {
+            return true
+        }
+        guard let initializer else { return false }
+
+        // The binding's list, then the property: an initializer of the member's own binding, not of a local in an accessor.
+        if initializer.parent?.is(PatternBindingSyntax.self) == true, initializer.parent?.parent?.parent?.id == member.id {
+            return !modifiers.contains { $0.name.tokenKind == .keyword(.lazy) }
+        }
+        if let parameter = initializer.parent?.as(FunctionParameterSyntax.self) {
+            // A parameter of the member itself, not of a function declared inside it.
+            var owner = parameter.parent
+            while let node = owner, !node.is(FunctionDeclSyntax.self), !node.is(InitializerDeclSyntax.self), !node.is(SubscriptDeclSyntax.self) {
+                owner = node.parent
+            }
+            return owner?.id == member.id
+        }
+        return false
     }
 
     /// The name a type declaration declares, without backticks: `Store` for ``struct `Store` {}``.
