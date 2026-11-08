@@ -366,6 +366,29 @@ final class NameUseCollectorTest: XCTestCase {
         let parameterClause = try XCTUnwrap(findIfConfig(Syntax(parameterTree)))
         let parameterElements = try XCTUnwrap(parameterClause.clauses.first?.elements)
         XCTAssertEqual(NameUseCollector(Syntax(parameterElements)).spellings["_logger"], [Spelling()])
+
+        // A closure's projected parameter binds the wrapped value and its storage, written out or shorthand.
+        for parameters in ["($logger: Int)", "$logger"] {
+            let closureTree = Parser.parse(source: """
+            struct Store {
+                var logger = 0
+                var _logger = 0
+                func run() {
+                    apply { \(parameters) in
+                        #if os(Windows)
+                        _ = logger
+                        _ = _logger
+                        #endif
+                    }
+                }
+            }
+            """)
+            let closureClause = try XCTUnwrap(findIfConfig(Syntax(closureTree)))
+            let closureElements = try XCTUnwrap(closureClause.clauses.first?.elements)
+            let spellings = NameUseCollector(Syntax(closureElements)).spellings
+            XCTAssertEqual(spellings["logger"], [Spelling()], parameters)
+            XCTAssertEqual(spellings["_logger"], [Spelling()], parameters)
+        }
     }
 
     func testAnInitAccessorBindsNewValue() throws {

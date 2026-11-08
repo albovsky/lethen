@@ -424,7 +424,8 @@ public struct NameUseCollector {
     /// closure parameters by their local names, a closure's captures, `[logger = …]`, the parameters of
     /// accessors, `set(value)` or the implicit `newValue` of `set`, `willSet` and `init` and `oldValue` of
     /// `didSet`, a bare `catch`'s implicit `error`, and the backing storage of a wrapped local or parameter,
-    /// `_logger` for `@Wrapper var logger` or `run(@Wrapper logger: Int)`.
+    /// `_logger` for `@Wrapper var logger` or `run(@Wrapper logger: Int)`, and the wrapped value and storage of a
+    /// closure's projected parameter, `logger` and `_logger` for `{ $logger in … }`.
     private static func collectBoundValueNames(_ root: Syntax, includingLocalDeclarations: Bool = false, into names: inout Set<String>) {
         // A collector may already be deep inside a skipped expression when it requests facts about the whole file.
         var pending = [root]
@@ -462,6 +463,12 @@ public struct NameUseCollector {
             let isWrapped = node.as(FunctionParameterSyntax.self).map { !$0.attributes.isEmpty }
                 ?? node.as(ClosureParameterSyntax.self).map { !$0.attributes.isEmpty } ?? false
             if isWrapped { names.formUnion(["_" + name, "$" + name]) }
+            // `{ ($logger: Int) in … }` and `{ $logger in … }` infer a wrapper and bind `logger` and `_logger` too.
+            let isClosureParameter = node.is(ClosureParameterSyntax.self) || node.is(ClosureShorthandParameterSyntax.self)
+            if isClosureParameter, name.hasPrefix("$"), name.count > 1 {
+                let wrapped = String(name.dropFirst())
+                names.formUnion([wrapped, "_" + wrapped])
+            }
         }
         // `@Wrapper var logger` binds its backing storage `_logger` and projection `$logger` too. Any attribute counts:
         // which one is a property wrapper is not known from syntax.
