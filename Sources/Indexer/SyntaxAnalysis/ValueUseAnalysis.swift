@@ -69,6 +69,9 @@ struct ValueUseAnalysis: SyntaxAnalysis {
                 if valueUses.readOnlyPropertyLocations.contains(declaration.location) {
                     declaration.isReadOnly = true
                 }
+                if declaration.kind == .functionConstructor {
+                    declaration.initializerRequiresArgument = valueUses.initializersRequiringArguments.contains(declaration.location)
+                }
                 if valueUses.asyncFunctionLocations.contains(declaration.location) {
                     declaration.isAsync = true
                 }
