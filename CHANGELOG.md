@@ -10,6 +10,7 @@
 
 ##### Bug Fixes
 
+- In a `#if` branch the build skipped, a construction through a name the scan does not declare now reaches an initializer of an extension of a type the scan does not declare when the build references that name as another such type that can stand for it: a class, for an extended class, as `NSString(...)` reaches `extension NSObject { convenience init(...) }`, or a type alias, as `StringLiteralType(...)` reaches `extension String`. Such constructions were taken as another type, which left the initializer `certain`. A name the build references only as a function, as `DDLogDebug("...")` is, or never references, still names no initializer of the extension ([#162](https://github.com/albovsky/lethen/issues/162)).
 - In a `#if` branch the build skipped, a bare name inside a type's body, `return logger` in a method of `Storage`, now marks `likely` a property or method of that name of `Storage`, of a type it inherits from, or of the unscanned type an extension extends, or a static or class member of that name of a type around `Storage`, as `self.logger` already did. It still does not count when the method around it binds a value of that name, and never counts for another type's members ([#200](https://github.com/albovsky/lethen/issues/200)).
 
 ## 2026.11.1 (2026-11-08)
