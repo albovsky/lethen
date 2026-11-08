@@ -10,7 +10,7 @@
 
 ##### Bug Fixes
 
-- None.
+- In a `#if` branch the build skipped, a bare name inside a type's body, `return logger` in a method of `Storage`, now marks `likely` a property or method of that name of `Storage`, of a type it inherits from, or of the unscanned type an extension extends, or a static or class member of that name of a type around `Storage`, as `self.logger` already did. It still does not count when the method around it binds a value of that name, and never counts for another type's members ([#200](https://github.com/albovsky/lethen/issues/200)).
 
 ## 2026.11.1 (2026-11-08)
 
