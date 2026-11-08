@@ -98,12 +98,13 @@ public struct NameUseCollector {
         receiver: String? = nil,
         isMemberAccess: Bool = false,
         qualifier: String? = nil,
-        implicitSelfTypes: [String]? = nil
+        implicitSelfTypes: [String]? = nil,
+        isStaticContext: Bool = false
     ) {
         let spelling = NameSites.Spelling(
             labels: labels, hasTrailingClosure: hasTrailingClosure, receiver: receiver, isMember: isMember, isMemberAccess: isMemberAccess,
             qualifier: qualifier, isPattern: inPattern, extendedType: receiver == nil ? nil : extendedTypeName,
-            implicitSelfTypes: implicitSelfTypes
+            implicitSelfTypes: implicitSelfTypes, isStaticContext: isStaticContext
         )
         if spellingOnly {
             spellings[name, default: []].insert(spelling)
@@ -186,11 +187,11 @@ public struct NameUseCollector {
             // type without `self.`, unless the member around it binds a value of that name.
             // A generic parameter of that name, `T` in `func f<T>()`, is what the name refers to.
             if !isMember, !isMemberAccess, reference.baseName.identifier != nil, !placeholderTypeNames.contains(name),
-               let types = implicitSelfTypes(of: name, at: node)
+               let context = implicitSelfContext(of: name, at: node)
             {
                 record(
                     name, isMember: true, isConstruction: !inPattern, at: node, spellingOnly: true, inPattern: inPattern,
-                    labels: labels, implicitSelfTypes: types
+                    labels: labels, implicitSelfTypes: context.types, isStaticContext: context.isStatic
                 )
             }
             // `Widget(...)` calls an initializer of `Widget`, which the index records under `init`; a type name
@@ -266,7 +267,8 @@ public struct NameUseCollector {
     /// The base names of the types and extensions around `node`, innermost first, for a bare `name` that can read one of
     /// their members; `nil` outside any type, or when the declaration directly inside the innermost type, such as the
     /// method holding the use, binds a value of that name anywhere: a local, a parameter, a pattern or a local function.
-    private mutating func implicitSelfTypes(of name: String, at node: Syntax) -> [String]? {
+    /// `isStatic` is whether that declaration is `static` or `class`, which has no instance of the innermost type.
+    private mutating func implicitSelfContext(of name: String, at node: Syntax) -> (types: [String], isStatic: Bool)? {
         var types: [String] = []
         var member: Syntax?
         var current: Syntax? = node
@@ -289,7 +291,10 @@ public struct NameUseCollector {
             }
             if facts.boundNamesByMember[member.id]?.contains(name) == true { return nil }
         }
-        return types
+        let isStatic = member?.asProtocol(WithModifiersSyntax.self)?.modifiers.contains {
+            $0.name.tokenKind == .keyword(.static) || $0.name.tokenKind == .keyword(.class)
+        } ?? false
+        return (types, isStatic)
     }
 
     /// The name a type declaration declares, without backticks: `Store` for ``struct `Store` {}``.

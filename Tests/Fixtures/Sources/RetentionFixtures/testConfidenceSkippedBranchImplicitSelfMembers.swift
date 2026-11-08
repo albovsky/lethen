@@ -187,6 +187,21 @@ public class FixtureOuter9 {
     }
 }
 
+public class FixtureStatic9 {
+    // Same name as the static property a static method reads bare: that method has no instance to read this from.
+    var staticRead9 = 0
+    // Read bare in a skipped clause of a static method of its own type.
+    static var staticRead9 = 0
+
+    public static func run() -> Int {
+        #if os(Windows)
+            return staticRead9
+        #else
+            return 0
+        #endif
+    }
+}
+
 public class FixtureBase9 {
     // Read as a bare name in a skipped clause of a subclass, which inherits it.
     var inherited9 = 0

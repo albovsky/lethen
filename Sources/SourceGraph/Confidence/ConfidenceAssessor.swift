@@ -88,11 +88,13 @@ public final class ConfidenceAssessor {
         }
         // A bare name inside a type's body reads a property or method of that type, or of one it inherits from. Of the
         // types around it, it reads only a static or class member: a nested type's instance has no instance of them.
+        // In a static or class member it reads only static and class members of its own type too.
         if let types = spelling.implicitSelfTypes {
             guard Self.implicitSelfKinds.contains(declaration.kind), let innermost = types.first else { return false }
 
-            return isMember(declaration, ofAnyOf: [innermost])
-                || Self.typeMemberKinds.contains(declaration.kind) && isMember(declaration, ofAnyOf: Set(types.dropFirst()))
+            let isTypeMember = Self.typeMemberKinds.contains(declaration.kind)
+            if isTypeMember || !spelling.isStaticContext, isMember(declaration, ofAnyOf: [innermost]) { return true }
+            return isTypeMember && isMember(declaration, ofAnyOf: Set(types.dropFirst()))
         }
         if Self.memberKinds.contains(declaration.kind), !spelling.isMember { return false }
 

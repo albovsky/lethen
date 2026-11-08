@@ -2497,6 +2497,13 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                     self.assertConfidence(.varInstance("nestedRead9"), .likely)
                 }
             }
+            // A static method reads its type's static members, not its instance members.
+            assertReferenced(.class("FixtureStatic9")) {
+                self.assertNotReferenced(.varInstance("staticRead9"))
+                self.assertConfidence(.varInstance("staticRead9"), .certain)
+                self.assertNotReferenced(.varStatic("staticRead9"))
+                self.assertConfidence(.varStatic("staticRead9"), .likely)
+            }
             // A subclass's body reads what it inherits.
             assertReferenced(.class("FixtureBase9")) {
                 self.assertNotReferenced(.varInstance("inherited9"))
