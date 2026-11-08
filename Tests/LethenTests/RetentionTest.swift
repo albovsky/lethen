@@ -2514,6 +2514,11 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertConfidence(.varInstance("defaultRead9"), .certain)
                 self.assertNotReferenced(.varStatic("defaultRead9"))
                 self.assertConfidence(.varStatic("defaultRead9"), .likely)
+                // A function declared in an initial value has no instance either.
+                self.assertNotReferenced(.varInstance("localFunctionRead9"))
+                self.assertConfidence(.varInstance("localFunctionRead9"), .certain)
+                self.assertNotReferenced(.varStatic("localFunctionRead9"))
+                self.assertConfidence(.varStatic("localFunctionRead9"), .likely)
             }
             // An enum case's default value reads static members, not instance members.
             assertReferenced(.enum("FixtureCase9")) {
