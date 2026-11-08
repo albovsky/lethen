@@ -34,7 +34,8 @@ public struct NameSites: Equatable {
         /// first: the name may read a member of one of them without `self.`. `nil` for any other use.
         public var implicitSelfTypes: [String]?
         /// For a bare name with `implicitSelfTypes`, whether it runs without an instance of the innermost type, in a
-        /// `static` or `class` member, a stored property's initial value or a default argument, so that it reads only
+        /// `static` or `class` member, a stored property's initial value, a default argument or an enum case's default
+        /// value, so that it reads only
         /// that type's static and class members.
         public var isStaticContext: Bool
 

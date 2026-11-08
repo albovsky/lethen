@@ -2515,6 +2515,13 @@ final class RetentionTest: FixtureSourceGraphTestCase {
                 self.assertNotReferenced(.varStatic("defaultRead9"))
                 self.assertConfidence(.varStatic("defaultRead9"), .likely)
             }
+            // An enum case's default value reads static members, not instance members.
+            assertReferenced(.enum("FixtureCase9")) {
+                self.assertNotReferenced(.varInstance("caseDefault9"))
+                self.assertConfidence(.varInstance("caseDefault9"), .certain)
+                self.assertNotReferenced(.varStatic("caseDefault9"))
+                self.assertConfidence(.varStatic("caseDefault9"), .likely)
+            }
             // A subclass's body reads what it inherits.
             assertReferenced(.class("FixtureBase9")) {
                 self.assertNotReferenced(.varInstance("inherited9"))

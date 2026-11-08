@@ -217,6 +217,19 @@ public class FixtureNoInstance9 {
     #endif
 }
 
+public enum FixtureCase9 {
+    case plain9
+
+    #if os(Windows)
+        case item9(Int = caseDefault9)
+    #endif
+
+    // Same name as the static property an enum case's default value reads bare: it has no instance to read this from.
+    var caseDefault9: Int { 0 }
+    // Read bare in a skipped enum case's default value.
+    static var caseDefault9 = 0
+}
+
 public class FixtureBase9 {
     // Read as a bare name in a skipped clause of a subclass, which inherits it.
     var inherited9 = 0
