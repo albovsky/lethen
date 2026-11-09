@@ -52,6 +52,16 @@ final class ShellTest: XCTestCase {
         XCTAssertEqual(lines.all.sorted(), ["err", "out", "tail"])
     }
 
+    func testStreamsEveryLineOfLongStandardErrorOutput() throws {
+        let lines = LineRecorder()
+        let command = "awk 'BEGIN { for (i = 1; i <= 16000; i++) print i }' >&2"
+
+        let output = try shell.exec(["/bin/sh", "-c", command]) { lines.append($0) }
+
+        XCTAssertEqual(output, "")
+        XCTAssertEqual(lines.all, (1 ... 16000).map(String.init))
+    }
+
     func testFailureAfterStreamingThrowsWithTheCapturedOutput() {
         let lines = LineRecorder()
 

@@ -317,10 +317,11 @@ public final class ShellImpl: Shell {
 
 /// Passes lines from both output streams to a handler one at a time.
 private final class SerialLineHandler: Sendable {
-    private let handler: Mutex<@Sendable (String) -> Void>
+    private let handler: @Sendable (String) -> Void
+    private let deliveryLock = Mutex(())
 
     init(_ handler: @escaping @Sendable (String) -> Void) {
-        self.handler = Mutex(handler)
+        self.handler = handler
     }
 
     func deliver(_ bytes: Data) {
@@ -330,7 +331,7 @@ private final class SerialLineHandler: Sendable {
         if line.hasSuffix("\r") {
             line.removeLast()
         }
-        handler.withLock { $0(line) }
+        deliveryLock.withLock { _ in handler(line) }
     }
 }
 
