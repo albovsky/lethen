@@ -68,5 +68,18 @@
       "-destination",
       "generic/platform=iOS Simulator"
     ]
+  },
+  {
+    "name": "SwiftPackageIndex-Server",
+    "url": "https://github.com/SwiftPackageIndex/SwiftPackageIndex-Server.git",
+    "commit": "58b94786b5ecf36ad7def1bf8990aea43f076412",
+    "kind": "spm",
+    "arguments": [
+      "--retain-public-targets",
+      "Authentication",
+      "S3Store",
+      "--",
+      "--force-resolved-versions"
+    ]
   }
 ]
