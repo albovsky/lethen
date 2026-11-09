@@ -225,6 +225,8 @@ public final class Declaration {
     public var declarations: Set<Declaration> = []
     public var commentCommands: Set<CommentCommand> = []
     public var references: Set<Reference> = []
+    /// The innermost conditional clause that provides this type declaration.
+    public var conditionalTypeRange: ClosedRange<Location>?
     public var declaredType: String?
     public var hasGenericFunctionReturnedMetatypeParameters: Bool = false
     /// For a function, each parameter's label (nil for `_`) and the names its type is constrained to or spelled as:
