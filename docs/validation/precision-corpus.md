@@ -1173,3 +1173,51 @@ Wikipedia iOS gains one row, from the `private(set)` part of the change rather t
 | `Wikipedia/Code/ScrollableEducationPanelViewController.swift:114` `showOptionalButton`, `redundantPublicAccessibility`, `certain` | var.instance | True positive, newly reported | Line 114 reads `private(set) public var showOptionalButton = false`. The syntax visitor took the declaration's access level from the modifier names alone, so it recorded `private` and the redundant-public rule skipped it. Read past the `(set)` detail it is `public`, and it is read only at `:358` and `:385`, both inside the declaring class, so the `public` buys nothing. |
 
 No Wikipedia or Alamofire row changes confidence, and no row is dropped anywhere. One of the six rows is sampled, swift-nio `_none`, adjudicated TP in September, so the scorecard's sampled `certain` count goes from 20 to 21 for swift-nio and from 81 to 82 overall, and Wikipedia's findings from 2,567 to 2,568. Both precision figures are unchanged, since the row was already a counted TP and the added Wikipedia row is not in the sample.
+
+## Strong references in assign-only properties (#203)
+
+On November 8, 2026, all 3,412 canonical rows matched the expectations at Lethen
+`7d79c57f` (arm64 macOS, Apple Swift 6.4, Xcode 27.0 build 27A266a, debug).
+A diagnostic build recorded the declared type, modifiers and indexed variable-type
+references of each assign-only property. The scan arguments and project revisions
+are in [the manifest](../../corpus/projects.json).
+
+| Project | Assign-only rows | Strong scanned class, certain | Strong scanned class, already likely | Weak or unowned class | Strong SDK match, certain |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Alamofire | 10 | 2 | 0 | 0 | 0 |
+| swift-nio | 15 | 1 | 0 | 0 | 0 |
+| Wikipedia | 336 | 41 | 0 | 1 | 1 |
+| IceCubesApp | 70 | 0 | 1 | 0 | 0 |
+| **Total** | **431** | **44** | **1** | **1** | **1** |
+
+Join the diagnostic records to reported properties on sorted USRs. Unwrap optional
+types and match the outer nominal type to a variable-type reference whose USR
+resolves to a class in the scanned graph. Generic arguments alone do not qualify.
+The one scanned outer type alias, Alamofire's `BufferingPolicy`, names an enum.
+Check `UIWindow`, `NSWindow`, `Timer`, `DispatchSourceTimer`, `Task` and
+`NSObjectProtocol` separately. This measures explicitly identified types among
+reported findings, after the analyzer's existing retention rules.
+
+For each project, take the first five eligible `certain` class rows ordered by
+SHA-256 of the UTF-8 project name, a zero byte and the first sorted property USR.
+Inspect every eligible SDK match. The source locations below use the manifest pins.
+
+| Property | Verdict | Evidence |
+| --- | --- | --- |
+| Alamofire, `Iterator.token` | Intentional | The private token's deinitializer calls the cancellation closure. Releasing the iterator finishes the stream. [Concurrency.swift, lines 933–960](https://github.com/Alamofire/Alamofire/blob/bda9ed57d72988a3a2ada33d824583541f86eac6/Source/Features/Concurrency.swift#L933-L960) |
+| Alamofire, `BaseTestCase.session` | Intentional | The test keeps the session until teardown. Deinitializing it early finishes outstanding requests. [BaseTestCase.swift](https://github.com/Alamofire/Alamofire/blob/bda9ed57d72988a3a2ada33d824583541f86eac6/Tests/BaseTestCase.swift#L69-L111) |
+| swift-nio, `SALContext.wakeups` | Dead | The selector owns the same box and operates it directly. The context's private copy has no reader. [Context setup](https://github.com/apple/swift-nio/blob/feaf4ac57e27e411e83e88ee2f9b1789ddf08d0b/Tests/NIOPosixTests/SyscallAbstractionLayerContext.swift#L130-L150) |
+| Wikipedia, `ExploreViewController.whichCameFirstCoordinator` | Intentional | The owner clears the coordinator on completion. The coordinator's game handlers capture it weakly. [ExploreViewController.swift](https://github.com/wikimedia/wikipedia-ios/blob/599e4a634b8f24f324c9def932b75f03d57b87e7/Wikipedia/Code/ExploreViewController.swift#L1152-L1154) |
+| Wikipedia, `PreviewWebViewContainer.theme` | Dead | Both background updates use the method parameter. The stored copy is never read. [PreviewWebViewContainer.swift](https://github.com/wikimedia/wikipedia-ios/blob/599e4a634b8f24f324c9def932b75f03d57b87e7/Wikipedia/Code/PreviewWebViewContainer.swift#L42-L48) |
+| Wikipedia, `ArticleViewController.donateCoordinator` | Intentional | The controller saves it before starting the donation flow. The configuration callback captures the coordinator weakly. [DonateCoordinator.swift](https://github.com/wikimedia/wikipedia-ios/blob/599e4a634b8f24f324c9def932b75f03d57b87e7/Wikipedia/Code/DonateCoordinator.swift#L193-L207) |
+| Wikipedia, `savedTabBarItemProgressBadgeManager` | Intentional | The manager owns the KVO observations. Their handlers capture the manager weakly. [SavedTabBarItemProgressBadgeManager.swift](https://github.com/wikimedia/wikipedia-ios/blob/599e4a634b8f24f324c9def932b75f03d57b87e7/Wikipedia/Code/SavedTabBarItemProgressBadgeManager.swift#L8-L34) |
+| Wikipedia, `HomeViewController.homeFeedSettingsCoordinator` | Intentional | The view controller owns the coordinator across screens. Navigation tap handlers capture it weakly. [HomeFeedSettingsCoordinator.swift](https://github.com/wikimedia/wikipedia-ios/blob/599e4a634b8f24f324c9def932b75f03d57b87e7/Wikipedia/Code/HomeFeedSettingsCoordinator.swift#L110-L128) |
+| Wikipedia, `tipObservationTask` (SDK) | Dead handle | An unstructured task runs when its handle is discarded. The wrapper only assigns and clears the handle. It never awaits or cancels it. [AppViewControllerTipWrapper.swift](https://github.com/wikimedia/wikipedia-ios/blob/599e4a634b8f24f324c9def932b75f03d57b87e7/Wikipedia/Code/AppViewControllerTipWrapper.swift#L63-L92) |
+
+**Scanned classes.** Recommend a `likely` confidence reason for the 44 eligible
+rows. Six of the eight sampled properties provide lifetime ownership. The other
+two are genuine findings and should stay visible. Wikipedia accounts for 41
+of the 44 potential moves, so this sample does not estimate the rate for other apps.
+
+**SDK list.** Do not add the six-name list on this evidence. Its only match is a
+dead handle. The other five names contributed zero eligible findings.
