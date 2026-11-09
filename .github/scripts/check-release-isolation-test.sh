@@ -2,7 +2,7 @@
 # Runs check-release-isolation.sh against the Release workflow and against copies of it
 # changed in ways that must fail: every way a job can reach a secret or a write token, and
 # every way the release binary can move into a privileged job. Controls that must pass keep
-# the check from failing on harmless text. `mise run lint-ci` runs this test.
+# the check from failing on harmless text. `dev/lint-ci` runs this test.
 #
 # Usage: check-release-isolation-test.sh [workflow-file]
 

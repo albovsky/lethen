@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+swift build --product lethen
+"$(swift build --show-bin-path)/lethen" scan "$@"

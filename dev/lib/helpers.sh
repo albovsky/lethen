@@ -1,4 +1,4 @@
-# Shared helper functions for mise tasks
+# Shared helper functions for baseline tasks
 
 # Formats a JSON baseline file in place
 format_baseline() {

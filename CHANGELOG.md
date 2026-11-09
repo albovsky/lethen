@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-- None.
+- Developer tasks now run directly from `dev/`. Run `dev/install-lint-tools` to install the project's pinned SwiftFormat and SwiftLint with Homebrew and `dev/lint-ci` to run the CI checks.
 
 ##### Bug Fixes
 

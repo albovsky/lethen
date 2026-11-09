@@ -2,7 +2,9 @@
 
 set -euo pipefail
 
-source "$(dirname "$0")/scripts/helpers.sh"
+cd "$(dirname "$0")/.."
+
+source "dev/lib/helpers.sh"
 
 bazel run :periphery -- scan --bazel --write-baseline baselines/bazel.json
 format_baseline baselines/bazel.json

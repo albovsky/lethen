@@ -1,19 +1,27 @@
 #!/bin/bash
-#USAGE flag "-b --bazel" help="Use binary built by Bazel"
 
 set -eo pipefail
 
-cmd=""
+cd "$(dirname "$0")/.."
 
-if [ "$usage_bazel" = "true" ]; then
+if [[ $# -eq 1 && ($1 == -h || $1 == --help) ]]; then
+    echo "Usage: dev/benchmark [-b|--bazel]"
+    exit 0
+fi
+
+if [[ $# -gt 1 || ($# -eq 1 && $1 != --bazel && $1 != -b) ]]; then
+    echo "Usage: dev/benchmark [-b|--bazel]" >&2
+    exit 1
+fi
+if [[ $# -eq 1 ]]; then
     echo "INFO: Using Bazel"
     bazel build //:periphery
     config="$(bazel info output_base)/lethen_generated/periphery.yml"
     printf -v cmd 'bazel-bin/Sources/LethenCLI_opt scan --config %q --generic-project-config bazel-bin/external/+generated+periphery_generated/lethen_scan/project_config.json' "$config"
 else
-    executable="$(mise r build --arch arm64)"
+    executable="$(dev/build --arch arm64)"
     printf -v cmd '%q scan --quiet --skip-build' "$executable"
 fi
 
-echo $cmd
+echo "$cmd"
 hyperfine --warmup 3 "${cmd}"
