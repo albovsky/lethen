@@ -2,6 +2,8 @@
 
 set -e
 
+cd "$(dirname "$0")/.."
+
 export DOCKER_CLI_HINTS=false
 docker build -t lethen -f docker/Dockerfile-Linux .
 docker run --rm -t lethen scan "$@" --baseline baselines/linux.json

@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+source dev/lib/lint-tools.sh
+
+# Populate a local tap from this checkout, including on a pull request runner.
+tap_dir="$(brew --repository "$lint_tap")"
+if [[ ! -d "$tap_dir" ]]; then
+    brew tap-new --no-git "$lint_tap"
+fi
+mkdir -p "$tap_dir/Formula"
+for formula in "$format_formula" "$lint_formula"; do
+    install -m 644 "dev/Formula/$formula.rb" "$tap_dir/Formula/"
+done
+brew install "$lint_tap/$format_formula" "$lint_tap/$lint_formula"
+require_lint_tools
+"$swiftformat" --version
+"$swiftlint" version

@@ -2,11 +2,14 @@
 
 set -euo pipefail
 
-cd $MISE_PROJECT_ROOT
+cd "$(dirname "$0")/.."
+
+source "dev/lib/lint-tools.sh"
+require_lint_tools
 
 bazel run //bazel/dev:buildifier.check
-mise exec -- swiftformat --quiet --strict .
-mise exec -- swiftlint lint --quiet --strict
+"$swiftformat" --lint --quiet --strict .
+"$swiftlint" lint --quiet --strict
 bash .github/scripts/check-release-isolation.sh
 bash .github/scripts/check-release-isolation-test.sh
 bash .github/scripts/action-scan-test.sh
