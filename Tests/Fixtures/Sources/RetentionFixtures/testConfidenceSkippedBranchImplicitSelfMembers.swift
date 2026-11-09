@@ -207,13 +207,20 @@ public class FixtureNoInstance9 {
     // neither has an instance to read these from.
     var initialRead9 = 0
     var defaultRead9 = 0
-    // Read bare in a skipped stored property's initial value and in a skipped default argument.
+    var localFunctionRead9 = 0
+    // Read bare in a skipped stored property's initial value, in a skipped default argument, and in a function declared
+    // in a skipped initial value.
     static var initialRead9 = 0
     static var defaultRead9 = 0
+    static var localFunctionRead9 = 0
 
     #if os(Windows)
         var copied9 = initialRead9
         func withDefault9(value: Int = defaultRead9) -> Int { value }
+        var computedOnce9: Int = {
+            func read() -> Int { localFunctionRead9 }
+            return read()
+        }()
     #endif
 }
 
