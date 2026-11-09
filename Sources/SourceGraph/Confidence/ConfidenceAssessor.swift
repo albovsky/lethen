@@ -39,11 +39,11 @@ public final class ConfidenceAssessor {
             if Self.spellingMatchedKinds.contains(declaration.kind) || Self.fileScopeKinds.contains(declaration.kind),
                let spelled = sites.spellings[baseName]
             {
-                return spelled.filter { canBeUse(of: declaration, spelledAs: $0.key, inModules: modules) }.values.min()
+                return spelled.filter { canBeUse(of: declaration, spelledAs: $0.key, inModules: modules, useModule: module) }.values.min()
             }
             // An enum case is reached through its type like any member, but only a construction is a use of it.
             if declaration.kind == .enumelement, let spelled = sites.spellings[baseName] {
-                return spelled.filter { !$0.key.isPattern && canBeUse(of: declaration, spelledAs: $0.key, inModules: modules) }.values.min()
+                return spelled.filter { !$0.key.isPattern && canBeUse(of: declaration, spelledAs: $0.key, inModules: modules, useModule: module) }.values.min()
             }
             let names = if declaration.kind == .enumelement {
                 sites.constructionNames
@@ -80,7 +80,7 @@ public final class ConfidenceAssessor {
     /// `show(title:)` does not name `show(message:)`, and a member reached through a type by that type, so that
     /// `String.init(data:)` does not name another type's initializer. Neither says anything about a use that
     /// spells no labels or no type: `#selector(show)` can be any `show`, and `self.show()` names no type.
-    private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling, inModules modules: Set<String>) -> Bool {
+    private func canBeUse(of declaration: Declaration, spelledAs spelling: NameSites.Spelling, inModules modules: Set<String>, useModule: String) -> Bool {
         if Self.functionKinds.contains(declaration.kind), let labels = spelling.labels,
            !Self.labels(labels, hasTrailingClosure: spelling.hasTrailingClosure, fit: Self.parameterLabels(of: declaration))
         {
@@ -128,7 +128,7 @@ public final class ConfidenceAssessor {
                     return receiver == extended.name || Self.sdkTypeAliases[receiver]?.contains(extended.name) == true
                         || mayBeUnscannedRelative(receiver, ofUnscanned: extended.isClass)
                 }
-                return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass)
+                return !isDistinct(receiver: receiver, fromUnscanned: extended.name, isClass: extended.isClass, site: spelling.constructionSite, useModule: useModule)
             }
         }
         return true
@@ -191,16 +191,42 @@ public final class ConfidenceAssessor {
     /// SDK's may be, or a subclass of it, which a class of the scan may be. A name the scan does not declare can also
     /// be an unscanned alias or subclass, which the build's own references to it show: see `mayBeUnscannedRelative`.
     /// Any other name is another type, or a function that is called like one, as `DDLogDebug("...")` is.
-    private func isDistinct(receiver: String, fromUnscanned extended: String, isClass: Bool) -> Bool {
+    private func isDistinct(receiver: String, fromUnscanned extended: String, isClass: Bool, site: Location?, useModule: String) -> Bool {
         if receiver == extended { return false }
 
         let receivers = typeDeclarationsByName[receiver, default: []]
-        // A type of the scan with an SDK alias's name shadows the alias.
-        if receivers.isEmpty, Self.sdkTypeAliases[receiver]?.contains(extended) == true { return false }
+        if Self.sdkTypeAliases[receiver]?.contains(extended) == true,
+           !receivers.contains(where: { shadowsSDKAlias($0, at: site, in: useModule) })
+        {
+            return false
+        }
         if receivers.isEmpty, mayBeUnscannedRelative(receiver, ofUnscanned: isClass) { return false }
         // Only a class can subclass an unscanned class; a struct or enum has no subclasses.
         let compatible: Set<Declaration.Kind> = isClass ? [.class, .typealias, .protocol, .associatedtype, .genericTypeParam] : [.typealias, .protocol, .associatedtype, .genericTypeParam]
         return receivers.allSatisfy { !compatible.contains($0.kind) }
+    }
+
+    /// An SDK alias can be ruled out only by a shadow visible where the skipped construction occurs.
+    private func shadowsSDKAlias(_ type: Declaration, at site: Location?, in module: String) -> Bool {
+        guard let site else { return true }
+
+        if let scope = type.conditionalTypeRange, type.location.file != site.file || !scope.contains(site) {
+            return false
+        }
+        if type.location.file == site.file { return true }
+        guard isVisibleOutsideItsFile(type) else { return false }
+
+        let owners = Self.modules(of: type)
+        if owners.contains(module) { return true }
+        if isVisibleOutsideItsModule(type), owners.contains(where: { graph.isModule($0, exportedBy: module) }) { return true }
+        return site.file.importStatements.contains { statement in
+            guard !statement.isConditional else { return false }
+
+            if statement.isTestable, owners.contains(statement.module) { return true }
+            return isVisibleOutsideItsModule(type) && owners.contains {
+                $0 == statement.module || graph.isModule($0, exportedBy: statement.module)
+            }
+        }
     }
 
     /// Whether `name`, which the scan does not declare as a type, can stand for an unscanned type the scan extends,

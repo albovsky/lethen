@@ -2,4 +2,6 @@
 
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
+
 bazel run :periphery -- scan --bazel --bazel-check-visibility --baseline baselines/bazel.json "$@"

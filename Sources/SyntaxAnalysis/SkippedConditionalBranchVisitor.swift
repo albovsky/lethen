@@ -27,11 +27,13 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
     public private(set) var spellings: [String: [NameSites.Spelling: String]] = [:]
 
     private let locationBuilder: SourceLocationBuilder
+    private let isTypeQualifier: (String) -> Bool
     private let evidence: Set<Location>
     /// What the clauses' collectors read from the whole file, read once for all of them. A visitor walks one file.
     private let facts = NameUseCollector.FileFacts()
 
-    public init(locationBuilder: SourceLocationBuilder, evidence: Set<Location>) {
+    public init(locationBuilder: SourceLocationBuilder, evidence: Set<Location>, isTypeQualifier: @escaping (String) -> Bool = { _ in false }) {
+        self.isTypeQualifier = isTypeQualifier
         self.locationBuilder = locationBuilder
         self.evidence = evidence
         super.init(viewMode: .sourceAccurate)
@@ -59,8 +61,16 @@ public final class SkippedConditionalBranchVisitor: SyntaxVisitor {
                 if isMember, memberNames[identifier].map({ $0 > site }) ?? true { memberNames[identifier] = site }
             }
             for (identifier, spelled) in content.spellings {
-                for spelling in spelled where spellings[identifier, default: [:]][spelling].map({ $0 > site }) ?? true {
-                    spellings[identifier, default: [:]][spelling] = site
+                for var spelling in spelled {
+                    if identifier == "init", spelling.receiver != nil {
+                        spelling.constructionSite = start
+                        if let qualifier = spelling.qualifier, isTypeQualifier(qualifier) {
+                            spelling.qualifier = nil
+                        }
+                    }
+                    if spellings[identifier, default: [:]][spelling].map({ $0 > site }) ?? true {
+                        spellings[identifier, default: [:]][spelling] = site
+                    }
                 }
             }
             for identifier in content.constructionUses where constructionNames[identifier].map({ $0 > site }) ?? true {

@@ -7,6 +7,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
     public typealias Result = (
         location: Location,
         range: ClosedRange<Location>,
+        conditionalTypeRange: ClosedRange<Location>?,
         accessibility: Accessibility?,
         modifiers: [String],
         attributes: Set<DeclarationAttribute>,
@@ -59,6 +60,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            typeDeclaration: Syntax(node),
             range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
@@ -72,6 +74,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            typeDeclaration: Syntax(node),
             range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
@@ -84,6 +87,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             trivia: node.commentCommandTrivia,
             inheritanceClause: node.inheritanceClause,
             genericWhereClause: node.genericWhereClause,
+            typeDeclaration: Syntax(node),
             range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
@@ -97,6 +101,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            typeDeclaration: Syntax(node),
             range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
@@ -110,6 +115,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             inheritanceClause: node.inheritanceClause,
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
+            typeDeclaration: Syntax(node),
             range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
@@ -278,6 +284,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
             genericParameterClause: node.genericParameterClause,
             genericWhereClause: node.genericWhereClause,
             typeInitializerClause: node.initializer,
+            typeDeclaration: Syntax(node),
             range: range(of: node),
             at: node.name.positionAfterSkippingLeadingTrivia
         )
@@ -330,6 +337,15 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
         node.bindings.count == 1 ? Syntax(node) : Syntax(part)
     }
 
+    private func enclosingConditionalRange(of type: Syntax) -> ClosedRange<Location>? {
+        var parent = type.parent
+        while let node = parent {
+            if let clause = node.as(IfConfigClauseSyntax.self) { return range(of: clause) }
+            parent = node.parent
+        }
+        return nil
+    }
+
     private func parse(
         modifiers: DeclModifierListSyntax?,
         attributes: AttributeListSyntax?,
@@ -346,6 +362,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
         variableInitFunctionCallExpr: FunctionCallExprSyntax? = nil,
         variableInitExpr: ExprSyntax? = nil,
         typeInitializerClause: TypeInitializerClauseSyntax? = nil,
+        typeDeclaration: Syntax? = nil,
         range: ClosedRange<Location>,
         at position: AbsolutePosition
     ) {
@@ -391,6 +408,7 @@ public final class DeclarationSyntaxVisitor: LethenSyntaxVisitor {
         results.append((
             location: location,
             range: range,
+            conditionalTypeRange: typeDeclaration.flatMap(enclosingConditionalRange),
             accessibility: accessibility,
             modifiers: modifierNames,
             attributes: parsedAttributes,

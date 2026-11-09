@@ -595,6 +595,7 @@ final class SwiftIndexer: Indexer {
                 decl.modifiers = Set(result.modifiers)
                 decl.commentCommands = Set(result.commentCommands)
                 decl.declaredType = result.variableType
+                decl.conditionalTypeRange = result.conditionalTypeRange
 
                 decl.hasGenericFunctionReturnedMetatypeParameters = result.hasGenericFunctionReturnedMetatypeParameters
 

@@ -271,7 +271,7 @@ public struct NameUseCollector {
     private mutating func implicitSelfContext(of name: String, at node: Syntax) -> (types: [String], isStatic: Bool)? {
         var types: [String] = []
         var member: Syntax?
-        var inBody = false
+        var outermostBody: Syntax?
         var current: Syntax? = node
         while let syntax = current {
             if let name = Self.typeName(of: syntax) {
@@ -280,7 +280,7 @@ public struct NameUseCollector {
                 // The innermost one: a type-level `#if` around the method is a member too, holding its siblings.
                 member = syntax
             } else if types.isEmpty, member == nil, Self.isBody(syntax) {
-                inBody = true
+                outermostBody = syntax
             }
             current = syntax.parent
         }
@@ -294,7 +294,19 @@ public struct NameUseCollector {
             }
             if facts.boundNamesByMember[member.id]?.contains(name) == true { return nil }
         }
+        // Only the member's own body has its instance, not that of a function declared in its initial value.
+        let inBody = outermostBody.map { Self.declaration(owning: $0)?.id == member?.id } ?? false
         return (types, member.map { Self.runsWithoutInstance($0, inBody: inBody) } ?? false)
+    }
+
+    /// The declaration whose body `body` is: the function, initializer or deinitializer of a code block, and the
+    /// property or subscript of an accessor block or an accessor's code block.
+    private static func declaration(owning body: Syntax) -> Syntax? {
+        var node = body.parent
+        while let current = node, !current.isProtocol(DeclSyntaxProtocol.self) || current.is(AccessorDeclSyntax.self) {
+            node = current.parent
+        }
+        return node
     }
 
     /// Whether `node` is the body of a function, initializer, deinitializer or accessor, or a property's accessors,
