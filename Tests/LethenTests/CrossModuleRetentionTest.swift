@@ -22,6 +22,28 @@ final class CrossModuleRetentionTest: SPMSourceGraphTestCase {
         }
     }
 
+    func testSDKAliasIsNotShadowedByAnUnimportedModule() {
+        module("CrossModuleRetentionFixtures") {
+            self.assertReferenced(.extensionStruct("Double")) {
+                self.assertNotReferenced(.functionConstructor("init(fixturePlatform13:)"))
+                self.assertConfidence(.functionConstructor("init(fixturePlatform13:)"), .likely)
+                self.assertReferenced(.functionConstructor("init(fixturePlatformLive13:)"))
+            }
+            self.assertReferenced(.extensionStruct("Int16")) {
+                self.assertNotReferenced(.functionConstructor("init(fixtureImported13:)"))
+                self.assertConfidence(.functionConstructor("init(fixtureImported13:)"), .certain)
+                self.assertReferenced(.functionConstructor("init(fixtureInt16Live13:)"))
+            }
+            self.assertReferenced(.extensionStruct("Float")) {
+                self.assertNotReferenced(.functionConstructor("init(fixtureSDK13:)"))
+                self.assertConfidence(.functionConstructor("init(fixtureSDK13:)"), .likely)
+                self.assertNotReferenced(.functionConstructor("init(fixtureOther13:)"))
+                self.assertConfidence(.functionConstructor("init(fixtureOther13:)"), .certain)
+                self.assertReferenced(.functionConstructor("init(fixtureLive13:)"))
+            }
+        }
+    }
+
     /// A construction qualified by the module that declares the type names an initializer another module adds to it.
     func testConfidenceSkippedBranchQualifiedByTheTypesModule() {
         // The extension's members are folded into the type it extends.

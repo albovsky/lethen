@@ -14,6 +14,9 @@ public struct NameSites: Equatable {
         /// `nil` when the use names no type, `self.shared`, `shared`, `store.shared`, or names one that may
         /// stand for any type (`Self`, a generic parameter).
         public var receiver: String?
+        /// The skipped clause containing a typed construction, for resolving names in its file and configuration.
+        public var constructionSite: Location?
+
         /// Whether the use is a member access or a call.
         public var isMember: Bool
         /// Whether the use is written as a member access, `store.value`, `self.value`, `.value`, `Store.value`
