@@ -12,7 +12,7 @@ name: Release
 # Running the workflow by hand with an existing tag builds and publishes binaries for it
 # with the current release tooling, which backfills older tags and retries failed
 # releases; the environment must allow the branch it runs from.
-# .github/scripts/check-release-isolation.sh, run by `mise run lint-ci`, keeps the binary
+# .github/scripts/check-release-isolation.sh, run by `dev/lint-ci`, keeps the binary
 # out of every job that has an environment, secrets, or write access.
 on:
   push:

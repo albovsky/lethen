@@ -15,7 +15,6 @@ on:
         options: [nightly, master, pr]
         default: nightly
 env:
-  MISE_EXPERIMENTAL: 1
   swift_package_resolve: swift package resolve
   swift_build: swift build
   swift_test: swift test
@@ -106,7 +105,7 @@ jobs:
             git worktree add --detach "$RUNNER_TEMP/merge" FETCH_HEAD
             cd "$RUNNER_TEMP/merge"
           fi
-          ruby .mise/tasks/scripts/gen_bazel_rules.rb && git diff --quiet --exit-code -- Sources/BUILD.bazel
+          dev/gen-bazel-rules && git diff --quiet --exit-code -- Sources/BUILD.bazel
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -164,10 +163,10 @@ jobs:
           bazelisk-version: 1.x
           bazelisk-cache: true
           repository-cache: true
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        with:
-          cache: false
-      - run: mise run lint-ci
+      - name: Add Homebrew to PATH
+        run: echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+      - run: dev/install-lint-tools
+      - run: dev/lint-ci
       - run: python3 corpus/test_drop_gate.py
   bazel:
     # Job names stay static: GitHub appends the matrix values itself, and a skipped matrix
