@@ -4,6 +4,7 @@ import IndexStore
 import Logger
 import Shared
 import SourceGraph
+import SwiftSyntax
 import SyntaxAnalysis
 import SystemPackage
 
@@ -297,15 +298,24 @@ final class SwiftIndexer: Indexer {
             establishDeclarationHierarchy()
 
             // Generated declarations are retained through their parent, so they are used only when
-            // the declaration the macro was attached to is used. Parentless expansions stay roots,
-            // except extensions: ExtensionReferenceBuilder folds those into the type they extend
+            // the declaration the macro was attached to is used. Phase two checks file-scope classes for
+            // an attached protocol before rooting them. Other parentless expansions stay roots, except
+            // extensions: ExtensionReferenceBuilder folds those into the type they extend
             // (and retains extensions of external types), so a generated conformance such as
             // `extension Foo: Observable` does not keep `Foo` alive.
             let implicitDeclarations = declarations.filter {
                 $0.isImplicit && !$0.kind.isExtensionKind && keptDeclarationsByUsrs[$0.usrs] === $0
             }
             graph.withLock { graph in
-                implicitDeclarations.forEach { graph.markRetained($0) }
+                for declaration in implicitDeclarations {
+                    if declaration.parent == nil, declaration.kind == .class, !retainAllDeclarations,
+                       !configuration.retainPublic, sourceFile.modules.isDisjoint(with: configuration.retainPublicTargets)
+                    {
+                        implicitRootClasses.append(declaration)
+                    } else {
+                        graph.markRetained(declaration)
+                    }
+                }
             }
         }
 
@@ -350,6 +360,7 @@ final class SwiftIndexer: Indexer {
                 topLevelStatements: TopLevelStatementLocator.ranges(in: multiplexingSyntaxVisitor.syntax, using: locationBuilder),
                 declarationRanges: declarationSyntaxVisitor.rangesByLocation
             )
+            retainImplicitRootClasses(using: multiplexingSyntaxVisitor, locations: locationBuilder)
             visitDeclarations(using: declarationSyntaxVisitor)
             let file = IndexedFile(
                 sourceFile: sourceFile,
@@ -372,6 +383,36 @@ final class SwiftIndexer: Indexer {
 
         // MARK: - Private
 
+        /// A peer class generated at a protocol's attached macro already references the protocol it conforms to.
+        /// Rooting the class would make that protocol live even when nothing uses either. Keep the class through
+        /// the attached protocol, preserving the usual root for every expansion we cannot identify.
+        private func retainImplicitRootClasses(using visitor: MultiplexingSyntaxVisitor, locations: SourceLocationBuilder) {
+            for peer in implicitRootClasses {
+                let position = visitor.locationConverter.position(ofLine: peer.location.line, column: peer.location.column)
+                guard let token = visitor.syntax.token(at: position), let attribute = token.parent?.as(AttributeSyntax.self),
+                      token.id == attribute.atSign.id, let host = attribute.parent?.parent?.as(ProtocolDeclSyntax.self)
+                else {
+                    graph.withLock { $0.markRetained(peer) }
+                    continue
+                }
+
+                let hostLocation = locations.location(at: host.name.positionAfterSkippingLeadingTrivia)
+                let nameRange = locations.location(at: attribute.attributeName.positionAfterSkippingLeadingTrivia)
+                    ... locations.location(at: attribute.attributeName.endPositionBeforeTrailingTrivia)
+                graph.withLock { graph in
+                    let owner = peer.related.lazy.filter { $0.declarationKind == .protocol }
+                        .compactMap { graph.declaration(withUsr: $0.usr) }
+                        .first { $0.location == hostLocation && $0.references.contains { $0.declarationKind == .macro && nameRange.contains($0.location) } }
+                    if let owner {
+                        graph.markRetained(peer, by: owner)
+                    } else {
+                        graph.markRetained(peer)
+                    }
+                }
+            }
+        }
+
+        private var implicitRootClasses: [Declaration] = []
         private var declarations: [Declaration] = []
         /// The copy of each USR set that phase one added to the graph; other copies are never graph-visible.
         private var keptDeclarationsByUsrs: [Set<String>: Declaration] = [:]
