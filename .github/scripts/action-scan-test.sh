@@ -2,8 +2,8 @@
 # Runs action-scan.sh against a stand-in for lethen that reports one `certain` result, one
 # `likely` result and one `certain` redundant protocol with two conformances, and checks the
 # arguments the scan gets, the step's outcome, its `count` output and the annotations, for
-# the empty, `certain` and `likely` min-confidence inputs with strict on and off. `mise run
-# lint-ci` runs this test.
+# the empty, `certain` and `likely` min-confidence inputs with strict on and off.
+# `dev/lint-ci` runs this test.
 #
 # Usage: action-scan-test.sh
 set -euo pipefail

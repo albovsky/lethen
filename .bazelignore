@@ -1,6 +1,6 @@
 .build
 .git
-.mise
+dev
 .release
 Tests/AccessibilityTests/AccessibilityProject/.build
 Tests/Fixtures/.build

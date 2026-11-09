@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+source "dev/lib/lint-tools.sh"
+require_lint_tools
+
+bazel run //bazel/dev:buildifier.fix
+"$swiftformat" .
+"$swiftlint" lint --quiet
