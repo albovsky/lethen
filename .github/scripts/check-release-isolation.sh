@@ -12,7 +12,7 @@
 # workflow. No job that has an environment, secrets, or a write permission may run the
 # binary in any of the ways the workflow does: the binary itself, release-smoke-test.sh, `brew install`,
 # `brew reinstall` or `brew test`, or `release-homebrew.sh test`, which runs those brew
-# commands. So none of them can move back into a privileged job. `mise run lint-ci` runs
+# commands. So none of them can move back into a privileged job. `dev/lint-ci` runs
 # this check.
 #
 # Usage: check-release-isolation.sh [workflow-file] [scripts-directory]

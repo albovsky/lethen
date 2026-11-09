@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+ruby dev/lib/gen_bazel_rules.rb

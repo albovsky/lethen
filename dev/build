@@ -1,9 +1,20 @@
 #!/bin/bash
-#USAGE flag "--arch <arch>" help="Build arm64, or release for a stripped arm64 binary"
 
 set -eo pipefail
 
-case "${usage_arch:-}" in
+cd "$(dirname "$0")/.."
+
+usage="Usage: dev/build --arch arm64|release"
+case "${1:-}" in
+    -h|--help) echo "$usage"; exit 0 ;;
+    --arch=*) set -- --arch "${1#--arch=}" "${@:2}" ;;
+esac
+if [[ $# -ne 2 || $1 != --arch ]]; then
+    echo "$usage" >&2
+    exit 1
+fi
+arch="$2"
+case "$arch" in
     arm64 | release) ;;
     *)
         echo "Invalid architecture. Use --arch arm64 or --arch release" >&2
@@ -15,11 +26,11 @@ esac
 # optimization fails to link ArgumentParser with Xcode 27.
 SWIFT_BUILD_FLAGS=(--product lethen --configuration release --disable-sandbox --scratch-path .build --arch arm64)
 
-echo "Building for $usage_arch (arm64)" >&2
+echo "Building for $arch (arm64)" >&2
 swift build "${SWIFT_BUILD_FLAGS[@]}" >&2
 EXECUTABLE="$(swift build "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)/lethen"
 
-if [ "$usage_arch" = "release" ]; then
+if [ "$arch" = "release" ]; then
     mkdir -p .release
     cp "$EXECUTABLE" .release/lethen
     strip -rSTX .release/lethen
