@@ -1,4 +1,5 @@
 import Configuration
+@testable import PeripheryKit
 @testable import TestShared
 import XCTest
 
@@ -25,6 +26,16 @@ final class SPMProjectTest: SPMSourceGraphTestCase {
     func testCrossModuleReference() {
         assertReferenced(.class("PublicCrossModuleReferenced"))
         assertNotReferenced(.class("PublicCrossModuleNotReferenced"))
+    }
+
+    func testMacroPeerRecallCanary() {
+        // Only the peer generated for MockedProtocol is named by the test target.
+        // The diagnostic belongs to the editable protocol. The compiler-generated peer is implicit.
+        XCTAssertFalse(Self.results.contains { $0.declaration.name == "UnusedMockedProtocolMock" })
+        assertNotReferenced(.protocol("UnusedMockedProtocol"))
+        assertReferenced(.class("PublicCrossModuleReferenced")) // Ordinary class referenced across modules.
+        assertReferenced(.class("MockedProtocolMock"))
+        assertReferenced(.protocol("MockedProtocol"))
     }
 
     func testMacroImport() {

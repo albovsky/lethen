@@ -126,22 +126,22 @@ public final class SourceGraph {
 
     public func markRetained(_ declaration: Declaration) {
         if let parent = declaration.parent {
-            for usr in declaration.usrs {
-                let reference = Reference(
-                    name: declaration.name,
-                    kind: .retained,
-                    declarationKind: declaration.kind,
-                    usr: usr,
-                    location: declaration.location
-                )
-                reference.parent = parent
-                add(reference, from: parent)
-            }
+            markRetained(declaration, by: parent)
         } else if let kept = self.declaration(withUsr: declaration.usrs.sorted()[0]), kept !== declaration {
             // A copy the graph did not keep (same USR in another configuration) must not become a root.
             markRetained(kept)
         } else {
             _ = retainedDeclarations.insert(declaration)
+        }
+    }
+
+    /// Keeps a declaration reachable when the owner is used, without changing its lexical parent.
+    public func markRetained(_ declaration: Declaration, by owner: Declaration) {
+        for usr in declaration.usrs {
+            let reference = Reference(name: declaration.name, kind: .retained, declarationKind: declaration.kind,
+                                      usr: usr, location: declaration.location)
+            reference.parent = owner
+            add(reference, from: owner)
         }
     }
 
