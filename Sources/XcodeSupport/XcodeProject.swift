@@ -56,17 +56,17 @@ public final class XcodeProject: XcodeProjectlike {
         name = self.path.lastComponent?.stem ?? ""
         sourceRoot = self.path.removingLastComponent()
 
+        // Xcode 27.2 can store the project as JSON in project.xcproj instead. A bundle that holds both is read from
+        // project.pbxproj, which XcodeProj reads in full.
         let bundle = self.path.lexicallyNormalized()
-        if !bundle.appending("project.pbxproj").exists, bundle.appending("project.xcproj").exists {
-            throw LethenError.usageError(
-                "\(bundle) stores the project in Xcode's JSON project format (project.xcproj), which Lethen cannot read yet: it reads project.pbxproj."
-            )
-        }
-
-        do {
-            xcodeProject = try XcodeProj(pathString: bundle.string)
-        } catch {
-            throw LethenError.underlyingError(error)
+        if !bundle.appending("project.pbxproj").exists, bundle.appending(XcodeJSONProject.fileName).exists {
+            xcodeProject = try XcodeJSONProject.read(bundle: bundle)
+        } else {
+            do {
+                xcodeProject = try XcodeProj(pathString: bundle.string)
+            } catch {
+                throw LethenError.underlyingError(error)
+            }
         }
 
         loadedProjectPaths.insert(path)
