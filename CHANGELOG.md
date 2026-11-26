@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+- Lethen reads an Xcode project stored in Xcode 27.2's JSON project format, a `project.xcproj` with no `project.pbxproj` in the `.xcodeproj` bundle, instead of stopping with an error. It reads the targets, file memberships, synchronized folders and their exceptions, build phases, Run Script paths, local packages and per-configuration build settings it reads from `project.pbxproj`, so a converted project scans as its original did, with no new dependency ([#189](https://github.com/albovsky/lethen/issues/189)).
 - Developer tasks now run directly from `dev/`. Run `dev/install-lint-tools` to install the project's pinned SwiftFormat and SwiftLint with Homebrew and `dev/lint-ci` to run the CI checks.
 
 ##### Bug Fixes

@@ -26,6 +26,7 @@ swift_library(
     srcs = [
         "XcodeSupport/XcodeBuildInputs.swift",
         "XcodeSupport/XcodeDerivedDataLocator.swift",
+        "XcodeSupport/XcodeJSONProject.swift",
         "XcodeSupport/XcodeProject.swift",
         "XcodeSupport/XcodeProjectSetupGuide.swift",
         "XcodeSupport/XcodeProjectlike.swift",
